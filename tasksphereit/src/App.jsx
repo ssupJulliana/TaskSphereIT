@@ -6,6 +6,12 @@ import InstructorLayout from "./components/CapstoneInstructor/InstructorLayout.j
 import InstructorDashboard from "./components/CapstoneInstructor/InstructorDashboard.jsx";
 import InstructorEnroll from "./components/CapstoneInstructor/InstructorEnroll.jsx";
 import InstructorTeams from "./components/CapstoneInstructor/InstructorTeams.jsx";
+import InstructorSchedule from "./components/CapstoneInstructor/InstructorSchedule/InstructorSchedule.jsx";
+import TitleDefense from "./components/CapstoneInstructor/InstructorSchedule/TitleDefense.jsx";
+import ManuscriptSubmission from "./components/CapstoneInstructor/InstructorSchedule/ManuscriptSubmission.jsx";
+import OralDefense from "./components/CapstoneInstructor/InstructorSchedule/OralDefense.jsx";
+import FinalDefense from "./components/CapstoneInstructor/InstructorSchedule/FinalDefense.jsx";
+
 
 // Adviser
 import AdviserLayout from "./components/CapstoneAdviser/AdviserLayout.jsx";
@@ -18,6 +24,7 @@ import Events from "./components/CapstoneAdviser/Events.jsx";
 import Notes from "./components/CapstoneAdviser/Notes.jsx";
 import Notifications from "./components/CapstoneAdviser/Notifications.jsx";
 import Profile from "./components/CapstoneAdviser/Profile.jsx";
+
 
 export default function App() {
   return (
@@ -32,6 +39,11 @@ export default function App() {
           <Route path="dashboard" element={<InstructorDashboard />} />
           <Route path="enroll" element={<InstructorEnroll />} />
           <Route path="teams" element={<InstructorTeams />} />
+          <Route path="schedule" element={<InstructorSchedule />} />
+          <Route path="schedule/title-defense" element={<TitleDefense />} />
+          <Route path="schedule/manuscript" element={<ManuscriptSubmission />} />
+          <Route path="schedule/oral-defense" element={<OralDefense />} />
+          <Route path="schedule/final-defense" element={<FinalDefense />} />
         </Route>
 
         {/* Adviser section */}
