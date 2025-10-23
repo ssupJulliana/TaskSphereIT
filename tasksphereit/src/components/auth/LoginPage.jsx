@@ -1,23 +1,30 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import LoginHeader from "../common/LoginHeader.jsx";
 import LoginFooter from "../common/LoginFooter.jsx";
-import TaskSphereLogo from "../../assets/imgs/TaskSphereLogo.png"; 
+import TaskSphereLogo from "../../assets/imgs/TaskSphereLogo.png";
 import CCSLogo from "../../assets/imgs/ccs-logo.png";
-import {auth} from '../../config/firebase'
 
 const LoginPage = () => {
   const [showPwd, setShowPwd] = useState(false);
+  const navigate = useNavigate(); // React Router navigation hook
+
+  const handleSignIn = (e) => {
+    e.preventDefault();
+    // You can later add login validation logic here
+    navigate("/instructor/dashboard"); // redirect to Instructor Dashboard
+  };
 
   return (
-    // full page, white background
     <div className="min-h-screen flex flex-col bg-white">
+      {/* Header */}
       <LoginHeader />
 
-      {/* main content */}
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10 px-6 md:px-16 pt-10 pb-8"> 
-        {/* LEFT: login panel */}
+      {/* Main section */}
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10 px-6 md:px-16 pt-10 pb-8">
+        {/* LEFT PANEL — login form */}
         <div className="flex justify-center md:justify-end">
-        <div className="w-full max-w-lg bg-white border border-neutral-200 rounded-2xl shadow-lg px-10 py-12">
+          <div className="w-full max-w-lg bg-white border border-neutral-200 rounded-2xl shadow-lg px-10 py-12">
             <div className="text-center">
               <h1 className="text-3xl md:text-4xl font-bold leading-snug text-[#3b0b0e]">
                 Welcome to
@@ -25,7 +32,7 @@ const LoginPage = () => {
                 TaskSphere IT
               </h1>
 
-              {/* brand mark (TaskSphere logo) */}
+              {/* Brand mark */}
               <div className="mx-auto mt-6 h-20 w-20 grid place-items-center">
                 <img
                   src={TaskSphereLogo}
@@ -35,7 +42,8 @@ const LoginPage = () => {
               </div>
             </div>
 
-            <form className="mt-8 space-y-5">
+            {/* FORM */}
+            <form onSubmit={handleSignIn} className="mt-8 space-y-5">
               <div>
                 <label className="block text-sm font-medium text-neutral-700">
                   Username
@@ -46,6 +54,7 @@ const LoginPage = () => {
                   className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/50"
                 />
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-neutral-700">
                   Password
@@ -111,6 +120,7 @@ const LoginPage = () => {
                 </div>
               </div>
 
+              {/* SIGN IN */}
               <button
                 type="submit"
                 className="mt-6 w-48 mx-auto block rounded-full px-6 py-3 text-white font-medium hover:opacity-95 active:scale-[.99] bg-[#6A0F14]"
@@ -121,7 +131,7 @@ const LoginPage = () => {
           </div>
         </div>
 
-        {/* RIGHT: CCS logo + tagline */}
+        {/* RIGHT SIDE */}
         <div className="flex items-center justify-center text-center md:text-left">
           <div className="flex flex-col md:flex-row md:items-center md:gap-6">
             <img
@@ -138,6 +148,7 @@ const LoginPage = () => {
         </div>
       </div>
 
+      {/* Footer */}
       <LoginFooter />
     </div>
   );
