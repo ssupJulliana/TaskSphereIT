@@ -1,18 +1,12 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import LoginPage from "./components/auth/LoginPage.jsx";
+
+// Instructor
 import InstructorLayout from "./components/CapstoneInstructor/InstructorLayout.jsx";
 import InstructorDashboard from "./components/CapstoneInstructor/InstructorDashboard.jsx";
 import InstructorEnroll from "./components/CapstoneInstructor/InstructorEnroll.jsx";
 import InstructorTeams from "./components/CapstoneInstructor/InstructorTeams.jsx";
-// Placeholder imports for the member pages
-import MemberLayout from "./components/CapstoneMember/MemberLayout.jsx";
-import MemberDashboard from "./components/CapstoneMember/MemberDashboard.jsx";
-import MemberTasks from "./components/CapstoneMember/MemberTasks.jsx";
-import MemberAdviserTasks from "./components/CapstoneMember/MemberAdviserTasks.jsx";
-import MembersTasksBoard from "./components/CapstoneMember/MemberTasksBoard.jsx";
-import MembersTasksRecord from "./components/CapstoneMember/MemberTasksRecord.jsx";
-import MemberEvents from "./components/CapstoneMember/MemberEvents.jsx";
-// import other member pages when created, e.g., MemberTasks, MemberAdviserTasks, etc.
+
 
 export default function App() {
   return (
@@ -20,25 +14,34 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginPage />} />
+        {/* add other routes later… */}
 
+        
         {/* Instructor layout with nested pages */}
         <Route path="/instructor" element={<InstructorLayout />}>
+          <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<InstructorDashboard />} />
           <Route path="enroll" element={<InstructorEnroll />} />
           <Route path="teams" element={<InstructorTeams />} />
+          <Route path="schedule" element={<InstructorSchedule />} />
+          <Route path="schedule/title-defense" element={<TitleDefense />} />
+          <Route path="schedule/manuscript" element={<ManuscriptSubmission />} />
+          <Route path="schedule/oral-defense" element={<OralDefense />} />
+          <Route path="schedule/final-defense" element={<FinalDefense />} />
         </Route>
 
-        {/* Member layout with nested pages */}
-        <Route path="/member" element={<MemberLayout />}>
-          <Route path="dashboard" element={<MemberDashboard />} />
-          <Route path="tasks" element={<MemberTasks />} />
-          <Route path="adviser-tasks" element={<MemberAdviserTasks />} />
-          <Route path="tasks-board" element={<MembersTasksBoard />} />
-          <Route path="tasks-record" element={<MembersTasksRecord />} />
-          <Route path="events" element={<MemberEvents />} />
-          {/* Add other routes for member pages here once they are created */}
-          {/* Example: */}
-          {/* <Route path="tasks" element={<MemberTasks />} /> */}
+        {/* Adviser section */}
+        <Route path="/adviser" element={<AdviserLayout />}>
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<AdviserDashboard />} />
+          <Route path="tasks" element={<Tasks />} />
+          <Route path="task-record" element={<TaskRecord />} />
+          <Route path="teams-board" element={<TeamsBoard />} />
+          <Route path="teams-summary" element={<TeamsSummary />} />
+          <Route path="events" element={<Events />} />
+          <Route path="notes" element={<Notes />} />
+          <Route path="notifications" element={<Notifications />} />
+          <Route path="profile" element={<Profile />} />
         </Route>
       </Routes>
     </div>

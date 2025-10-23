@@ -12,8 +12,7 @@ const LoginPage = () => {
   const handleSignIn = (e) => {
     e.preventDefault();
     // You can later add login validation logic here
-    //navigate("/instructor/dashboard");
-    navigate("/member/dashboard");
+    navigate("/instructor/dashboard"); // redirect to Instructor Dashboard
   };
 
   return (
