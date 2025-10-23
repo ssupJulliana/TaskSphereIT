@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import LoginPage from "./components/auth/LoginPage.jsx";
 
+
 export default function App() {
   return (
     <div className="min-h-screen font-sans">

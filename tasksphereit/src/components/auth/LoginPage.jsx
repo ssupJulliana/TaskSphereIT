@@ -3,6 +3,7 @@ import LoginHeader from "../common/LoginHeader.jsx";
 import LoginFooter from "../common/LoginFooter.jsx";
 import TaskSphereLogo from "../../assets/imgs/TaskSphereLogo.png"; 
 import CCSLogo from "../../assets/imgs/ccs-logo.png";
+import {auth} from '../../config/firebase'
 
 const LoginPage = () => {
   const [showPwd, setShowPwd] = useState(false);
