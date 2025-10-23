@@ -1,16 +1,14 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
-import LoginPage from './components/auth/LoginPage'
+import { Routes, Route, Navigate } from "react-router-dom";
+import LoginPage from "./components/auth/LoginPage.jsx";
 
-function App() {
-  const [count, setCount] = useState(0)
-
+export default function App() {
   return (
-      <LoginPage/>
-  )
+    <div className="min-h-screen font-sans">
+      <Routes>
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/login" element={<LoginPage />} />
+        {/* add other routes later… */}
+      </Routes>
+    </div>
+  );
 }
-
-
-export default App
