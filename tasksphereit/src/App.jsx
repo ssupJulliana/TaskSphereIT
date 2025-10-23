@@ -4,6 +4,8 @@ import InstructorLayout from "./components/CapstoneInstructor/InstructorLayout.j
 import InstructorDashboard from "./components/CapstoneInstructor/InstructorDashboard.jsx";
 import InstructorEnroll from "./components/CapstoneInstructor/InstructorEnroll.jsx";
 import InstructorTeams from "./components/CapstoneInstructor/InstructorTeams.jsx";
+import InstructorSchedule from "./components/CapstoneInstructor/InstructorSchedule/InstructorSchedule.jsx";
+import TitleDefense from "./components/CapstoneInstructor/InstructorSchedule/TitleDefense.jsx";
 
 
 export default function App() {
@@ -20,6 +22,8 @@ export default function App() {
           <Route path="dashboard" element={<InstructorDashboard />} />
           <Route path="enroll" element={<InstructorEnroll />} />
           <Route path="teams" element={<InstructorTeams />} />
+          <Route path="schedule" element={<InstructorSchedule />} />
+          <Route path="schedule/title-defense" element={<TitleDefense />} />
         </Route>
       </Routes>
     </div>
