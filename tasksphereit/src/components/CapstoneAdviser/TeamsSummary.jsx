@@ -99,9 +99,7 @@ function useDonutSegments(progress) {
         ...p,
         value: val,
         frac,
-        dasharray: `${(frac * 100).toFixed(4)} ${(
-          100 - frac * 100
-        ).toFixed(4)}`,
+        dasharray: `${(frac * 100).toFixed(4)} ${(100 - frac * 100).toFixed(4)}`,
         dashoffset: (-(acc * 100)).toFixed(4),
       };
       acc += frac;
@@ -119,8 +117,9 @@ function useDonutSegments(progress) {
 function TeamCard({ team, onClick }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`${cardBase} w-64 text-left`}
+      className={`${cardBase} w-64 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[${maroon}]/60 hover:shadow-lg transition-shadow`}
       aria-label={`Open ${team.name} summary`}
     >
       <div className="p-4 pb-5">
@@ -161,14 +160,7 @@ function Donut({ progress }) {
             style={{ transform: "rotate(-90deg)" }}
           >
             {/* background track */}
-            <circle
-              cx={size / 2}
-              cy={size / 2}
-              r={r}
-              fill="none"
-              stroke="#eee"
-              strokeWidth={stroke}
-            />
+            <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#eee" strokeWidth={stroke} />
             {/* segments */}
             {segments.map((s) => (
               <circle
@@ -202,10 +194,7 @@ function Donut({ progress }) {
           <div className="grid gap-2 text-sm">
             {segments.map((s) => (
               <div key={s.key} className="flex items-center gap-2">
-                <span
-                  className="inline-block w-3 h-3 rounded"
-                  style={{ backgroundColor: s.color }}
-                />
+                <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: s.color }} />
                 <span className="text-neutral-700">{s.label}</span>
               </div>
             ))}
@@ -276,7 +265,7 @@ function TasksTable({ tasks }) {
                   <td className="py-2 pr-3">{t.time}</td>
                   <td className="py-2 pr-3">{t.revisions}</td>
                   <td className="py-2 pr-3">
-                    <button className="inline-flex items-center gap-1 px-2 py-1 rounded border border-neutral-300 hover:bg-neutral-100">
+                    <button className="cursor-pointer inline-flex items-center gap-1 px-2 py-1 rounded border border-neutral-300 hover:bg-neutral-100">
                       <FileText className="w-4 h-4" /> View
                     </button>
                   </td>
@@ -301,7 +290,6 @@ function TasksTable({ tasks }) {
 const TeamsSummary = () => {
   const [selected, setSelected] = useState(null);
 
-  // If you want route-based detail later, you can lift state to URL params.
   if (selected) {
     const team = TEAMS.find((t) => t.id === selected);
 
@@ -319,9 +307,10 @@ const TeamsSummary = () => {
         {/* Back */}
         <button
           onClick={() => setSelected(null)}
-          className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100"
+          className="cursor-pointer inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100"
+          type="button"
         >
-          <ChevronLeft className="w-4 h-4" />
+          <ChevronLeft className="w-4 h-4 " />
           Back to Teams
         </button>
 

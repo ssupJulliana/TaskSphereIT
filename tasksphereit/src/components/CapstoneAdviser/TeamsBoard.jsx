@@ -169,7 +169,7 @@ function KanbanCard({ data, onOpen }) {
           <div className="font-semibold text-sm">{data.team}</div>
           <button
             onClick={() => onOpen(data)}
-            className="p-1 rounded hover:bg-neutral-100"
+            className="p-1 rounded hover:bg-neutral-100 cursor-pointer"
             aria-label="Open detail"
           >
             <StickyNote className="w-4 h-4 text-neutral-600" />
@@ -211,7 +211,7 @@ function DetailView({ card, onBack }) {
 
       <button
         onClick={onBack}
-        className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100"
+        className="cursor-pointer inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100"
       >
         <ChevronLeft className="w-4 h-4" />
         Back to Board
@@ -253,7 +253,7 @@ function DetailView({ card, onBack }) {
         </div>
 
         {/* RIGHT: comments + attachments */}
-        <div className="bg-white border border-neutral-200 rounded-xl shadow p-0 overflow-hidden">
+        <div className="bg-white border border-neutral-200 rounded-xl shadow p-0 overflow-hidden ">
           <div className="px-4 pt-3">
             <div className="flex gap-6 text-sm">
               <button
@@ -266,7 +266,7 @@ function DetailView({ card, onBack }) {
               </button>
               <button
                 onClick={() => setTab("attachments")}
-                className={`pb-2 font-medium border-b-2 ${
+                className={`pb-2 font-medium border-b-2 cursor-pointer ${
                   tab === "attachments" ? "border-neutral-800" : "border-transparent text-neutral-500"
                 }`}
               >
@@ -278,7 +278,7 @@ function DetailView({ card, onBack }) {
           <div className="h-[1px] bg-neutral-200" />
 
           {/* composer */}
-          <div className="p-4">
+          <div className="p-4 ">
             <div className="rounded-lg border border-neutral-300 overflow-hidden">
               <div className="px-3 py-2 border-b border-neutral-200 text-sm font-medium">
                 Grayson B Tolentino
@@ -292,19 +292,19 @@ function DetailView({ card, onBack }) {
                   className="w-full resize-none outline-none text-sm"
                 />
                 <div className="flex items-center gap-2 absolute right-3 bottom-3">
-                  <button className="p-1.5 rounded hover:bg-neutral-100" title="Attach">
+                  <button className="p-1.5 rounded hover:bg-neutral-100 cursor-pointer " title="Attach">
                     <Paperclip className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => setDraft("")}
-                    className="p-1.5 rounded hover:bg-neutral-100"
+                    className="p-1.5 rounded hover:bg-neutral-100 cursor-pointer"
                     title="Clear"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => setDraft("")}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-white"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-white cursor-pointer"
                     style={{ backgroundColor: MAROON }}
                   >
                     <Send className="w-4 h-4" />
@@ -316,7 +316,7 @@ function DetailView({ card, onBack }) {
           </div>
 
           {/* list area (scrolls if long) */}
-          <div className="px-4 pb-4 max-h-[360px] overflow-y-auto space-y-4">
+          <div className="px-4 pb-4 max-h-[360px] overflow-y-auto space-y-4 cursor-pointer">
             {tab === "comments" ? (
               comments.map((c) => (
                 <div key={c.id} className="text-sm">
@@ -330,8 +330,8 @@ function DetailView({ card, onBack }) {
                     </div>
                   )}
                   <div className="mt-1 text-xs text-neutral-500 flex gap-4">
-                    <button className="hover:underline">Edit</button>
-                    <button className="hover:underline">Delete</button>
+                    <button className="hover:underline cursor-pointer">Edit</button>
+                    <button className="hover:underline cursor-pointer">Delete</button>
                   </div>
                 </div>
               ))

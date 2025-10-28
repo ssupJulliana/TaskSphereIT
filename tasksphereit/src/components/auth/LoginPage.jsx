@@ -22,6 +22,7 @@ const LoginPage = () => {
   // route mapping by role
   const routeForRole = (role) => {
     if (role === "Adviser") return "/adviser/dashboard";
+    if (role === "Member") return "/member/dashboard";
     // default all other roles into Instructor area (Project Manager, Proponents, etc.)
     return "/instructor/dashboard";
   };
@@ -30,7 +31,7 @@ const LoginPage = () => {
     e.preventDefault();
 
     // You can later add login validation logic here
-    //navigate("/member/dashboard"); // redirect to Instructor Dashboard
+    navigate("/member/dashboard"); // redirect to Instructor Dashboard
     setErr("");
     setLoading(true);
 
