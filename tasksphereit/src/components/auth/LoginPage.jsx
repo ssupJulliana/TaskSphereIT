@@ -8,8 +8,22 @@ import CCSLogo from "../../assets/imgs/ccs-logo.png";
 
 // Firebase
 import { auth, db } from "../../config/firebase";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { collection, query, where, getDocs, limit } from "firebase/firestore";
+import {
+  signInWithEmailAndPassword,
+  updatePassword,
+  signOut,
+} from "firebase/auth";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  limit,
+  doc,
+  updateDoc,
+} from "firebase/firestore";
+
+const DEFAULT_PASSWORD = "UserUser321";
 
 const LoginPage = () => {
   const [showPwd, setShowPwd] = useState(false);
@@ -25,7 +39,7 @@ const LoginPage = () => {
     if (role === "Adviser") return "/adviser/dashboard";
     if (role === "Member") return "/member/dashboard";
     if (role === "Project Manager") return "/projectmanager/dashboard";
-    // default: Instructor area (Project Manager, Proponents, etc.)
+    // default: Instructor area (other instructor-side roles)
     return "/instructor/dashboard";
   };
 
@@ -35,37 +49,97 @@ const LoginPage = () => {
     setLoading(true);
 
     try {
+      const emailTrim = email.trim();
+
+      // 0) PRE-CHECK: is this email blocked?
+      const blockedQ = query(
+        collection(db, "blockedUsers"),
+        where("email", "==", emailTrim),
+        limit(1)
+      );
+      const blockedSnap = await getDocs(blockedQ);
+      if (!blockedSnap.empty) {
+        setErr("Your account is blocked. Please contact the administrator.");
+        setLoading(false);
+        return;
+      }
+
       // 1) Auth
-      const cred = await signInWithEmailAndPassword(auth, email.trim(), pwd);
+      const cred = await signInWithEmailAndPassword(auth, emailTrim, pwd);
 
-      // 2) Find role in Firestore (users collection)
-      let role = null;
+      // 2) Find role/profile in Firestore (users collection) — prefer by uid
       const usersRef = collection(db, "users");
+      let profileDoc = null;
 
-      // Prefer lookup by uid
       const byUid = query(usersRef, where("uid", "==", cred.user.uid), limit(1));
       const uidSnap = await getDocs(byUid);
-
       if (!uidSnap.empty) {
-        role = uidSnap.docs[0].data().role || null;
+        profileDoc = uidSnap.docs[0];
       } else {
         // Fallback to email
-        const byEmail = query(usersRef, where("email", "==", email.trim()), limit(1));
+        const byEmail = query(
+          usersRef,
+          where("email", "==", emailTrim),
+          limit(1)
+        );
         const emailSnap = await getDocs(byEmail);
-        if (!emailSnap.empty) role = emailSnap.docs[0].data().role || null;
+        if (!emailSnap.empty) {
+          profileDoc = emailSnap.docs[0];
+        }
       }
+
+      // If no profile in users, check if it's actually blocked now (by uid)
+      if (!profileDoc) {
+        const blockedByUid = query(
+          collection(db, "blockedUsers"),
+          where("uid", "==", cred.user.uid),
+          limit(1)
+        );
+        const bsnap = await getDocs(blockedByUid);
+
+        await signOut(auth);
+        setErr(
+          bsnap.empty
+            ? "Account profile not found. Please contact the administrator."
+            : "Your account is blocked."
+        );
+        setLoading(false);
+        return;
+      }
+
+      const profile = profileDoc.data();
+      const role = profile.role || null;
 
       // 3) Store to localStorage
       localStorage.setItem("uid", cred.user.uid);
       if (role) localStorage.setItem("role", role);
 
-      // 4) Navigate based on role
+      // 4) Optional: Force default password if flagged
+      if (profile.forceDefaultPassword) {
+        try {
+          await updatePassword(cred.user, DEFAULT_PASSWORD);
+          await updateDoc(doc(db, "users", profileDoc.id), {
+            forceDefaultPassword: false,
+            updatedAt: new Date(),
+          });
+          // Optional toast
+          // alert("Your password has been reset to the default.");
+        } catch (pwErr) {
+          // If this fails, we still continue to route — user is signed in.
+          console.error("Auto-reset to default failed:", pwErr);
+        }
+      }
+
+      // 5) Navigate based on role
       navigate(routeForRole(role), { replace: true });
     } catch (e2) {
       console.error(e2);
       let msg = "Sign-in failed. Please check your credentials.";
       if (e2.code === "auth/invalid-email") msg = "Invalid email address.";
-      else if (e2.code === "auth/user-not-found" || e2.code === "auth/wrong-password")
+      else if (
+        e2.code === "auth/user-not-found" ||
+        e2.code === "auth/wrong-password"
+      )
         msg = "Incorrect email or password.";
       else if (e2.code === "auth/too-many-requests")
         msg = "Too many attempts. Try again later.";
@@ -139,13 +213,39 @@ const LoginPage = () => {
                     tabIndex={-1}
                   >
                     {showPwd ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18M10.584 10.59a3 3 0 104.243 4.243M9.88 5.08A8.967 8.967 0 0112 5c4.5 0 8.268 2.943 9.75 7-.365 1.053-.915 2.03-1.62 2.9m-3.014 2.518A10.013 10.013 0 0112 19c-4.5 0-8.268-2.943-9.75-7a11.415 11.415 0 012.694-4.042" />
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M3 3l18 18M10.584 10.59a3 3 0 104.243 4.243M9.88 5.08A8.967 8.967 0 0112 5c4.5 0 8.268 2.943 9.75 7-.365 1.053-.915 2.03-1.62 2.9m-3.014 2.518A10.013 10.013 0 0112 19c-4.5 0-8.268-2.943-9.542-7a11.415 11.415 0 012.694-4.042"
+                        />
                       </svg>
                     ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                        />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
                       </svg>
                     )}
                   </button>
@@ -157,7 +257,10 @@ const LoginPage = () => {
                     {err && <p className="text-xs text-red-600">{err}</p>}
                   </div>
 
-                  <Link to="/forgot-password" className="text-sm text-[#6A0F14] hover:underline">
+                  <Link
+                    to="/forgot-password"
+                    className="text-sm text-[#6A0F14] hover:underline"
+                  >
                     Forgot password?
                   </Link>
                 </div>

@@ -7,165 +7,336 @@ import {
   MoreVertical,
   X,
   CirclePlus,
+  Trash2,
 } from "lucide-react";
+import TeamIcon from "../../assets/imgs/InstructorTeamIcon.png";
+import AdviserIcon from "../../assets/imgs/InstructoIconAdviser.png";
+import { db } from "../../config/firebase";
+import {
+  addDoc,
+  collection,
+  doc,
+  onSnapshot,
+  updateDoc,
+  serverTimestamp,
+  deleteDoc,
+} from "firebase/firestore";
+
+const MAROON = "#6A0F14";
+
+/* ================= Helpers ================= */
+const fullNameOf = (u) => {
+  const m = u.middleName ? ` ${u.middleName}` : "";
+  return `${u.firstName || ""}${m} ${u.lastName || ""}`.replace(/\s+/g, " ").trim();
+};
+const roleKey = (r = "") => r.toLowerCase(); // normalize
+const isPM = (r) =>
+  ["project manager", "project_manager", "pm", "manager"].includes(roleKey(r));
+const isMember = (r) => ["member", "student"].includes(roleKey(r));
+const isAdviser = (r) => ["adviser", "advisor"].includes(roleKey(r));
 
 const InstructorTeams = () => {
-  // --- sample data (swap with API later) --------------------
-  const initialTeams = useMemo(
-    () => [
-      { id: 1, name: "Aguas, Et Al" },
-      { id: 2, name: "Bernardo, Et Al" },
-      { id: 3, name: "Haraki, Et Al" },
-      { id: 4, name: "Hawke, Et Al" },
-      { id: 5, name: "Mendoza, Et Al" },
-      { id: 6, name: "Quinlan, Et Al" },
-      { id: 7, name: "Trinidad, Et Al" },
-    ],
-    []
-  );
+  /* ================= State ================= */
+  const [view, setView] = useState("teams"); // "teams" | "advisers"
 
-  const students = [
-    "Castaneda Julliana N",
-    "Pinpin John Reagan S",
-    "Faustino Alejandro C",
-    "Pare Justine",
-    "Aguas Xavielle",
-    "Bernardo Clyden",
-  ];
+  // users directory
+  const [allUsers, setAllUsers] = useState([]); // raw docs
+  const [members, setMembers] = useState([]); // [{id, uid, firstName,..., fullName}]
+  const [managers, setManagers] = useState([]);
+  const [advisers, setAdvisers] = useState([]);
 
-  const managers = [
-    "Mendoza Addrialene G",
-    "Haraki Ken",
-    "Quinlan Ruth",
-    "Trinidad Carlo",
-  ];
-
-  const advisers = ["Grayson B Tolentino", "Ava R Cruz", "Noah P Hernandez"];
-
-  // --- page state -------------------------------------------
-  const [teams, setTeams] = useState(initialTeams);
+  // teams (live)
+  const [teams, setTeams] = useState([]);
 
   // dialogs
   const [openCreate, setOpenCreate] = useState(false);
   const [openAssign, setOpenAssign] = useState(false);
 
-  // close on ESC
+  // Create Team dialog
+  const [ctManagerId, setCtManagerId] = useState("");
+  const [ctTeamName, setCtTeamName] = useState("");
+  const [ctMemberPick, setCtMemberPick] = useState("");
+  const [ctMemberIds, setCtMemberIds] = useState([]); // array of user uid
+
+  // Assign Adviser dialog
+  const [asTeamId, setAsTeamId] = useState("");
+  const [asAdviserUid, setAsAdviserUid] = useState("");
+
+  // team card menu (3-dots)
+  const [menuOpenId, setMenuOpenId] = useState(null);
+
+  /* ================= Live subscriptions ================= */
+  useEffect(() => {
+    // users
+    const unsubUsers = onSnapshot(collection(db, "users"), (snap) => {
+      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data(), fullName: fullNameOf(d.data()) }));
+      setAllUsers(rows);
+      setManagers(rows.filter((u) => isPM(u.role)));
+      setMembers(rows.filter((u) => isMember(u.role)));
+      setAdvisers(rows.filter((u) => isAdviser(u.role)));
+    });
+
+    // teams
+    const unsubTeams = onSnapshot(collection(db, "teams"), (snap) => {
+      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setTeams(rows);
+    });
+
+    return () => {
+      unsubUsers();
+      unsubTeams();
+    };
+  }, []);
+
+  // Sets of already-assigned users
+  const assignedMemberUids = useMemo(
+    () => new Set(teams.flatMap((t) => t.memberUids || [])),
+    [teams]
+  );
+  const assignedManagerUids = useMemo(
+    () => new Set(teams.map((t) => t.manager?.uid).filter(Boolean)),
+    [teams]
+  );
+
+  // Available to pick in dialogs (excludes already assigned)
+  const availableManagers = useMemo(
+    () => managers.filter((u) => !assignedManagerUids.has(u.uid || u.id)),
+    [managers, assignedManagerUids]
+  );
+  const availableMembers = useMemo(
+    () => members.filter((u) => !assignedMemberUids.has(u.uid || u.id)),
+    [members, assignedMemberUids]
+  );
+
+  // Unassigned people to show as fallback/alongside teams
+  const unassignedPeople = useMemo(() => {
+    const map = new Map();
+    for (const u of availableManagers.concat(availableMembers)) {
+      const key = u.uid || u.id;
+      if (!map.has(key)) map.set(key, u);
+    }
+    return Array.from(map.values());
+  }, [availableManagers, availableMembers]);
+
+  // Auto-fill team name when PM changes
+  useEffect(() => {
+    if (!ctManagerId) return;
+    const pm =
+      managers.find((m) => (m.uid || m.id) === ctManagerId) ||
+      availableManagers.find((m) => (m.uid || m.id) === ctManagerId);
+    if (pm?.lastName) setCtTeamName(`${pm.lastName}, Et Al`);
+  }, [ctManagerId, managers, availableManagers]);
+
+  // ESC closes modals / menus
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") {
         setOpenCreate(false);
         setOpenAssign(false);
+        setMenuOpenId(null);
       }
     };
-    if (openCreate || openAssign) window.addEventListener("keydown", onKey);
+    if (openCreate || openAssign || menuOpenId) window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openCreate, openAssign]);
+  }, [openCreate, openAssign, menuOpenId]);
 
-  // --- Create Team dialog state -----------------------------
-  const [ctManager, setCtManager] = useState(managers[0]);
-  const [ctTeamName, setCtTeamName] = useState("Mendoza, Et Al");
-  const [ctMemberPick, setCtMemberPick] = useState("");
-  const [ctMembers, setCtMembers] = useState([
-    "Castaneda Julliana N",
-    "Faustino Alejandro C",
-    "Pinpin John Reagan S",
-    "Pare Justine",
-  ]);
-
+  /* ================= Actions ================= */
   const addMember = () => {
-    if (ctMemberPick && !ctMembers.includes(ctMemberPick)) {
-      setCtMembers((m) => [...m, ctMemberPick]);
-      setCtMemberPick("");
+    if (!ctMemberPick) return;
+    if (!ctMemberIds.includes(ctMemberPick)) {
+      setCtMemberIds((v) => [...v, ctMemberPick]);
     }
+    setCtMemberPick("");
   };
-  const removeMember = (name) =>
-    setCtMembers((m) => m.filter((s) => s !== name));
+  const removeMember = (uid) =>
+    setCtMemberIds((v) => v.filter((x) => x !== uid));
 
-  const saveCreateTeam = () => {
-    // minimal mock: push to local list
-    setTeams((t) => [
-      ...t,
-      { id: Math.max(...t.map((x) => x.id)) + 1, name: ctTeamName },
-    ]);
+  const saveCreateTeam = async () => {
+    const pm =
+      managers.find((m) => (m.uid || m.id) === ctManagerId) ||
+      availableManagers.find((m) => (m.uid || m.id) === ctManagerId);
+    if (!pm) return;
+
+    const pickedMembers = members.filter((m) =>
+      ctMemberIds.includes(m.uid || m.id)
+    );
+
+    await addDoc(collection(db, "teams"), {
+      name: ctTeamName || `${pm.lastName}, Et Al`,
+      manager: {
+        uid: pm.uid || pm.id,
+        fullName: pm.fullName,
+      },
+      memberUids: pickedMembers.map((m) => m.uid || m.id),
+      memberNames: pickedMembers.map((m) => m.fullName),
+      adviser: null, // to be assigned later
+      createdAt: serverTimestamp(),
+    });
+
+    // reset & close
+    setCtManagerId("");
+    setCtTeamName("");
+    setCtMemberIds([]);
     setOpenCreate(false);
   };
 
-  // --- Assign Adviser dialog state --------------------------
-  const [asPickTeam, setAsPickTeam] = useState("");
-  const [asTeamsList, setAsTeamsList] = useState(["Aguas, Et Al", "Bernardo, Et Al", "Mendoza, Et Al"]);
-  const [asAdviser, setAsAdviser] = useState(advisers[0]);
+  const saveAssign = async () => {
+    if (!asTeamId || !asAdviserUid) return;
+    const team = teams.find((t) => t.id === asTeamId);
+    if (!team) return;
+    // prevent reassign if already has adviser
+    if (team.adviser?.uid) return;
 
-  const addAssignTeam = () => {
-    if (asPickTeam && !asTeamsList.includes(asPickTeam)) {
-      setAsTeamsList((l) => [...l, asPickTeam]);
-      setAsPickTeam("");
-    }
-  };
-  const removeAssignTeam = (n) =>
-    setAsTeamsList((l) => l.filter((x) => x !== n));
+    const adv = advisers.find((a) => (a.uid || a.id) === asAdviserUid);
+    if (!adv) return;
 
-  const saveAssign = () => {
-    // mock only
+    await updateDoc(doc(db, "teams", asTeamId), {
+      adviser: { uid: adv.uid || adv.id, fullName: adv.fullName },
+    });
+
+    setAsTeamId("");
+    setAsAdviserUid("");
     setOpenAssign(false);
   };
 
-  // card UI
-  const TeamCard = ({ name }) => (
-    <div className="relative bg-white border border-neutral-200 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-      <button
-        className="absolute top-2 right-2 p-1 rounded-full hover:bg-neutral-100"
-        aria-label="More actions"
-      >
-        <MoreVertical className="w-4 h-4 text-neutral-500" />
-      </button>
-      <div className="px-6 pt-8 pb-10 flex items-center justify-center">
-        <Users className="w-10 h-10 text-neutral-800" />
-      </div>
-      <div className="bg-[#6A0F14] text-white text-xs font-medium px-4 py-2 rounded-b-xl">
-        {name}
+  const dissolveTeam = async (teamId) => {
+    await deleteDoc(doc(db, "teams", teamId));
+    setMenuOpenId(null);
+  };
+
+  /* ================= UI subcomponents ================= */
+// shared label
+const LabelBar = ({ children }) => (
+  <div
+    className="
+      mt-auto w-full
+      bg-[#6A0F14] text-white text-xs font-medium
+      px-4 py-2 rounded-b-xl
+      whitespace-normal break-words leading-snug
+      min-h-[40px]   /* nice 1-line baseline */
+    "
+  >
+    {children}
+  </div>
+);
+
+  /* --- Team card --- */
+const TeamCard = ({ team }) => (
+  <div className="relative flex flex-col bg-white border border-neutral-200 rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+    <button
+      className="absolute top-2 right-2 p-1 rounded-full hover:bg-neutral-100"
+      aria-label="More actions"
+      onClick={() => setMenuOpenId(menuOpenId === team.id ? null : team.id)}
+    >
+      <MoreVertical className="w-4 h-4 text-neutral-500" />
+    </button>
+
+    {/* pop menu... (unchanged) */}
+
+    <div className="px-6 pt-8 pb-10 flex items-center justify-center">
+      <img src={TeamIcon} alt="" className="w-12 h-12 object-contain" />
+    </div>
+    <LabelBar>{team.name}</LabelBar>
+  </div>
+);
+
+ /* --- Person card (for unassigned PMs/Members) --- */
+const PersonCard = ({ name }) => (
+  <div className="relative flex flex-col bg-white border border-neutral-200 rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+    <div className="px-6 pt-8 pb-10 flex items-center justify-center">
+      <Users className="w-10 h-10 text-neutral-800" />
+    </div>
+    <LabelBar>{name}</LabelBar>
+  </div>
+);
+
+  const AdviserCard = ({ name }) => (
+    <div className="relative bg-white border border-neutral-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+      <div className="absolute inset-y-0 left-0 w-3" style={{ background: MAROON }} />
+      <div className="px-6 py-8 flex flex-col items-center justify-center gap-4">
+        <img src={AdviserIcon} alt="" className="w-14 h-14 object-contain" />
+        <div className="text-neutral-900 font-semibold text-lg text-center leading-snug">
+          {name}
+        </div>
       </div>
     </div>
   );
 
+  /* ================= Render lists ================= */
+  const teamCards = teams.map((t) => <TeamCard key={t.id} team={t} />);
+  const peopleCards = unassignedPeople.map((p) => (
+    <PersonCard key={p.uid || p.id} name={p.fullName} />
+  ));
+  const adviserItems = advisers.map((a) => (
+    <AdviserCard key={a.uid || a.id} name={a.fullName} />
+  ));
+
+  /* ================= Component ================= */
   return (
     <div className="min-h-full flex flex-col">
       {/* Top: breadcrumb + actions */}
       <div className="flex items-center justify-between">
         <nav className="flex items-center text-sm text-neutral-700 gap-2">
           <span className="inline-flex items-center gap-2 font-semibold text-neutral-800">
-            <Users className="w-4 h-4" />
-            Teams
+            <Users className="w-4 h-4" /> Teams
           </span>
           <ChevronRight className="w-3 h-3 text-neutral-500" />
           <span className="text-neutral-700">‎</span>
         </nav>
-        <div className="flex gap-2">
+
+        <div className="flex items-center gap-3">
+          {/* Filter pills */}
+          <div className="rounded-full border border-neutral-300 p-1 flex">
+            <button
+              onClick={() => setView("teams")}
+              className={`px-3 py-1.5 text-sm rounded-full ${
+                view === "teams"
+                  ? "bg-[#6A0F14] text-white"
+                  : "text-neutral-800 hover:bg-neutral-100"
+              }`}
+            >
+              Teams
+            </button>
+            <button
+              onClick={() => setView("advisers")}
+              className={`px-3 py-1.5 text-sm rounded-full ${
+                view === "advisers"
+                  ? "bg-[#6A0F14] text-white"
+                  : "text-neutral-800 hover:bg-neutral-100"
+              }`}
+            >
+              Adviser
+            </button>
+          </div>
+
           <button
             onClick={() => setOpenCreate(true)}
             className="inline-flex items-center gap-2 rounded-full border border-neutral-300 px-3.5 py-1.5 text-sm text-neutral-800 hover:bg-neutral-100"
           >
-            <PlusCircle className="w-4 h-4" />
-            Create Team
+            <PlusCircle className="w-4 h-4" /> Create Team
           </button>
           <button
             onClick={() => setOpenAssign(true)}
             className="inline-flex items-center gap-2 rounded-full border border-neutral-300 px-3.5 py-1.5 text-sm text-neutral-800 hover:bg-neutral-100"
           >
-            <PlusCircle className="w-4 h-4" />
-            Assign Adviser
+            <PlusCircle className="w-4 h-4" /> Assign Adviser
           </button>
         </div>
       </div>
 
-
       {/* Cards grid */}
       <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-        {teams.map((t) => (
-          <TeamCard key={t.id} name={t.name} />
-        ))}
+        {view === "teams" ? (
+          <>
+            {teamCards}
+            {peopleCards}
+          </>
+        ) : (
+          adviserItems
+        )}
       </div>
 
-      {/* --------------- Create Team Dialog ------------------ */}
+      {/* ---------------- Create Team Dialog ---------------- */}
       {openCreate && (
         <div
           className="fixed inset-0 z-50"
@@ -206,14 +377,18 @@ const InstructorTeams = () => {
                     </label>
                     <select
                       className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
-                      value={ctManager}
-                      onChange={(e) => setCtManager(e.target.value)}
+                      value={ctManagerId}
+                      onChange={(e) => setCtManagerId(e.target.value)}
                     >
-                      {managers.map((m) => (
-                        <option key={m}>{m}</option>
+                      <option value="">Select</option>
+                      {availableManagers.map((m) => (
+                        <option key={m.uid || m.id} value={m.uid || m.id}>
+                          {m.fullName}
+                        </option>
                       ))}
                     </select>
                   </div>
+
                   <div>
                     <label className="block text-sm font-medium text-neutral-700">
                       Team Name
@@ -223,13 +398,14 @@ const InstructorTeams = () => {
                       className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                       value={ctTeamName}
                       onChange={(e) => setCtTeamName(e.target.value)}
+                      placeholder="e.g., Bernardo, Et Al"
                     />
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-neutral-700">
-                    Members
+                    Add Member
                   </label>
                   <div className="mt-1 flex gap-2">
                     <select
@@ -238,8 +414,10 @@ const InstructorTeams = () => {
                       onChange={(e) => setCtMemberPick(e.target.value)}
                     >
                       <option value="">Select</option>
-                      {students.map((s) => (
-                        <option key={s}>{s}</option>
+                      {availableMembers.map((s) => (
+                        <option key={s.uid || s.id} value={s.uid || s.id}>
+                          {s.fullName}
+                        </option>
                       ))}
                     </select>
                     <button
@@ -247,8 +425,7 @@ const InstructorTeams = () => {
                       onClick={addMember}
                       className="inline-flex items-center gap-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-100"
                     >
-                      <CirclePlus className="w-4 h-4" />
-                      Add
+                      <CirclePlus className="w-4 h-4" /> Add
                     </button>
                   </div>
                 </div>
@@ -258,27 +435,35 @@ const InstructorTeams = () => {
                     Members List
                   </label>
                   <div className="mt-1 rounded-lg border border-neutral-200">
-                    {ctMembers.length === 0 ? (
+                    {ctMemberIds.length === 0 ? (
                       <div className="px-3 py-2 text-sm text-neutral-500">
                         No members added.
                       </div>
                     ) : (
                       <ul className="divide-y divide-neutral-200">
-                        {ctMembers.map((m) => (
-                          <li
-                            key={m}
-                            className="flex items-center justify-between px-3 py-2"
-                          >
-                            <span className="text-sm">{m}</span>
-                            <button
-                              onClick={() => removeMember(m)}
-                              className="p-1 rounded hover:bg-neutral-100"
-                              aria-label={`Remove ${m}`}
+                        {ctMemberIds.map((uid) => {
+                          const u =
+                            members.find((m) => (m.uid || m.id) === uid) ||
+                            allUsers.find((m) => (m.uid || m.id) === uid) ||
+                            null;
+                          return (
+                            <li
+                              key={uid}
+                              className="flex items-center justify-between px-3 py-2"
                             >
-                              <X className="w-4 h-4 text-neutral-500" />
-                            </button>
-                          </li>
-                        ))}
+                              <span className="text-sm">
+                                {u?.fullName || uid}
+                              </span>
+                              <button
+                                onClick={() => removeMember(uid)}
+                                className="p-1 rounded hover:bg-neutral-100"
+                                aria-label={`Remove ${u?.fullName || ""}`}
+                              >
+                                <X className="w-4 h-4 text-neutral-500" />
+                              </button>
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                   </div>
@@ -296,6 +481,7 @@ const InstructorTeams = () => {
                 <button
                   onClick={saveCreateTeam}
                   className="px-5 py-2 rounded-full bg-[#6A0F14] text-white text-sm hover:bg-[#5c0d12]"
+                  disabled={!ctManagerId}
                 >
                   Save
                 </button>
@@ -305,7 +491,7 @@ const InstructorTeams = () => {
         </div>
       )}
 
-      {/* --------------- Assign Adviser Dialog --------------- */}
+      {/* ---------------- Assign Adviser Dialog ---------------- */}
       {openAssign && (
         <div
           className="fixed inset-0 z-50"
@@ -344,73 +530,42 @@ const InstructorTeams = () => {
                     <label className="block text-sm font-medium text-neutral-700">
                       Team/s
                     </label>
-                    <div className="mt-1 flex gap-2">
-                      <select
-                        className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
-                        value={asPickTeam}
-                        onChange={(e) => setAsPickTeam(e.target.value)}
-                      >
-                        <option value="">Select</option>
-                        {teams.map((t) => (
-                          <option key={t.id} value={t.name}>
-                            {t.name}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={addAssignTeam}
-                        className="inline-flex items-center gap-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-100"
-                      >
-                        <CirclePlus className="w-4 h-4" />
-                        Add
-                      </button>
-                    </div>
+                    <select
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
+                      value={asTeamId}
+                      onChange={(e) => setAsTeamId(e.target.value)}
+                    >
+                      <option value="">Select</option>
+                      {teams.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}{t.adviser?.uid ? " (has adviser)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    {asTeamId && teams.find((t) => t.id === asTeamId)?.adviser?.uid && (
+                      <p className="mt-1 text-xs text-red-600">
+                        This team already has an adviser.
+                      </p>
+                    )}
                   </div>
+
                   <div>
                     <label className="block text-sm font-medium text-neutral-700">
                       Adviser
                     </label>
                     <select
                       className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
-                      value={asAdviser}
-                      onChange={(e) => setAsAdviser(e.target.value)}
+                      value={asAdviserUid}
+                      onChange={(e) => setAsAdviserUid(e.target.value)}
+                      disabled={!!(asTeamId && teams.find((t) => t.id === asTeamId)?.adviser?.uid)}
                     >
+                      <option value="">Select</option>
                       {advisers.map((a) => (
-                        <option key={a}>{a}</option>
+                        <option key={a.uid || a.id} value={a.uid || a.id}>
+                          {a.fullName}
+                        </option>
                       ))}
                     </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700">
-                    Teams List
-                  </label>
-                  <div className="mt-1 rounded-lg border border-neutral-200">
-                    {asTeamsList.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-neutral-500">
-                        No teams selected.
-                      </div>
-                    ) : (
-                      <ul className="divide-y divide-neutral-200">
-                        {asTeamsList.map((n) => (
-                          <li
-                            key={n}
-                            className="flex items-center justify-between px-3 py-2"
-                          >
-                            <span className="text-sm">{n}</span>
-                            <button
-                              onClick={() => removeAssignTeam(n)}
-                              className="p-1 rounded hover:bg-neutral-100"
-                              aria-label={`Remove ${n}`}
-                            >
-                              <X className="w-4 h-4 text-neutral-500" />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
                   </div>
                 </div>
               </div>
@@ -426,6 +581,11 @@ const InstructorTeams = () => {
                 <button
                   onClick={saveAssign}
                   className="px-5 py-2 rounded-full bg-[#6A0F14] text-white text-sm hover:bg-[#5c0d12]"
+                  disabled={
+                    !asTeamId ||
+                    !asAdviserUid ||
+                    !!(asTeamId && teams.find((t) => t.id === asTeamId)?.adviser?.uid)
+                  }
                 >
                   Save
                 </button>
