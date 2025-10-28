@@ -35,7 +35,7 @@ const PAGE2_ROWS = [
 const Card = ({ title, onClick }) => (
   <button
     onClick={onClick}
-    className="relative w-56 h-44 text-left bg-white border border-neutral-200 rounded-2xl shadow-[0_6px_12px_rgba(0,0,0,0.12)] overflow-hidden hover:translate-y-[-2px] transition-transform"
+    className=" cursor-pointer relative w-56 h-44 text-left bg-white border border-neutral-200 rounded-2xl shadow-[0_6px_12px_rgba(0,0,0,0.12)] overflow-hidden hover:translate-y-[-2px] transition-transform"
   >
     {/* left + bottom maroon accents */}
     <div className="absolute left-0 top-0 h-full w-8" style={{ backgroundColor: MAROON }} />
@@ -51,7 +51,7 @@ const Toolbar = ({ onBack, onCreate, onPage, page }) => (
   <div className="flex items-center gap-3 flex-wrap">
     <button
       onClick={onBack}
-      className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100"
+      className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100 cursor-pointer"
     >
       <ChevronLeft className="w-4 h-4" />
       Back to Records
@@ -59,7 +59,7 @@ const Toolbar = ({ onBack, onCreate, onPage, page }) => (
 
     <button
       onClick={onCreate}
-      className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100"
+      className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100 cursor-pointer"
     >
       <FileText className="w-4 h-4" />
       Create Tasks
@@ -74,11 +74,11 @@ const Toolbar = ({ onBack, onCreate, onPage, page }) => (
     </div>
 
     <div className="ml-auto flex items-center gap-2">
-      <button className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100">
+      <button className="cursor-pointer inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100">
         <Trash2 className="w-4 h-4" />
         Delete
       </button>
-      <button className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100">
+      <button className="cursor-pointer inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100">
         <Filter className="w-4 h-4" />
         Filter
       </button>
@@ -89,13 +89,13 @@ const Toolbar = ({ onBack, onCreate, onPage, page }) => (
       <div className="inline-flex rounded-lg border border-neutral-300 overflow-hidden">
         <button
           onClick={() => onPage(1)}
-          className={`px-3 py-1.5 text-sm ${page === 1 ? "bg-neutral-100 font-semibold" : ""}`}
+          className={`cursor-pointer px-3 py-1.5 text-sm ${page === 1 ? "bg-neutral-100 font-semibold" : ""}`}
         >
           Page 1
         </button>
         <button
           onClick={() => onPage(2)}
-          className={`px-3 py-1.5 text-sm border-l border-neutral-300 ${page === 2 ? "bg-neutral-100 font-semibold" : ""}`}
+          className={`cursor-pointer px-3 py-1.5 text-sm border-l border-neutral-300 ${page === 2 ? "bg-neutral-100 font-semibold" : ""}`}
         >
           Page 2
         </button>
