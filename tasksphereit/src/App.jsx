@@ -4,6 +4,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 // Auth
 import LoginPage from "./components/auth/LoginPage.jsx";
 import ForgotPassword from "./components/auth/ForgotPassword.jsx";
+import ResetPassword from "./components/auth/resetPassword.jsx";
 
 // Instructor
 import InstructorLayout from "./components/CapstoneInstructor/InsturctorLayout.jsx";
@@ -45,7 +46,6 @@ import ProjectManagerTaskBoard from "./components/ProjectManager/ProjectManagerT
 import ProjectManagerEvents from "./components/ProjectManager/ProjectManagerEvents.jsx";
 import ProjectManagerTasks from "./components/ProjectManager/ProjectManagerTasks.jsx";
 
-
 export default function App() {
   return (
     <div className="min-h-screen font-sans">
@@ -54,7 +54,7 @@ export default function App() {
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
-
+        <Route path="/reset-password" element={<ResetPassword />} />
         {/* Instructor section */}
         <Route path="/instructor" element={<InstructorLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
@@ -67,7 +67,6 @@ export default function App() {
           <Route path="schedule/oral-defense" element={<OralDefense />} />
           <Route path="schedule/final-defense" element={<FinalDefense />} />
         </Route>
-
         {/* Adviser section */}
         <Route path="/adviser" element={<AdviserLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
@@ -81,7 +80,6 @@ export default function App() {
           <Route path="notifications" element={<Notifications />} />
           <Route path="profile" element={<Profile />} />
         </Route>
-
         {/* Project Manager section */}
         <Route path="/projectmanager" element={<ProjectManagerLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
@@ -91,7 +89,6 @@ export default function App() {
           <Route path="events" element={<ProjectManagerEvents />} />
           <Route path="tasks" element={<ProjectManagerTasks />} />
         </Route>
-
         {/* Member section */}
         <Route path="/member" element={<MemberLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
@@ -103,9 +100,8 @@ export default function App() {
           <Route path="events" element={<MemberEvents />} />
         </Route>
 
+        \{/* Fallback */}
 
-
-        {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </div>
