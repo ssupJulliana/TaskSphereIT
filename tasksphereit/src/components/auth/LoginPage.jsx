@@ -31,7 +31,7 @@ const LoginPage = () => {
     e.preventDefault();
 
     // You can later add login validation logic here
-   // navigate("/member/dashboard"); // redirect to Instructor Dashboard
+    //  navigate("/member/dashboard"); // redirect to Instructor Dashboard
     setErr("");
     setLoading(true);
 
@@ -44,13 +44,21 @@ const LoginPage = () => {
       let role = null;
 
       const usersRef = collection(db, "users");
-      const byUid = query(usersRef, where("uid", "==", cred.user.uid), limit(1));
+      const byUid = query(
+        usersRef,
+        where("uid", "==", cred.user.uid),
+        limit(1)
+      );
       const uidSnap = await getDocs(byUid);
 
       if (!uidSnap.empty) {
         role = uidSnap.docs[0].data().role || null;
       } else {
-        const byEmail = query(usersRef, where("email", "==", email.trim()), limit(1));
+        const byEmail = query(
+          usersRef,
+          where("email", "==", email.trim()),
+          limit(1)
+        );
         const emailSnap = await getDocs(byEmail);
         if (!emailSnap.empty) {
           role = emailSnap.docs[0].data().role || null;
@@ -68,7 +76,10 @@ const LoginPage = () => {
       console.error(e2);
       let msg = "Sign-in failed. Please check your credentials.";
       if (e2.code === "auth/invalid-email") msg = "Invalid email address.";
-      else if (e2.code === "auth/user-not-found" || e2.code === "auth/wrong-password")
+      else if (
+        e2.code === "auth/user-not-found" ||
+        e2.code === "auth/wrong-password"
+      )
         msg = "Incorrect email or password.";
       else if (e2.code === "auth/too-many-requests")
         msg = "Too many attempts. Try again later.";
@@ -76,7 +87,6 @@ const LoginPage = () => {
     } finally {
       setLoading(false);
     }
-
   };
 
   return (
@@ -143,13 +153,39 @@ const LoginPage = () => {
                     tabIndex={-1}
                   >
                     {showPwd ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18M10.584 10.59a3 3 0 104.243 4.243M9.88 5.08A8.967 8.967 0 0112 5c4.5 0 8.268 2.943 9.75 7-.365 1.053-.915 2.03-1.62 2.9m-3.014 2.518A10.013 10.013 0 0112 19c-4.5 0-8.268-2.943-9.75-7a11.415 11.415 0 012.694-4.042" />
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M3 3l18 18M10.584 10.59a3 3 0 104.243 4.243M9.88 5.08A8.967 8.967 0 0112 5c4.5 0 8.268 2.943 9.75 7-.365 1.053-.915 2.03-1.62 2.9m-3.014 2.518A10.013 10.013 0 0112 19c-4.5 0-8.268-2.943-9.75-7a11.415 11.415 0 012.694-4.042"
+                        />
                       </svg>
                     ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                        />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
                       </svg>
                     )}
                   </button>
