@@ -4,8 +4,8 @@ import {
   Home, Calendar, ClipboardList, Users, FileText, Bell, ListChecks, LogOut
 } from "lucide-react";
 import TaskSphereLogo from "../../assets/imgs/TaskSphereLogo.png";
-import AdviserHeader from "./AdviserHeader";
-import AdviserFooter from "./AdviserFooter";
+import ProjectManagerHeader from "./ProjectManagerHeader";
+import ProjectManagerFooter from "./ProjectManagerFooter";
 
 // Firebase
 import { auth } from "../../config/firebase";
@@ -89,14 +89,14 @@ const ProjectManagerLayout = () => {
 
       {/* Main column */}
       <div className="flex-1 flex flex-col min-h-0">
-        <AdviserHeader />
+        <ProjectManagerHeader />
 
         {/* Scroll area */}
         <main className="flex-1 min-h-0 overflow-y-auto px-4 py-6 md:px-8">
           <Outlet />
         </main>
 
-        <AdviserFooter />
+        <ProjectManagerFooter />
       </div>
     </div>
   );

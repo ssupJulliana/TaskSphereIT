@@ -32,6 +32,8 @@ import MemberAdviserTasks from "./components/CapstoneMember/MemberAdviserTasks.j
 import MemberTasksBoard from "./components/CapstoneMember/MemberTasksBoard.jsx";
 import MemberTasksRecord from "./components/CapstoneMember/MemberTasksRecord.jsx";
 import MemberEvents from "./components/CapstoneMember/MemberEvents.jsx";
+import ProjectManagerLayout from "./components/ProjectManager/ProjectManagerLayout.jsx";
+import ProjectManagerDashboard from "./components/ProjectManager/ProjectManagerDashboard.jsx";
 
 
 export default function App() {
@@ -69,6 +71,12 @@ export default function App() {
           <Route path="notes" element={<Notes />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="profile" element={<Profile />} />
+        </Route>
+
+        {/* Project Manager section */}
+        <Route path="/projectmanager" element={<ProjectManagerLayout />}>
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<ProjectManagerDashboard />} />
         </Route>
 
         {/* Member section */}
