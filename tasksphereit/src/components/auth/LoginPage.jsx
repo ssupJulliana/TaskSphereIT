@@ -23,6 +23,7 @@ const LoginPage = () => {
   const routeForRole = (role) => {
     if (role === "Adviser") return "/adviser/dashboard";
     if (role === "Member") return "/member/dashboard";
+    if (role === "Project Manager") return "/projectmanager/dashboard";
     // default all other roles into Instructor area (Project Manager, Proponents, etc.)
     return "/instructor/dashboard";
   };
