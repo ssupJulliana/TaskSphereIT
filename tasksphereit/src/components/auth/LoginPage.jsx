@@ -28,6 +28,9 @@ const LoginPage = () => {
 
   const handleSignIn = async (e) => {
     e.preventDefault();
+
+    // You can later add login validation logic here
+    navigate("/member/dashboard"); // redirect to Instructor Dashboard
     setErr("");
     setLoading(true);
 
@@ -72,6 +75,7 @@ const LoginPage = () => {
     } finally {
       setLoading(false);
     }
+
   };
 
   return (

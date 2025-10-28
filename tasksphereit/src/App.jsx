@@ -12,7 +12,6 @@ import ManuscriptSubmission from "./components/CapstoneInstructor/InstructorSche
 import OralDefense from "./components/CapstoneInstructor/InstructorSchedule/OralDefense.jsx";
 import FinalDefense from "./components/CapstoneInstructor/InstructorSchedule/FinalDefense.jsx";
 
-
 // Adviser
 import AdviserLayout from "./components/CapstoneAdviser/AdviserLayout.jsx";
 import AdviserDashboard from "./components/CapstoneAdviser/AdviserDashboard.jsx";
@@ -25,6 +24,14 @@ import Notes from "./components/CapstoneAdviser/Notes.jsx";
 import Notifications from "./components/CapstoneAdviser/Notifications.jsx";
 import Profile from "./components/CapstoneAdviser/Profile.jsx";
 
+// Member
+import MemberLayout from "./components/CapstoneMember/MemberLayout.jsx";
+import MemberDashboard from "./components/CapstoneMember/MemberDashboard.jsx";
+import MemberTasks from "./components/CapstoneMember/MemberTasks.jsx";
+import MemberAdviserTasks from "./components/CapstoneMember/MemberAdviserTasks.jsx";
+import MemberTasksBoard from "./components/CapstoneMember/MemberTasksBoard.jsx";
+import MemberTasksRecord from "./components/CapstoneMember/MemberTasksRecord.jsx";
+import MemberEvents from "./components/CapstoneMember/MemberEvents.jsx";
 
 export default function App() {
   return (
@@ -41,7 +48,10 @@ export default function App() {
           <Route path="teams" element={<InstructorTeams />} />
           <Route path="schedule" element={<InstructorSchedule />} />
           <Route path="schedule/title-defense" element={<TitleDefense />} />
-          <Route path="schedule/manuscript" element={<ManuscriptSubmission />} />
+          <Route
+            path="schedule/manuscript"
+            element={<ManuscriptSubmission />}
+          />
           <Route path="schedule/oral-defense" element={<OralDefense />} />
           <Route path="schedule/final-defense" element={<FinalDefense />} />
         </Route>
@@ -58,6 +68,17 @@ export default function App() {
           <Route path="notes" element={<Notes />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="profile" element={<Profile />} />
+        </Route>
+
+        {/* Member section */}
+        <Route path="/member" element={<MemberLayout />}>
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<MemberDashboard />} />
+          <Route path="tasks" element={<MemberTasks />} />
+          <Route path="adviser-tasks" element={<MemberAdviserTasks />} />
+          <Route path="tasks-board" element={<MemberTasksBoard />} />
+          <Route path="tasks-record" element={<MemberTasksRecord />} />
+          <Route path="events" element={<MemberEvents />} />
         </Route>
 
         {/* Fallback */}
