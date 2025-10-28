@@ -48,7 +48,7 @@ const ProjectManagerLayout = () => {
   return (
     <div className="flex h-screen overflow-hidden bg-neutral-50">
       {/* Sidebar */}
-      <aside className="hidden md:flex md:flex-col w-64 bg-white border-r border-neutral-200">
+      <aside className="hidden md:flex md:flex-col w-64 min-w-[16rem] shrink-0 bg-white border-r border-neutral-200">
         <div className="flex flex-col h-full py-6">
           {/* Logo */}
           <div className="flex items-center justify-center mb-8 px-4">
@@ -110,9 +110,9 @@ const ProjectManagerLayout = () => {
       </aside>
 
       {/* Main column */}
-      <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex-1 flex flex-col min-h-0 min-w-0">
         <ProjectManagerHeader />
-        <main className="flex-1 min-h-0 overflow-y-auto px-4 py-6 md:px-8">
+        <main className="flex-1 min-h-0 min-w-0 overflow-y-auto px-4 py-6 md:px-8">
           <Outlet />
         </main>
         <ProjectManagerFooter />

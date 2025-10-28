@@ -70,19 +70,16 @@ const  ProjectManagerTasks = () => {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="px-1">
-        <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: MAROON }}>
-          <ClipboardList className="w-4 h-4" />
+      {/* ===== Title + underline ===== */}
+      <div className="space-y-2">
+        <div
+          className="flex items-center gap-2 text-[18px] font-semibold"
+          style={{ color: MAROON }}
+        >
+          <ClipboardList className="w-5 h-5" />
           <span>Tasks</span>
-          {view && (
-            <>
-              <span className="text-neutral-400">»</span>
-              <span className="text-neutral-800">{currentLabel}</span>
-            </>
-          )}
         </div>
-        <div className="h-[2px] mt-2" style={{ background: MAROON }} />
+        <div className="h-[3px] w-full" style={{ backgroundColor: MAROON }} />
       </div>
 
       {/* If a view is selected, render it; else show the cards */}
