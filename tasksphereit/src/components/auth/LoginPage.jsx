@@ -31,7 +31,7 @@ const LoginPage = () => {
     e.preventDefault();
 
     // You can later add login validation logic here
-    navigate("/member/dashboard"); // redirect to Instructor Dashboard
+    //  navigate("/member/dashboard"); // redirect to Instructor Dashboard
     setErr("");
     setLoading(true);
 
