@@ -2,7 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import LoginPage from "./components/auth/LoginPage.jsx";
 
 // Instructor
-import InstructorLayout from "./components/CapstoneInstructor/InstructorLayout.jsx";
+import InstructorLayout from "./components/CapstoneInstructor/InsturctorLayout.jsx";
 import InstructorDashboard from "./components/CapstoneInstructor/InstructorDashboard.jsx";
 import InstructorEnroll from "./components/CapstoneInstructor/InstructorEnroll.jsx";
 import InstructorTeams from "./components/CapstoneInstructor/InstructorTeams.jsx";

@@ -1,5 +1,4 @@
-// src/components/CapstoneInstructor/InstructorEnroll.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ChevronRight,
   Download,
@@ -11,27 +10,132 @@ import {
   X,
 } from "lucide-react";
 
-const InstructorEnroll = () => {
-  // role filter state
-  const [selectedRole, setSelectedRole] = useState("Adviser");
-  const roles = ["Adviser", "Project Manager", "Proponents"];
+import { auth, db } from "../../config/firebase";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import {
+  addDoc,
+  collection,
+  serverTimestamp,
+  onSnapshot,
+  query,
+  where,
+} from "firebase/firestore";
 
-  // dialog state
+const DEFAULT_PASSWORD = "UserUser321";
+const ROLES = ["Adviser", "Project Manager", "Member"];
+
+const InstructorEnroll = () => {
+  // role filter
+  const [selectedRole, setSelectedRole] = useState("Adviser");
+
+  // dialog
   const [openAddUser, setOpenAddUser] = useState(false);
 
-  // close on ESC
-  useEffect(() => {
-    const onKey = (e) => e.key === "Escape" && setOpenAddUser(false);
-    if (openAddUser) window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [openAddUser]);
+  // add-user form
+  const [form, setForm] = useState({
+    email: "",
+    lastName: "",
+    firstName: "",
+    middleName: "",
+    idNumber: "",
+    role: "Adviser",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
-  // sample data – replace with actual API data later
-  const instructors = [
-    { id: 1, idNumber: "582736194", password: "pass123", lastName: "Aguas", firstName: "Xavielle Elie", middleInitial: "Y." },
-    { id: 2, idNumber: "194728365", password: "pass123", lastName: "Bernardo", firstName: "Clyden Austin", middleInitial: "C." },
-    { id: 3, idNumber: "247193856", password: "pass123", lastName: "Castaneda", firstName: "Julliana", middleInitial: "N." },
-  ];
+  // list + search
+  const [users, setUsers] = useState([]);
+  const [loadingList, setLoadingList] = useState(true);
+  const [qText, setQText] = useState("");
+
+  const onChange = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  // live query by role
+  useEffect(() => {
+    setLoadingList(true);
+    const usersRef = collection(db, "users");
+    const q = query(usersRef, where("role", "==", selectedRole));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setUsers(data);
+        setLoadingList(false);
+      },
+      (err) => {
+        console.error(err);
+        setLoadingList(false);
+      }
+    );
+    return () => unsub();
+  }, [selectedRole]);
+
+  // client search
+  const filteredUsers = useMemo(() => {
+    if (!qText.trim()) return users;
+    const needle = qText.toLowerCase();
+    return users.filter((u) => {
+      const mid = u.middleName || "";
+      return (
+        (u.idNumber || "").toLowerCase().includes(needle) ||
+        (u.firstName || "").toLowerCase().includes(needle) ||
+        (u.lastName || "").toLowerCase().includes(needle) ||
+        mid.toLowerCase().includes(needle)
+      );
+    });
+  }, [users, qText]);
+
+  const middleInitial = (name) => (name ? `${name[0].toUpperCase()}.` : "");
+
+  const handleSaveUser = async () => {
+    setError("");
+    setSaving(true);
+    try {
+      // 1) Auth
+      const cred = await createUserWithEmailAndPassword(
+        auth,
+        form.email.trim(),
+        DEFAULT_PASSWORD
+      );
+
+      // 2) Firestore (do NOT store password)
+      await addDoc(collection(db, "users"), {
+        uid: cred.user.uid,
+        email: form.email.trim(),
+        idNumber: form.idNumber.trim(),
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        middleName: form.middleName.trim(),
+        role: form.role,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        // optional flags:
+        mustChangePassword: true,
+      });
+
+      // reset + close
+      setForm({
+        email: "",
+        lastName: "",
+        firstName: "",
+        middleName: "",
+        idNumber: "",
+        role: selectedRole, // keep current tab as default
+      });
+      setOpenAddUser(false);
+    } catch (e) {
+      console.error(e);
+      const msg =
+        e?.code === "auth/email-already-in-use"
+          ? "Email is already in use."
+          : e?.code === "auth/invalid-email"
+          ? "Please enter a valid email."
+          : e?.message || "Failed to add user.";
+      setError(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-neutral-50">
@@ -65,7 +169,7 @@ const InstructorEnroll = () => {
         <div className="mt-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           {/* Role filter pills */}
           <div className="flex flex-wrap gap-2">
-            {roles.map((role) => (
+            {ROLES.map((role) => (
               <button
                 key={role}
                 onClick={() => setSelectedRole(role)}
@@ -87,6 +191,8 @@ const InstructorEnroll = () => {
               </span>
               <input
                 type="text"
+                value={qText}
+                onChange={(e) => setQText(e.target.value)}
                 placeholder="Search"
                 className="w-full rounded-full border border-neutral-300 bg-white py-2 pl-9 pr-3 text-sm text-neutral-700 outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
               />
@@ -102,46 +208,62 @@ const InstructorEnroll = () => {
           {/* Table card */}
           <div className="flex-1">
             <div className="border border-neutral-200 rounded-2xl shadow-lg overflow-hidden bg-white">
-              {/* Table header */}
               <table className="min-w-full divide-y divide-neutral-200">
                 <thead className="bg-neutral-100">
                   <tr>
                     <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">No.</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">ID Number</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">Password</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">Last Name</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">First Name</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">Middle Initial</th>
                     <th className="px-4 py-3 text-center text-sm font-medium text-neutral-700">Action</th>
                   </tr>
                 </thead>
-                {/* Table body */}
+
                 <tbody className="divide-y divide-neutral-200">
-                  {instructors.map((inst, index) => (
-                    <tr key={inst.id}>
-                      <td className="px-4 py-3 text-sm text-neutral-700">{index + 1}</td>
-                      <td className="px-4 py-3 text-sm text-neutral-700">{inst.idNumber}</td>
-                      <td className="px-4 py-3 text-sm text-neutral-700">{inst.password}</td>
-                      <td className="px-4 py-3 text-sm text-neutral-700">{inst.lastName}</td>
-                      <td className="px-4 py-3 text-sm text-neutral-700">{inst.firstName}</td>
-                      <td className="px-4 py-3 text-sm text-neutral-700">{inst.middleInitial}</td>
-                      <td className="px-4 py-3 text-sm text-neutral-700 text-center">
-                        <button className="p-2 rounded-full hover:bg-neutral-100">
-                          <MoreVertical className="w-4 h-4 text-neutral-500" />
-                        </button>
+                  {loadingList ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-6 text-center text-sm text-neutral-500">
+                        Loading…
                       </td>
                     </tr>
-                  ))}
+                  ) : filteredUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-6 text-center text-sm text-neutral-500">
+                        No users found for <span className="font-medium">{selectedRole}</span>.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredUsers.map((u, idx) => (
+                      <tr key={u.id}>
+                        <td className="px-4 py-3 text-sm text-neutral-700">{idx + 1}</td>
+                        <td className="px-4 py-3 text-sm text-neutral-700">{u.idNumber || "—"}</td>
+                        <td className="px-4 py-3 text-sm text-neutral-700">{u.lastName || "—"}</td>
+                        <td className="px-4 py-3 text-sm text-neutral-700">{u.firstName || "—"}</td>
+                        <td className="px-4 py-3 text-sm text-neutral-700">
+                          {middleInitial(u.middleName)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-neutral-700 text-center">
+                          <button className="p-2 rounded-full hover:bg-neutral-100">
+                            <MoreVertical className="w-4 h-4 text-neutral-500" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
 
-          {/* Add-User trigger card (opens dialog) */}
+          {/* Add-User trigger card */}
           <div className="w-full md:w-64">
             <button
               type="button"
-              onClick={() => setOpenAddUser(true)}
+              onClick={() => {
+                setForm((f) => ({ ...f, role: selectedRole }));
+                setOpenAddUser(true);
+              }}
               className="w-full h-full focus:outline-none"
               aria-haspopup="dialog"
               aria-expanded={openAddUser}
@@ -167,10 +289,7 @@ const InstructorEnroll = () => {
           aria-modal="true"
           onClick={() => setOpenAddUser(false)}
         >
-          {/* Backdrop */}
           <div className="absolute inset-0 bg-black/40" />
-
-          {/* Panel */}
           <div
             className="relative z-10 flex items-center justify-center min-h-full p-4"
             onClick={(e) => e.stopPropagation()}
@@ -199,6 +318,8 @@ const InstructorEnroll = () => {
                     <input
                       type="email"
                       placeholder="Email Address"
+                      value={form.email}
+                      onChange={onChange("email")}
                       className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                     />
                   </div>
@@ -207,6 +328,8 @@ const InstructorEnroll = () => {
                     <input
                       type="text"
                       placeholder="Last Name"
+                      value={form.lastName}
+                      onChange={onChange("lastName")}
                       className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                     />
                   </div>
@@ -215,63 +338,85 @@ const InstructorEnroll = () => {
                     <input
                       type="text"
                       placeholder="ID Number"
+                      value={form.idNumber}
+                      onChange={onChange("idNumber")}
                       className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                     />
                   </div>
+
                   <div>
                     <label className="block text-sm font-medium text-neutral-700">Password</label>
                     <input
                       type="text"
                       readOnly
-                      value="5XDSF#@@"
+                      value={DEFAULT_PASSWORD}
                       className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-neutral-100 text-neutral-500"
                     />
                   </div>
+
                   <div>
                     <label className="block text-sm font-medium text-neutral-700">First Name</label>
                     <input
                       type="text"
                       placeholder="First Name"
+                      value={form.firstName}
+                      onChange={onChange("firstName")}
                       className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                     />
                   </div>
+
                   <div>
                     <label className="block text-sm font-medium text-neutral-700">Select Role</label>
-                    <select className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30">
-                      {roles.map((role) => (
+                    <select
+                      value={form.role}
+                      onChange={onChange("role")}
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
+                    >
+                      {ROLES.map((role) => (
                         <option key={role} value={role}>
                           {role}
                         </option>
                       ))}
                     </select>
                   </div>
+
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-neutral-700">Middle Name</label>
                     <input
                       type="text"
                       placeholder="Middle Name"
+                      value={form.middleName}
+                      onChange={onChange("middleName")}
                       className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                     />
                   </div>
+
+                  {error && (
+                    <div className="md:col-span-2 text-sm text-red-600">{error}</div>
+                  )}
                 </div>
               </div>
 
-              {/* Footer actions */}
+              {/* Footer */}
               <div className="px-6 pb-6 flex justify-end gap-3">
                 <button
                   className="px-4 py-2 rounded-full border border-[#6A0F14] text-sm font-medium text-[#6A0F14] hover:bg-[#6A0F14]/10"
                   onClick={() => setOpenAddUser(false)}
+                  disabled={saving}
                 >
                   Cancel
                 </button>
                 <button
-                  className="px-6 py-2 rounded-full bg-[#6A0F14] text-sm font-medium text-white hover:bg-[#5c0d12]"
-                  onClick={() => {
-                    // TODO: handle save
-                    setOpenAddUser(false);
-                  }}
+                  className="px-6 py-2 rounded-full bg-[#6A0F14] text-sm font-medium text-white hover:bg-[#5c0d12] disabled:opacity-60"
+                  onClick={handleSaveUser}
+                  disabled={
+                    saving ||
+                    !form.email.trim() ||
+                    !form.firstName.trim() ||
+                    !form.lastName.trim()
+                  }
                 >
-                  Save
+                  {saving ? "Saving..." : "Save"}
                 </button>
               </div>
             </div>

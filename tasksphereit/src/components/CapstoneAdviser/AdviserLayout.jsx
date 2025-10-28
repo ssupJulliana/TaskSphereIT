@@ -1,17 +1,45 @@
-import React from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import React, { useState } from "react";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
-  Home, Calendar, ClipboardList, Users, FileText, Bell, ListChecks, NotebookText, User, LogOut
+  Home, Calendar, ClipboardList, Users, FileText, Bell, ListChecks, LogOut
 } from "lucide-react";
 import TaskSphereLogo from "../../assets/imgs/TaskSphereLogo.png";
 import AdviserHeader from "./AdviserHeader";
 import AdviserFooter from "./AdviserFooter";
 
+// Firebase
+import { auth } from "../../config/firebase";
+import { signOut } from "firebase/auth";
+
 const AdviserLayout = () => {
+  const navigate = useNavigate();
+  const [loggingOut, setLoggingOut] = useState(false);
+
   const item = (isActive) =>
     `flex items-center gap-3 px-4 py-2 rounded-lg text-sm font-medium ${
       isActive ? "bg-[#6A0F14]/10 text-[#6A0F14]" : "text-neutral-700 hover:bg-neutral-100"
     }`;
+
+  const handleLogout = async () => {
+    try {
+      setLoggingOut(true);
+      await signOut(auth);
+      // Clear stored session info
+      localStorage.removeItem("uid");
+      localStorage.removeItem("role");
+      // If you stored anything else related to auth, clear here as well:
+      // localStorage.removeItem("token"); etc.
+      navigate("/login", { replace: true });
+    } catch (e) {
+      console.error("Logout failed:", e);
+      // Fallback: still clear and send to login
+      localStorage.removeItem("uid");
+      localStorage.removeItem("role");
+      navigate("/login", { replace: true });
+    } finally {
+      setLoggingOut(false);
+    }
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-neutral-50">
@@ -37,19 +65,23 @@ const AdviserLayout = () => {
             </NavLink>
             <NavLink to="/adviser/task-record" className={({isActive}) => item(isActive)}>
               <ClipboardList className="w-5 h-5" /> Task Record
-            </NavLink> 
+            </NavLink>
             <NavLink to="/adviser/events" className={({isActive}) => item(isActive)}>
               <Calendar className="w-5 h-5" /> Events
             </NavLink>
             <NavLink to="/adviser/notifications" className={({isActive}) => item(isActive)}>
               <Bell className="w-5 h-5" /> Notifications
             </NavLink>
-            
           </nav>
 
           <div className="mt-auto px-4">
-            <button className="w-full flex items-center gap-3 text-sm font-medium text-[#6A0F14] border border-[#6A0F14] rounded-full px-4 py-2 hover:bg-[#6A0F14]/10">
-              <LogOut className="w-5 h-5" /> Sign Out
+            <button
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className="w-full flex items-center justify-center gap-3 text-sm font-medium text-[#6A0F14] border border-[#6A0F14] rounded-full px-4 py-2 hover:bg-[#6A0F14]/10 disabled:opacity-60"
+            >
+              <LogOut className="w-5 h-5" />
+              {loggingOut ? "Signing out…" : "Sign Out"}
             </button>
           </div>
         </div>
