@@ -33,6 +33,7 @@ import MemberTasksBoard from "./components/CapstoneMember/MemberTasksBoard.jsx";
 import MemberTasksRecord from "./components/CapstoneMember/MemberTasksRecord.jsx";
 import MemberEvents from "./components/CapstoneMember/MemberEvents.jsx";
 
+
 export default function App() {
   return (
     <div className="min-h-screen font-sans">
@@ -80,6 +81,7 @@ export default function App() {
           <Route path="tasks-record" element={<MemberTasksRecord />} />
           <Route path="events" element={<MemberEvents />} />
         </Route>
+\
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" replace />} />
