@@ -1,10 +1,12 @@
-// src/components/CapstoneInstructor/InstructorLayout.jsx
 import React, { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { Home, ClipboardList, Users, Calendar, Shield, LogOut } from "lucide-react";
+import { Home, ClipboardList, Users, Calendar, Shield, LogOut, X } from "lucide-react";
 import TaskSphereLogo from "../../assets/imgs/TaskSphereLogo.png";
 import InstructorHeader from "./InstructorHeader";
 import InstructorFooter from "./InstructorFooter";
+
+// 👉 Import your profile component here
+import InstructorProfile from "./InstructorProfile";
 
 // Firebase
 import { auth } from "../../config/firebase";
@@ -13,6 +15,9 @@ import { signOut } from "firebase/auth";
 const InstructorLayout = () => {
   const navigate = useNavigate();
   const [loggingOut, setLoggingOut] = useState(false);
+
+  // NEW: control the profile overlay
+  const [showProfile, setShowProfile] = useState(false);
 
   const navItemClasses = (isActive) =>
     `flex items-center gap-3 px-4 py-2 rounded-lg text-sm font-medium ${
@@ -25,7 +30,6 @@ const InstructorLayout = () => {
       await signOut(auth);
       localStorage.removeItem("uid");
       localStorage.removeItem("role");
-      // clear other auth-related keys if you add them later
       navigate("/login", { replace: true });
     } catch (e) {
       console.error("Logout failed:", e);
@@ -60,9 +64,7 @@ const InstructorLayout = () => {
             <NavLink to="/instructor/schedule" className={({ isActive }) => navItemClasses(isActive)}>
               <Calendar className="w-5 h-5" /> Schedule
             </NavLink>
-            <NavLink to="/instructor/role-transfer" className={({ isActive }) => navItemClasses(isActive)}>
-              <Shield className="w-5 h-5" /> Role Transfer
-            </NavLink>
+            
           </nav>
 
           <div className="mt-auto px-4">
@@ -80,12 +82,46 @@ const InstructorLayout = () => {
 
       {/* Main area */}
       <div className="flex-1 flex flex-col min-h-0">
-        <InstructorHeader />
+        {/* Pass a click handler down to open the profile */}
+        <InstructorHeader onProfileClick={() => setShowProfile(true)} />
+
         <main className="flex-1 min-h-0 overflow-y-auto px-4 py-6 md:px-8">
           <Outlet />
         </main>
+
         <InstructorFooter />
       </div>
+
+      {/* Profile Overlay (owned by the layout so it can render above all routes) */}
+      {showProfile && (
+        <div className="fixed inset-0 z-50">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setShowProfile(false)}
+            aria-hidden="true"
+          />
+          {/* Right-side drawer */}
+          <div className="absolute right-0 top-0 h-full w-full max-w-[560px] bg-white shadow-2xl border-l border-neutral-200 flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-200">
+              <h2 className="text-[16px] font-semibold text-[#6A0F14]">Profile</h2>
+              <button
+                onClick={() => setShowProfile(false)}
+                className="p-2 rounded-md hover:bg-neutral-100"
+                aria-label="Close profile"
+              >
+                <X className="w-5 h-5 text-neutral-600" />
+              </button>
+            </div>
+
+            {/* Content area: render your profile component here */}
+            <div className="flex-1 overflow-y-auto p-5">
+              <InstructorProfile />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

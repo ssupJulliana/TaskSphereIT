@@ -1,8 +1,10 @@
-import React, { useMemo, useState } from "react";
+// src/components/CapstoneInstructor/InstructorSchedule/OralDefense.jsx
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Search,
   Plus,
+  PlusCircle,
   Download,
   MoreVertical,
   Calendar as CalIcon,
@@ -15,8 +17,41 @@ import {
   X,
 } from "lucide-react";
 
-const MAROON = "#6A0F14";
+/* ===== Firestore ===== */
+import { db } from "../../../config/firebase";
+import {
+  collection,
+  getDocs,
+  addDoc,
+  serverTimestamp,
+  doc,
+  getDoc,
+  updateDoc,
+  deleteDoc,
+} from "firebase/firestore";
 
+const MAROON = "#6A0F14";
+const COLLECTION = "oralDefenseSchedules";
+
+/* ===== helpers ===== */
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const fmtDate = (yyyy_mm_dd) => {
+  if (!yyyy_mm_dd) return "";
+  const [y,m,d] = yyyy_mm_dd.split("-");
+  return `${MONTHS[Number(m) - 1]} ${Number(d)}, ${y}`;
+};
+const fmtTimeRange = (start, end) => {
+  const to12h = (t) => {
+    if (!t) return "";
+    const [H, M] = t.split(":").map(Number);
+    const ampm = H >= 12 ? "PM" : "AM";
+    const hh = ((H + 11) % 12) + 1;
+    return `${hh}:${String(M).padStart(2,"0")} ${ampm}`;
+  };
+  return `${to12h(start)} - ${to12h(end)}`;
+};
+
+/* ------------------------- small button ------------------------- */
 const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props }) => {
   const base =
     "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium cursor-pointer " +
@@ -35,13 +70,6 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
     </button>
   );
 };
-
-const teams = [
-  { id: 1, team: "Aguas, Et Al",    date: "Jan 18, 2025", time: "8:00 AM - 9:00 AM",  panel: "Anderson F Dashiell", verdict: "Pending" },
-  { id: 2, team: "Bernardo, Et Al", date: "Jan 18, 2025", time: "9:00 AM - 10:00 AM", panel: "Anderson F Dashiell", verdict: "Pending" },
-  { id: 3, team: "Hawke, Et Al",    date: "Jan 18, 2025", time: "10:00 AM - 11:00 AM",panel: "Anderson F Dashiell", verdict: "Pending" },
-  { id: 4, team: "Mendoza, Et Al",  date: "Jan 18, 2025", time: "11:00 AM - 12:00 PM",panel: "Anderson F Dashiell", verdict: "Pending" },
-];
 
 const Breadcrumbs = () => {
   const navigate = useNavigate();
@@ -66,13 +94,128 @@ export default function OralDefense() {
   const [showCreate, setShowCreate] = useState(false);
   const [query, setQuery] = useState("");
 
+  const [teamOptions, setTeamOptions] = useState([]);       // [{id, name}]
+  const [loadingTeams, setLoadingTeams] = useState(true);
+
+  const [adviserOptions, setAdviserOptions] = useState([]); // ["Full Name", ...]
+  const [loadingAdvisers, setLoadingAdvisers] = useState(true);
+
+  const [schedules, setSchedules] = useState([]);           // list of oralDefenseSchedules
+  const [loadingSchedules, setLoadingSchedules] = useState(true);
+
+  const [menuOpenId, setMenuOpenId] = useState(null);
+  const [editSchedule, setEditSchedule] = useState(null);
+  const [viewSchedule, setViewSchedule] = useState(null);
+
+  // Load Teams + Advisers
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, "teams"));
+        const teamsRows = [];
+        const adviserSet = new Set();
+        snap.forEach((docX) => {
+          const data = docX.data();
+          if (data?.name) teamsRows.push({ id: docX.id, name: data.name });
+          const adviserName = data?.adviser?.fullName;
+          if (adviserName && typeof adviserName === "string") {
+            adviserSet.add(adviserName.trim());
+          }
+        });
+        teamsRows.sort((a, b) => a.name.localeCompare(b.name));
+        const advisersArr = Array.from(adviserSet).sort((a, b) => a.localeCompare(b));
+        if (!alive) return;
+        setTeamOptions(teamsRows);
+        setAdviserOptions(advisersArr);
+      } catch (e) {
+        console.error("Failed to load teams/advisers:", e);
+      } finally {
+        if (alive) {
+          setLoadingTeams(false);
+          setLoadingAdvisers(false);
+        }
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // Load Oral Defense Schedules
+  const loadSchedules = async () => {
+    setLoadingSchedules(true);
+    try {
+      const snap = await getDocs(collection(db, COLLECTION));
+      const rows = [];
+      snap.forEach((docX) => {
+        const data = docX.data();
+        rows.push({
+          id: docX.id,
+          teamName: data?.teamName || "",
+          teamId: data?.teamId || null,
+          date: data?.date || "",
+          timeStart: data?.timeStart || "",
+          timeEnd: data?.timeEnd || "",
+          panelists: Array.isArray(data?.panelists) ? data.panelists : [],
+          verdict: data?.verdict || "Pending",
+          createdAt: data?.createdAt,
+        });
+      });
+      rows.sort((a, b) => {
+        const ad = a.date || "", bd = b.date || "";
+        if (ad < bd) return -1;
+        if (ad > bd) return 1;
+        return (a.timeStart || "").localeCompare(b.timeStart || "");
+      });
+      setSchedules(rows);
+    } catch (e) {
+      console.error("Failed to load oralDefenseSchedules:", e);
+    } finally {
+      setLoadingSchedules(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSchedules();
+  }, []);
+
+  // verdict updater
+  const handleChangeVerdict = async (scheduleId, newVerdict) => {
+    try {
+      setSchedules((prev) =>
+        prev.map((s) => (s.id === scheduleId ? { ...s, verdict: newVerdict } : s))
+      );
+      await updateDoc(doc(db, COLLECTION, scheduleId), { verdict: newVerdict });
+    } catch (e) {
+      console.error("Failed to update verdict:", e);
+      await loadSchedules();
+      alert("Failed to update verdict.");
+    }
+  };
+
+  // delete
+  const handleDelete = async (scheduleId) => {
+    if (!window.confirm("Delete this schedule?")) return;
+    try {
+      await deleteDoc(doc(db, COLLECTION, scheduleId));
+      setMenuOpenId(null);
+      await loadSchedules();
+    } catch (e) {
+      console.error("Failed to delete:", e);
+      alert("Failed to delete schedule.");
+    }
+  };
+
+  // search filter (client-side)
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return teams;
-    return teams.filter((t) =>
-      [t.team, t.date, t.time, t.panel, t.verdict].join(" ").toLowerCase().includes(q)
+    if (!q) return schedules;
+    return schedules.filter((t) =>
+      [t.teamName, fmtDate(t.date), fmtTimeRange(t.timeStart, t.timeEnd), (t.panelists || []).join(", "), t.verdict]
+        .join(" ")
+        .toLowerCase()
+        .includes(q)
     );
-  }, [query]);
+  }, [query, schedules]);
 
   return (
     <div className="p-6">
@@ -101,7 +244,7 @@ export default function OralDefense() {
       </div>
 
       {/* table */}
-      <div className="mt-5 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-[0_6px_18px_rgba(0,0,0,0.05)]">
+      <div className="mt-5 rounded-xl border border-neutral-200 bg-white shadow-[0_6px_18px_rgba(0,0,0,0.05)]">
         <table className="w-full text-sm">
           <thead className="bg-neutral-50 text-neutral-600">
             <tr>
@@ -119,100 +262,197 @@ export default function OralDefense() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((t, idx) => (
-              <tr key={t.id} className={idx % 2 ? "bg-neutral-50/60" : "bg-white"}>
-                <td className="px-4 py-3 text-neutral-600">{idx + 1}.</td>
-                <td className="px-4 py-3 font-medium text-neutral-800">{t.team}</td>
-                <td className="px-4 py-3 text-neutral-700">{t.date}</td>
-                <td className="px-4 py-3 text-neutral-700">{t.time}</td>
-                <td className="px-4 py-3 text-neutral-700">{t.panel}</td>
-                <td className="px-4 py-3">
-                  <div className="relative inline-flex items-center">
-                    <select
-                      defaultValue={t.verdict}
-                      className="appearance-none pr-8 pl-3 py-1.5 rounded-md border text-sm"
-                      style={{ borderColor: MAROON, color: "#111827" }}
-                    >
-                      <option>Pending</option>
-                      <option>Passed</option>
-                      <option>Re-Defense</option>
-                      <option>Failed</option>
-                    </select>
-                    <ChevronDown size={16} className="absolute right-2 pointer-events-none text-neutral-500" />
-                  </div>
-                </td>
-                <td className="px-2 py-3">
-                  <button className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-neutral-100 cursor-pointer">
-                    <MoreVertical size={18} />
-                  </button>
-                </td>
+            {loadingSchedules ? (
+              <tr>
+                <td className="px-4 py-6 text-neutral-500" colSpan={7}>Loading schedules…</td>
               </tr>
-            ))}
-            {filtered.length === 0 && (
+            ) : filtered.length === 0 ? (
               <tr>
                 <td className="px-4 py-8 text-center text-neutral-500" colSpan={7}>
                   No records match your search.
                 </td>
               </tr>
+            ) : (
+              filtered.map((s, idx) => (
+                <tr key={s.id} className={idx % 2 ? "bg-neutral-50/60" : "bg-white"}>
+                  <td className="px-4 py-3 text-neutral-600">{idx + 1}.</td>
+                  <td className="px-4 py-3 font-medium text-neutral-800">{s.teamName}</td>
+                  <td className="px-4 py-3 text-neutral-700">{fmtDate(s.date)}</td>
+                  <td className="px-4 py-3 text-neutral-700">{fmtTimeRange(s.timeStart, s.timeEnd)}</td>
+                  <td className="px-4 py-3 text-neutral-700">{s.panelists.join(", ")}</td>
+                  <td className="px-4 py-3">
+                    <div className="relative inline-flex items-center">
+                      <select
+                        value={s.verdict || "Pending"}
+                        onChange={(e) => handleChangeVerdict(s.id, e.target.value)}
+                        className="appearance-none pr-8 pl-3 py-1.5 rounded-md border text-sm"
+                        style={{ borderColor: MAROON, color: "#111827" }}
+                      >
+                        <option>Pending</option>
+                        <option>Passed</option>
+                        <option>Re-Defense</option>
+                        <option>Failed</option>
+                      </select>
+                      <ChevronDown size={16} className="absolute right-2 pointer-events-none text-neutral-500" />
+                    </div>
+                  </td>
+                  <td className="px-2 py-3 relative">
+                    <button
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-neutral-100"
+                      onClick={() => setMenuOpenId(menuOpenId === s.id ? null : s.id)}
+                    >
+                      <MoreVertical size={18} />
+                    </button>
+
+                    {menuOpenId === s.id && (
+                      <div className="absolute right-2 mt-1 z-20 w-40 rounded-md border bg-white shadow">
+                        <button
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+                          onClick={() => { setViewSchedule(s); setMenuOpenId(null); }}
+                        >
+                          View
+                        </button>
+                        <button
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+                          onClick={() => { setEditSchedule(s); setMenuOpenId(null); }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-neutral-50"
+                          onClick={() => handleDelete(s.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))
             )}
           </tbody>
         </table>
       </div>
 
-      {showCreate && <CreateScheduleDialog onClose={() => setShowCreate(false)} />}
+      {/* Create Schedule Dialog */}
+      {showCreate && (
+        <ScheduleDialog
+          mode="create"
+          onClose={() => setShowCreate(false)}
+          onSaved={loadSchedules}
+          teamOptions={teamOptions}
+          loadingTeams={loadingTeams}
+          adviserOptions={adviserOptions}
+          loadingAdvisers={loadingAdvisers}
+        />
+      )}
+
+      {/* Edit Schedule Dialog */}
+      {editSchedule && (
+        <ScheduleDialog
+          mode="edit"
+          initial={editSchedule}
+          onClose={() => setEditSchedule(null)}
+          onSaved={loadSchedules}
+          teamOptions={teamOptions}
+          loadingTeams={loadingTeams}
+          adviserOptions={adviserOptions}
+          loadingAdvisers={loadingAdvisers}
+        />
+      )}
+
+      {/* View Team Dialog */}
+      {viewSchedule && (
+        <ViewTeamDialog
+          schedule={viewSchedule}
+          onClose={() => setViewSchedule(null)}
+        />
+      )}
     </div>
   );
 }
 
-/* ------- Create Schedule Dialog (same style as others) ------- */
-function CreateScheduleDialog({ onClose }) {
-  const teamOptions = useMemo(
-    () => ["Aguas, Et Al", "Bernardo, Et Al", "Hawke, Et Al", "Mendoza, Et Al"],
-    []
-  );
-  const panelistOptions = useMemo(
-    () => ["Anderson F Dashiell", "Beatrice Q Lazo", "Carl W Santos", "Dana T Cruz"],
-    []
-  );
+/* ------- Unified Create/Edit Dialog ------- */
+function ScheduleDialog({
+  mode = "create",
+  initial = null,
+  onClose,
+  onSaved,
+  teamOptions = [],
+  loadingTeams = false,
+  adviserOptions = [],
+  loadingAdvisers = false,
+}) {
+  const isEdit = mode === "edit";
 
-  const [team, setTeam] = useState(teamOptions[0]);
-  const [date, setDate] = useState("2025-01-18");
-  const [time, setTime] = useState("08:00");
-  const [timeEnd, setTimeEnd] = useState("09:00");
+  const [team, setTeam] = useState(initial?.teamName || "");
+  const [date, setDate] = useState(initial?.date || "2025-01-11");
+  const [time, setTime] = useState(initial?.timeStart || "09:00");
+  const [timeEnd, setTimeEnd] = useState(initial?.timeEnd || "10:00");
+
   const [panelistPick, setPanelistPick] = useState("");
-  const [panelists, setPanelists] = useState(["Anderson F Dashiell"]);
+  const [panelists, setPanelists] = useState(Array.isArray(initial?.panelists) ? initial.panelists : []);
 
   const addPanelist = (name) => {
     if (!name) return;
     if (!panelists.includes(name)) setPanelists((p) => [...p, name]);
     setPanelistPick("");
   };
-  const removePanelist = (name) => setPanelists((p) => p.filter((n) => n !== name));
+  const removePanelist = (name) =>
+    setPanelists((p) => p.filter((n) => n !== name));
 
-  const handleCreate = () => {
-    console.log({
-      team,
-      date,
-      timeRange: `${time} - ${timeEnd}`,
-      panelists,
-    });
-    onClose();
+  const timeIsValid = time && timeEnd && time < timeEnd;
+  const disabledSubmit = !team || panelists.length === 0 || !timeIsValid;
+
+  const handleSubmit = async () => {
+    try {
+      const selected = teamOptions.find((t) => t.name === team);
+      const teamId = selected?.id || null;
+
+      const payload = {
+        teamId,
+        teamName: team,
+        date,
+        timeStart: time,
+        timeEnd,
+        panelists: [...panelists],
+      };
+
+      if (isEdit) {
+        await updateDoc(doc(db, COLLECTION, initial.id), payload);
+      } else {
+        await addDoc(collection(db, COLLECTION), {
+          ...payload,
+          verdict: "Pending",
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      if (typeof onSaved === "function") onSaved();
+      onClose();
+    } catch (err) {
+      console.error(isEdit ? "Failed to update schedule:" : "Failed to create schedule:", err);
+      alert("Operation failed. See console for details.");
+    }
   };
 
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[760px] max-w-[92vw]">
-        <div className="rounded-2xl bg-white border border-neutral-200 shadow-2xl">
+        <div className="rounded-2xl bg-white border border-neutral-200 shadow-2xl focus:outline-none p-0">
+          {/* header */}
           <div className="px-6 pt-5 pb-3">
             <div className="flex items-center gap-2 text-[16px] font-semibold" style={{ color: MAROON }}>
-              Create Schedule
+              <PlusCircle size={18} />
+              {isEdit ? "Edit Schedule" : "Create Schedule"}
             </div>
             <div className="mt-3 h-[2px] w-full bg-neutral-200">
-              <div className="h-[2px]" style={{ backgroundColor: MAROON, width: 160 }} />
+              <div className="h-[2px]" style={{ backgroundColor: MAROON, width: isEdit ? 130 : 160 }} />
             </div>
           </div>
 
+          {/* body */}
           <div className="px-6 pb-6">
             <div className="grid grid-cols-2 gap-x-10 gap-y-6">
               {/* Assign Team */}
@@ -223,10 +463,16 @@ function CreateScheduleDialog({ onClose }) {
                     value={team}
                     onChange={(e) => setTeam(e.target.value)}
                     className="w-full appearance-none pr-8 pl-3 py-2 rounded-md border border-neutral-300 text-sm bg-white"
+                    disabled={loadingTeams}
                   >
-                    {teamOptions.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
+                    <option value="">Select</option>
+                    {loadingTeams && <option>Loading…</option>}
+                    {!loadingTeams &&
+                      teamOptions.map((t) => (
+                        <option key={t.id} value={t.name}>
+                          {t.name}
+                        </option>
+                      ))}
                   </select>
                   <ChevronDown size={16} className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none" />
                 </div>
@@ -240,11 +486,16 @@ function CreateScheduleDialog({ onClose }) {
                     value={panelistPick}
                     onChange={(e) => addPanelist(e.target.value)}
                     className="w-full appearance-none pr-8 pl-3 py-2 rounded-md border border-neutral-300 text-sm bg-white"
+                    disabled={loadingAdvisers}
                   >
                     <option value="">Select</option>
-                    {panelistOptions.map((p) => (
-                      <option key={p} value={p}>{p}</option>
-                    ))}
+                    {loadingAdvisers && <option>Loading…</option>}
+                    {!loadingAdvisers &&
+                      adviserOptions.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
                   </select>
                   <ChevronDown size={16} className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none" />
                 </div>
@@ -261,6 +512,29 @@ function CreateScheduleDialog({ onClose }) {
                     className="w-full pr-10 pl-3 py-2 rounded-md border border-neutral-300 text-sm"
                   />
                   <Calendar size={16} className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none" />
+                </div>
+              </div>
+
+              {/* Panelists chips */}
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">Panelists</label>
+                <div className="w-full rounded-md border border-neutral-300 bg-white px-2 py-2 flex flex-wrap gap-2 min-h-[40px]">
+                  {panelists.map((p) => (
+                    <span
+                      key={p}
+                      className="inline-flex items-center gap-2 rounded-md border border-neutral-300 px-2 py-1 text-sm bg-white"
+                    >
+                      <User2 size={16} className="text-neutral-600" />
+                      {p}
+                      <button
+                        className="ml-1 rounded hover:bg-neutral-100 p-0.5"
+                        onClick={() => setPanelists((prev) => prev.filter((n) => n !== p))}
+                        title="Remove"
+                      >
+                        <X size={14} className="text-neutral-500" />
+                      </button>
+                    </span>
+                  ))}
                 </div>
               </div>
 
@@ -288,29 +562,9 @@ function CreateScheduleDialog({ onClose }) {
                     <Clock size={16} className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none" />
                   </div>
                 </div>
-              </div>
-
-              {/* Panelists chips */}
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-neutral-700 mb-2">Panelists</label>
-                <div className="w-full rounded-md border border-neutral-300 bg-white px-2 py-2 flex flex-wrap gap-2">
-                  {panelists.map((p) => (
-                    <span
-                      key={p}
-                      className="inline-flex items-center gap-2 rounded-md border border-neutral-300 px-2 py-1 text-sm bg-white"
-                    >
-                      <User2 size={16} className="text-neutral-600" />
-                      {p}
-                      <button
-                        className="ml-1 rounded hover:bg-neutral-100 p-0.5"
-                        onClick={() => removePanelist(p)}
-                        title="Remove"
-                      >
-                        <X size={14} className="text-neutral-500" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
+                {!timeIsValid && (
+                  <p className="mt-1 text-xs text-red-600">End time must be after start time.</p>
+                )}
               </div>
             </div>
 
@@ -323,11 +577,115 @@ function CreateScheduleDialog({ onClose }) {
                 Cancel
               </button>
               <button
-                onClick={handleCreate}
-                className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white"
+                onClick={handleSubmit}
+                disabled={disabledSubmit}
+                className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white ${disabledSubmit ? "opacity-60 cursor-not-allowed" : ""}`}
                 style={{ backgroundColor: MAROON }}
               >
-                Create
+                {isEdit ? "Save" : "Create"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------- View Team Dialog ------- */
+function ViewTeamDialog({ schedule, onClose }) {
+  const [loading, setLoading] = useState(true);
+  const [adviser, setAdviser] = useState("-");
+  const [manager, setManager] = useState("-");
+  const [members, setMembers] = useState([]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        if (schedule?.teamId) {
+          const ref = doc(db, "teams", schedule.teamId);
+          const snap = await getDoc(ref);
+          const data = snap.exists() ? snap.data() : null;
+          if (alive && data) {
+            setAdviser(data?.adviser?.fullName || "-");
+            setManager(data?.manager?.fullName || "-");
+            setMembers(Array.isArray(data?.memberNames) ? data.memberNames : []);
+          }
+        } else {
+          setAdviser("-");
+          setManager("-");
+          setMembers([]);
+        }
+      } catch (e) {
+        console.error("Failed to load team for view:", e);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [schedule?.teamId]);
+
+  return (
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[760px] max-w-[92vw]">
+        <div className="rounded-2xl bg-white border border-neutral-200 shadow-2xl focus:outline-none p-0">
+          <div className="px-6 pt-5 pb-3">
+            <div className="flex items-center gap-2 text-[16px] font-semibold" style={{ color: MAROON }}>
+              <PlusCircle size={18} />
+              View Team
+            </div>
+            <div className="mt-3 h-[2px] w-full bg-neutral-200">
+              <div className="h-[2px]" style={{ backgroundColor: MAROON, width: 110 }} />
+            </div>
+          </div>
+
+          <div className="px-6 pb-6">
+            <div className="grid grid-cols-2 gap-x-10 gap-y-6">
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-neutral-700 mb-2">Team</label>
+                <div className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm">
+                  {schedule?.teamName || "-"}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">Adviser</label>
+                <div className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm">
+                  {loading ? "Loading…" : adviser}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">Project Manager</label>
+                <div className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm">
+                  {loading ? "Loading…" : manager}
+                </div>
+              </div>
+
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-neutral-700 mb-2">Members</label>
+                <div className="w-full rounded-md border border-neutral-300 bg-white px-3 py-3 text-sm">
+                  {loading ? (
+                    "Loading…"
+                  ) : members.length === 0 ? (
+                    <span className="text-neutral-500">No members listed.</span>
+                  ) : (
+                    <ul className="list-disc ml-5 space-y-1">
+                      {members.map((m, i) => <li key={i}>{m}</li>)}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 flex items-center justify-end">
+              <button
+                onClick={onClose}
+                className="inline-flex items-center justify-center rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+              >
+                Close
               </button>
             </div>
           </div>
