@@ -11,7 +11,6 @@ export default function MemberHeader() {
           <button className="md:hidden p-2 rounded-lg hover:bg-neutral-100">
             <Menu className="w-6 h-6 text-[#6A0F14]" />
           </button>
-          <img src={TaskSphereLogo} alt="TaskSphere IT" className="h-8" />
         </div>
         {/* Right: notification & user icons */}
         <div className="flex items-center gap-4">
