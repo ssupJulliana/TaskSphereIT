@@ -78,7 +78,7 @@ const AdviserLayout = () => {
             <button
               onClick={handleLogout}
               disabled={loggingOut}
-              className="w-full flex items-center justify-center gap-3 text-sm font-medium text-[#6A0F14] border border-[#6A0F14] rounded-full px-4 py-2 hover:bg-[#6A0F14]/10 disabled:opacity-60"
+              className="cursor-pointer w-full flex items-center justify-center gap-3 text-sm font-medium text-[#6A0F14] border border-[#6A0F14] rounded-full px-4 py-2 hover:bg-[#6A0F14]/10 disabled:opacity-60"
             >
               <LogOut className="w-5 h-5" />
               {loggingOut ? "Signing out…" : "Sign Out"}

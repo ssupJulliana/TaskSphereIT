@@ -16,13 +16,13 @@ const InstructorHeader = () => {
         </div>
         {/* Right: notification & user icons */}
         <div className="flex items-center gap-4">
-          <button className="p-2 rounded-full hover:bg-neutral-100">
+          <button className="p-2 rounded-full hover:bg-neutral-100 cursor-pointer">
             <NotebookText className="w-6 h-6 text-[#6A0F14]" />
           </button>
-          <button className="relative p-2 rounded-full hover:bg-neutral-100">
+          <button className="relative p-2 rounded-full hover:bg-neutral-100 cursor-pointer">
             <Bell className="w-6 h-6 text-[#6A0F14]" />
           </button>
-          <button className="p-2 rounded-full hover:bg-neutral-100">
+          <button className="p-2 rounded-full hover:bg-neutral-100 cursor-pointer">
             <User className="w-6 h-6 text-[#6A0F14]" />
           </button>
         </div>
