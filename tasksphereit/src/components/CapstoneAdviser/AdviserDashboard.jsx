@@ -10,28 +10,28 @@ const UPCOMING = [
     task: "Revise: Chapter 1",
     date: "Feb 2, 2025",
     time: "8:00 AM",
-    color: "#D9A81E", // yellow
+    color: "#6A0F14", // yellow
   },
   {
     team: "Bernardo, Et Al",
     task: "Prepare: Chapter 2",
     date: "Feb 2, 2025",
     time: "8:00 AM",
-    color: "#D9A81E",
+    color: "#6A0F14",
   },
   {
     team: "Aguas, Et Al",
     task: "Prepare: Chapter 3",
     date: "Feb 5, 2025",
     time: "8:00 AM",
-    color: "#6FA8DC", // blue
+    color: "#6A0F14", // blue
   },
   {
     team: "Mendoza, Et Al",
     task: "Prepare: Chapter 3",
     date: "Feb 5, 2025",
     time: "8:00 AM",
-    color: "#7C9C3B", // green
+    color: "#6A0F14", // green
   },
 ];
 
@@ -109,7 +109,7 @@ function Donut({ percent }) {
         cy={size / 2}
         r={r}
         fill="none"
-        stroke={"#9B59B6"}
+        stroke={"#6A0F14"}
         strokeWidth={stroke}
         strokeDasharray={`${dash} ${c - dash}`}
         strokeLinecap="round"
