@@ -12,7 +12,6 @@ import { signInWithEmailAndPassword } from "firebase/auth";
 import { collection, query, where, getDocs, limit } from "firebase/firestore";
 
 const LoginPage = () => {
-  const [showPwd, setShowPwd] = useState(false);
   const [email, setEmail] = useState("");
   const [pwd, setPwd] = useState("");
   const [loading, setLoading] = useState(false);
@@ -25,7 +24,7 @@ const LoginPage = () => {
     if (role === "Adviser") return "/adviser/dashboard";
     if (role === "Member") return "/member/dashboard";
     if (role === "Project Manager") return "/projectmanager/dashboard";
-    // default: Instructor area (Project Manager, Proponents, etc.)
+    // default: Instructor area
     return "/instructor/dashboard";
   };
 
@@ -122,34 +121,14 @@ const LoginPage = () => {
                 <label className="block text-sm font-medium text-neutral-700">
                   Password
                 </label>
-                <div className="relative">
-                  <input
-                    type={showPwd ? "text" : "password"}
-                    value={pwd}
-                    onChange={(e) => setPwd(e.target.value)}
-                    placeholder="Enter your password"
-                    autoComplete="current-password"
-                    className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 pr-10 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/50"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPwd((s) => !s)}
-                    aria-label={showPwd ? "Hide password" : "Show password"}
-                    className="absolute inset-y-0 right-0 grid place-items-center px-3 text-neutral-500 hover:text-neutral-700"
-                    tabIndex={-1}
-                  >
-                    {showPwd ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18M10.584 10.59a3 3 0 104.243 4.243M9.88 5.08A8.967 8.967 0 0112 5c4.5 0 8.268 2.943 9.75 7-.365 1.053-.915 2.03-1.62 2.9m-3.014 2.518A10.013 10.013 0 0112 19c-4.5 0-8.268-2.943-9.75-7a11.415 11.415 0 012.694-4.042" />
-                      </svg>
-                    ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                    )}
-                  </button>
-                </div>
+                <input
+                  type="password"
+                  value={pwd}
+                  onChange={(e) => setPwd(e.target.value)}
+                  placeholder="Enter your password"
+                  autoComplete="current-password"
+                  className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/50"
+                />
 
                 {/* Error + Forgot password link */}
                 <div className="mt-2 flex items-center justify-between">

@@ -1,7 +1,13 @@
+// src/components/ProjectManager/ProjectManagerLayout.jsx
 import React, { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
-  Home, Calendar, ClipboardList, Users, FileText, Bell, ListChecks, LogOut
+  Home,
+  Calendar,
+  ClipboardList,
+  ListChecks,
+  LogOut,
+  KanbanSquare, // Tasks Board
 } from "lucide-react";
 import TaskSphereLogo from "../../assets/imgs/TaskSphereLogo.png";
 import ProjectManagerHeader from "./ProjectManagerHeader";
@@ -17,22 +23,20 @@ const ProjectManagerLayout = () => {
 
   const item = (isActive) =>
     `flex items-center gap-3 px-4 py-2 rounded-lg text-sm font-medium ${
-      isActive ? "bg-[#6A0F14]/10 text-[#6A0F14]" : "text-neutral-700 hover:bg-neutral-100"
+      isActive
+        ? "bg-[#6A0F14]/10 text-[#6A0F14]"
+        : "text-[#6A0F14] hover:bg-neutral-100"
     }`;
 
   const handleLogout = async () => {
     try {
       setLoggingOut(true);
       await signOut(auth);
-      // Clear stored session info
       localStorage.removeItem("uid");
       localStorage.removeItem("role");
-      // If you stored anything else related to auth, clear here as well:
-      // localStorage.removeItem("token"); etc.
       navigate("/login", { replace: true });
     } catch (e) {
       console.error("Logout failed:", e);
-      // Fallback: still clear and send to login
       localStorage.removeItem("uid");
       localStorage.removeItem("role");
       navigate("/login", { replace: true });
@@ -46,34 +50,60 @@ const ProjectManagerLayout = () => {
       {/* Sidebar */}
       <aside className="hidden md:flex md:flex-col w-64 bg-white border-r border-neutral-200">
         <div className="flex flex-col h-full py-6">
+          {/* Logo */}
           <div className="flex items-center justify-center mb-8 px-4">
             <img src={TaskSphereLogo} alt="TaskSphere IT" className="h-10" />
           </div>
 
-          <nav className="flex-1 px-4 space-y-1">
-            <NavLink to="/adviser/dashboard" className={({isActive}) => item(isActive)}>
+          {/* Nav */}
+          <nav className="flex-1 px-4 space-y-2">
+            {/* Dashboard */}
+            <NavLink
+              to="/projectmanager/dashboard"
+              className={({ isActive }) => item(isActive)}
+            >
               <Home className="w-5 h-5" /> Dashboard
             </NavLink>
-            <NavLink to="/adviser/teams-summary" className={({isActive}) => item(isActive)}>
-              <FileText className="w-5 h-5" /> Teams Summary
+
+            {/* Tasks */}
+            <NavLink
+              to="/projectmanager/tasks"
+              className={({ isActive }) => item(isActive)}
+            >
+              <ClipboardList className="w-5 h-5" /> Tasks
             </NavLink>
-            <NavLink to="/adviser/tasks" className={({isActive}) => item(isActive)}>
-              <ListChecks className="w-5 h-5" /> Tasks
+
+            {/* Sub-items under Tasks */}
+            <NavLink
+              to="/projectmanager/adviser-tasks"
+              className={({ isActive }) => item(isActive)}
+            >
+              <ListChecks className="w-5 h-5" /> Adviser Tasks
             </NavLink>
-            <NavLink to="/adviser/teams-board" className={({isActive}) => item(isActive)}>
-              <Users className="w-5 h-5" /> Teams Board
+
+            <NavLink
+              to="/projectmanager/tasks-board"
+              className={({ isActive }) => item(isActive)}
+            >
+              <KanbanSquare className="w-5 h-5" /> Tasks Board
             </NavLink>
-            <NavLink to="/adviser/task-record" className={({isActive}) => item(isActive)}>
-              <ClipboardList className="w-5 h-5" /> Task Record
+
+            <NavLink
+              to="/projectmanager/tasks-record"
+              className={({ isActive }) => item(isActive)}
+            >
+              <ClipboardList className="w-5 h-5" /> Tasks Record
             </NavLink>
-            <NavLink to="/adviser/events" className={({isActive}) => item(isActive)}>
+
+            <NavLink
+              to="/projectmanager/events"
+              className={({ isActive }) => item(isActive)}
+            >
               <Calendar className="w-5 h-5" /> Events
-            </NavLink>
-            <NavLink to="/adviser/notifications" className={({isActive}) => item(isActive)}>
-              <Bell className="w-5 h-5" /> Notifications
             </NavLink>
           </nav>
 
+          {/* Sign out */}
           <div className="mt-auto px-4">
             <button
               onClick={handleLogout}
@@ -90,12 +120,9 @@ const ProjectManagerLayout = () => {
       {/* Main column */}
       <div className="flex-1 flex flex-col min-h-0">
         <ProjectManagerHeader />
-
-        {/* Scroll area */}
         <main className="flex-1 min-h-0 overflow-y-auto px-4 py-6 md:px-8">
           <Outlet />
         </main>
-
         <ProjectManagerFooter />
       </div>
     </div>
