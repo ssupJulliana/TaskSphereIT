@@ -73,14 +73,6 @@ const ProjectManagerLayout = () => {
               <ClipboardList className="w-5 h-5" /> Tasks
             </NavLink>
 
-            {/* Sub-items under Tasks */}
-            <NavLink
-              to="/projectmanager/adviser-tasks"
-              className={({ isActive }) => item(isActive)}
-            >
-              <ListChecks className="w-5 h-5" /> Adviser Tasks
-            </NavLink>
-
             <NavLink
               to="/projectmanager/tasks-board"
               className={({ isActive }) => item(isActive)}

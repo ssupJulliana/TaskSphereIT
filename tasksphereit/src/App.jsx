@@ -40,7 +40,6 @@ import MemberEvents from "./components/CapstoneMember/MemberEvents.jsx";
 // Project Manager
 import ProjectManagerLayout from "./components/ProjectManager/ProjectManagerLayout.jsx";
 import ProjectManagerDashboard from "./components/ProjectManager/ProjectManagerDashboard.jsx";
-import ProjectManagerAdviserTasks from "./components/ProjectManager/ProjectManagerAdviserTasks.jsx";
 import ProjectManagerAdviserTaskRecord from "./components/ProjectManager/ProjectManagerAdviserTaskRecord.jsx";
 import ProjectManagerTaskBoard from "./components/ProjectManager/ProjectManagerTaskBoard.jsx";
 import ProjectManagerEvents from "./components/ProjectManager/ProjectManagerEvents.jsx";
@@ -87,7 +86,6 @@ export default function App() {
         <Route path="/projectmanager" element={<ProjectManagerLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<ProjectManagerDashboard />} />
-          <Route path="adviser-tasks" element={<ProjectManagerAdviserTasks />} />
           <Route path="tasks-board" element={<ProjectManagerTaskBoard />} />
           <Route path="tasks-record" element={<ProjectManagerAdviserTaskRecord />} />
           <Route path="events" element={<ProjectManagerEvents />} />
@@ -104,6 +102,8 @@ export default function App() {
           <Route path="tasks-record" element={<MemberTasksRecord />} />
           <Route path="events" element={<MemberEvents />} />
         </Route>
+
+
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" replace />} />
