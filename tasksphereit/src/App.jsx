@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import LoginPage from "./components/auth/LoginPage.jsx";
+import ForgotPassword from "./components/auth/ForgotPassword.jsx";
 
 // Instructor
 import InstructorLayout from "./components/CapstoneInstructor/InsturctorLayout.jsx";
@@ -36,12 +37,15 @@ import ProjectManagerLayout from "./components/ProjectManager/ProjectManagerLayo
 import ProjectManagerDashboard from "./components/ProjectManager/ProjectManagerDashboard.jsx";
 
 
+
+
 export default function App() {
   return (
     <div className="min-h-screen font-sans">
       <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
 
         {/* Instructor section */}
         <Route path="/instructor" element={<InstructorLayout />}>

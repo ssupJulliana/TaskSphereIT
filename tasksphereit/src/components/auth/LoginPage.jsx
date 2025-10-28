@@ -1,5 +1,6 @@
+// src/components/auth/LoginPage.jsx
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import LoginHeader from "../common/LoginHeader.jsx";
 import LoginFooter from "../common/LoginFooter.jsx";
 import TaskSphereLogo from "../../assets/imgs/TaskSphereLogo.png";
@@ -22,17 +23,12 @@ const LoginPage = () => {
   // route mapping by role
   const routeForRole = (role) => {
     if (role === "Adviser") return "/adviser/dashboard";
-    if (role === "Member") return "/member/dashboard";
-    if (role === "Project Manager") return "/projectmanager/dashboard";
-    // default all other roles into Instructor area (Project Manager, Proponents, etc.)
+    // default: Instructor area (Project Manager, Proponents, etc.)
     return "/instructor/dashboard";
   };
 
   const handleSignIn = async (e) => {
     e.preventDefault();
-
-    // You can later add login validation logic here
-    //  navigate("/member/dashboard"); // redirect to Instructor Dashboard
     setErr("");
     setLoading(true);
 
@@ -41,46 +37,33 @@ const LoginPage = () => {
       const cred = await signInWithEmailAndPassword(auth, email.trim(), pwd);
 
       // 2) Find role in Firestore (users collection)
-      // Prefer lookup by uid for accuracy; fallback to email if needed.
       let role = null;
-
       const usersRef = collection(db, "users");
-      const byUid = query(
-        usersRef,
-        where("uid", "==", cred.user.uid),
-        limit(1)
-      );
+
+      // Prefer lookup by uid
+      const byUid = query(usersRef, where("uid", "==", cred.user.uid), limit(1));
       const uidSnap = await getDocs(byUid);
 
       if (!uidSnap.empty) {
         role = uidSnap.docs[0].data().role || null;
       } else {
-        const byEmail = query(
-          usersRef,
-          where("email", "==", email.trim()),
-          limit(1)
-        );
+        // Fallback to email
+        const byEmail = query(usersRef, where("email", "==", email.trim()), limit(1));
         const emailSnap = await getDocs(byEmail);
-        if (!emailSnap.empty) {
-          role = emailSnap.docs[0].data().role || null;
-        }
+        if (!emailSnap.empty) role = emailSnap.docs[0].data().role || null;
       }
 
       // 3) Store to localStorage
       localStorage.setItem("uid", cred.user.uid);
       if (role) localStorage.setItem("role", role);
 
-      // 4) Navigate
-      const target = routeForRole(role);
-      navigate(target, { replace: true });
+      // 4) Navigate based on role
+      navigate(routeForRole(role), { replace: true });
     } catch (e2) {
       console.error(e2);
       let msg = "Sign-in failed. Please check your credentials.";
       if (e2.code === "auth/invalid-email") msg = "Invalid email address.";
-      else if (
-        e2.code === "auth/user-not-found" ||
-        e2.code === "auth/wrong-password"
-      )
+      else if (e2.code === "auth/user-not-found" || e2.code === "auth/wrong-password")
         msg = "Incorrect email or password.";
       else if (e2.code === "auth/too-many-requests")
         msg = "Too many attempts. Try again later.";
@@ -154,46 +137,27 @@ const LoginPage = () => {
                     tabIndex={-1}
                   >
                     {showPwd ? (
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-5 w-5"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M3 3l18 18M10.584 10.59a3 3 0 104.243 4.243M9.88 5.08A8.967 8.967 0 0112 5c4.5 0 8.268 2.943 9.75 7-.365 1.053-.915 2.03-1.62 2.9m-3.014 2.518A10.013 10.013 0 0112 19c-4.5 0-8.268-2.943-9.75-7a11.415 11.415 0 012.694-4.042"
-                        />
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18M10.584 10.59a3 3 0 104.243 4.243M9.88 5.08A8.967 8.967 0 0112 5c4.5 0 8.268 2.943 9.75 7-.365 1.053-.915 2.03-1.62 2.9m-3.014 2.518A10.013 10.013 0 0112 19c-4.5 0-8.268-2.943-9.75-7a11.415 11.415 0 012.694-4.042" />
                       </svg>
                     ) : (
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-5 w-5"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                        />
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                        />
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                       </svg>
                     )}
                   </button>
                 </div>
 
-                <div className="mt-2 h-5">
-                  {err && <p className="text-xs text-red-600">{err}</p>}
+                {/* Error + Forgot password link */}
+                <div className="mt-2 flex items-center justify-between">
+                  <div className="h-5">
+                    {err && <p className="text-xs text-red-600">{err}</p>}
+                  </div>
+
+                  <Link to="/forgot-password" className="text-sm text-[#6A0F14] hover:underline">
+                    Forgot password?
+                  </Link>
                 </div>
               </div>
 
