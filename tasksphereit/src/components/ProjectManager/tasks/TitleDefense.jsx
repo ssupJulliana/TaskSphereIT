@@ -18,14 +18,14 @@ const MAROON = "#6A0F14";
 
 /* ----------------------------- SAMPLE DATA ----------------------------- */
 const RAW_ROWS = [
-  { no: 1, assigned: "Team", task: "Brainstorming", created: "Dec 10, 2025", due: "Dec 12, 2025", time: "8:00 AM", revision: "No Revision", status: "To Review" },
-  { no: 2, assigned: "Team", task: "Data Gathering: Internet Research", created: "Dec 21, 2025", due: "Dec 25, 2025", time: "12:00 PM", revision: "No Revision", status: "To Review" },
-  { no: 3, assigned: "Team", task: "Title Proposal: Concepts & Layout", created: "Jan 3, 2025", due: "Jan 8, 2025", time: "9:00 AM", revision: "No Revision", status: "In Progress" },
-  { no: 4, assigned: "Team", task: "Title Defense: Mock Defense", created: "Jan 9, 2025", due: "Jan 10, 2025", time: "8:00 AM", revision: "No Revision", status: "In Progress" },
-  { no: 5, assigned: "Team", task: "Title Defense", created: "Jan 11, 2025", due: "Jan 11, 2025", time: "10:00 AM", revision: "No Revision", status: "To Do" },
-  { no: 6, assigned: "Team", task: "Re-Defense: Title Gathering", created: "Jan 13, 2025", due: "Jan 13, 2025", time: "12:30 PM", revision: "No Revision", status: "To Do" },
-  { no: 7, assigned: "Team", task: "Re-Defense: Refining the Selected Title", created: "Jan 14, 2025", due: "Jan 15, 2025", time: "7:00 AM", revision: "No Revision", status: "To Do" },
-  { no: 8, assigned: "Team", task: "Re-Defense: Re-Defense Presentation", created: "Jan 22, 2025", due: "Jan 22, 2025", time: "9:30 AM", revision: "No Revision", status: "To Do" },
+  { no: 1, assigned: "Team", type: "Documentation", phase: "Planning", task: "Brainstorming", created: "Dec 10, 2025", due: "Dec 12, 2025", time: "8:00 AM", revision: "No Revision", status: "To Review" },
+  { no: 2, assigned: "Team", type: "Documentation", phase: "Planning", task: "Data Gathering: Internet Research", created: "Dec 21, 2025", due: "Dec 25, 2025", time: "12:00 PM", revision: "No Revision", status: "To Review" },
+  { no: 3, assigned: "Team", type: "Documentation", phase: "Planning", task: "Title Proposal: Concepts & Layout", created: "Jan 3, 2025", due: "Jan 8, 2025", time: "9:00 AM", revision: "No Revision", status: "In Progress" },
+  { no: 4, assigned: "Team", type: "Discussion & Review", phase: "Planning", task: "Title Defense: Mock Defense", created: "Jan 9, 2025", due: "Jan 10, 2025", time: "8:00 AM", revision: "No Revision", status: "In Progress" },
+  { no: 5, assigned: "Team", type: "Discussion & Review", phase: "Planning", task: "Title Defense", created: "Jan 11, 2025", due: "Jan 11, 2025", time: "10:00 AM", revision: "No Revision", status: "To Do" },
+  { no: 6, assigned: "Team", type: "Discussion & Review", phase: "Planning", task: "Re-Defense: Title Gathering", created: "Jan 13, 2025", due: "Jan 13, 2025", time: "12:30 PM", revision: "No Revision", status: "To Do" },
+  { no: 7, assigned: "Team", type: "Discussion & Review", phase: "Planning", task: "Re-Defense: Refining the Selected Title", created: "Jan 14, 2025", due: "Jan 15, 2025", time: "7:00 AM", revision: "No Revision", status: "To Do" },
+  { no: 8, assigned: "Team", type: "Discussion & Review", phase: "Planning", task: "Re-Defense: Re-Defense Presentation", created: "Jan 22, 2025", due: "Jan 22, 2025", time: "9:30 AM", revision: "No Revision", status: "To Do" },
 ];
 
 /* ------------------------------- HELPERS -------------------------------- */
@@ -36,7 +36,12 @@ const StatusBadge = ({ value }) => {
     "To Do": "bg-[#D9A81E] text-white",
   };
   return (
-    <span className={`px-3 py-1 rounded-full text-xs font-medium ${map[value] || ""}`}>
+    <span
+      className={
+        `inline-flex items-center whitespace-nowrap leading-tight 
+         px-2.5 py-0.5 rounded-full text-[12px] font-medium ${map[value] || ""}`
+      }
+    >
       {value}
     </span>
   );
@@ -268,11 +273,13 @@ const TitleDefense = ({ onBack }) => {
       (r) =>
         String(r.no).includes(s) ||
         r.assigned.toLowerCase().includes(s) ||
+        r.type.toLowerCase().includes(s) ||            // ⬅️ include Task Type
         r.task.toLowerCase().includes(s) ||
         r.created.toLowerCase().includes(s) ||
         r.due.toLowerCase().includes(s) ||
         r.time.toLowerCase().includes(s) ||
-        r.status.toLowerCase().includes(s)
+        r.status.toLowerCase().includes(s) ||
+        r.phase.toLowerCase().includes(s)              // ⬅️ include Project Phase
     );
   }, [q, rows]);
 
@@ -354,10 +361,10 @@ const TitleDefense = ({ onBack }) => {
       {/* table */}
       <div className="bg-white border border-neutral-200 rounded-2xl shadow overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-[13px] leading-tight whitespace-nowrap">
             <thead>
               <tr className="text-left text-neutral-500">
-                <th className="py-3 pl-6 pr-3 w-10">
+                <th className="py-2 pl-6 pr-3 w-10">
                   <input
                     type="checkbox"
                     onChange={(e) => {
@@ -368,45 +375,51 @@ const TitleDefense = ({ onBack }) => {
                     checked={pageRows.every((r) => selected.has(r.no)) && pageRows.length > 0}
                   />
                 </th>
-                <th className="py-3 pr-3 w-16">NO</th>
-                <th className="py-3 pr-3">Assigned</th>
-                <th className="py-3 pr-3">Task</th>
-                <th className="py-3 pr-3">
+                <th className="py-2 pr-3 w-16">NO</th>
+                <th className="py-2 pr-3">Assigned</th>
+                {/* added */}
+                <th className="py-2 pr-3">Task Type</th>
+                <th className="py-2 pr-3">Task</th>
+                <th className="py-2 pr-3">
                   <div className="inline-flex items-center gap-2">
                     <CalendarDays className="w-4 h-4" /> Date Created
                   </div>
                 </th>
-                <th className="py-3 pr-3">
+                <th className="py-2 pr-3">
                   <div className="inline-flex items-center gap-2">
                     <CalendarDays className="w-4 h-4" /> Due Date
                   </div>
                 </th>
-                <th className="py-3 pr-3">
+                <th className="py-2 pr-3">
                   <div className="inline-flex items-center gap-2">
                     <Clock className="w-4 h-4" /> Time
                   </div>
                 </th>
-                <th className="py-3 pr-3">Revision NO</th>
-                <th className="py-3 pr-6">Status</th>
+                <th className="py-2 pr-3">Revision NO</th>
+                <th className="py-2 pr-6">Status</th>
+                {/* added */}
+                <th className="py-2 pr-6">Project Phase</th>
               </tr>
             </thead>
             <tbody>
               {pageRows.map((r) => (
                 <tr key={r.no} className="border-t border-neutral-200">
-                  <td className="py-3 pl-6 pr-3">
+                  <td className="py-2 pl-6 pr-3">
                     <input
                       type="checkbox"
                       checked={selected.has(r.no)}
                       onChange={() => toggleSelect(r.no)}
                     />
                   </td>
-                  <td className="py-3 pr-3">{r.no}.</td>
-                  <td className="py-3 pr-3">{r.assigned}</td>
-                  <td className="py-3 pr-3">{r.task}</td>
-                  <td className="py-3 pr-3">{r.created}</td>
-                  <td className="py-3 pr-3">{r.due}</td>
-                  <td className="py-3 pr-3">{r.time}</td>
-                  <td className="py-3 pr-3">
+                  <td className="py-2 pr-3">{r.no}.</td>
+                  <td className="py-2 pr-3">{r.assigned}</td>
+                  {/* added */}
+                  <td className="py-2 pr-3">{r.type}</td>
+                  <td className="py-2 pr-3">{r.task}</td>
+                  <td className="py-2 pr-3">{r.created}</td>
+                  <td className="py-2 pr-3">{r.due}</td>
+                  <td className="py-2 pr-3">{r.time}</td>
+                  <td className="py-2 pr-3">
                     <RevisionSelect
                       value={r.revision}
                       onChange={(v) =>
@@ -416,15 +429,17 @@ const TitleDefense = ({ onBack }) => {
                       }
                     />
                   </td>
-                  <td className="py-3 pr-6">
+                  <td className="py-2 pr-6">
                     <StatusBadge value={r.status} />
                   </td>
+                  {/* added */}
+                  <td className="py-2 pr-6">{r.phase}</td>
                 </tr>
               ))}
 
               {pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-10 text-center text-neutral-500">
+                  <td colSpan={11} className="py-10 text-center text-neutral-500">
                     No results.
                   </td>
                 </tr>
