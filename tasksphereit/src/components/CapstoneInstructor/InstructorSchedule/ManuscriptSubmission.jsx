@@ -112,15 +112,19 @@ export default function ManuscriptSubmission() {
   /* ===== Row actions ===== */
   const [query, setQuery] = useState("");
   const [menuOpenId, setMenuOpenId] = useState(null);
-  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 }); // <-- fixed menu coords
+  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 }); // fixed menu coords
   const [editRow, setEditRow] = useState(null);
   const [viewRow, setViewRow] = useState(null);
+
+  /* ===== Bulk delete ===== */
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+  const exitBulk = () => { setBulkMode(false); setSelected(new Set()); };
 
   // close menu on outside click / ESC
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && setMenuOpenId(null);
     const onClick = (e) => {
-      // if clicking a menu button, let it handle
       if (!(e.target.closest && e.target.closest("[data-menu-root]"))) {
         setMenuOpenId(null);
       }
@@ -177,7 +181,6 @@ export default function ManuscriptSubmission() {
           createdAt: d?.createdAt,
         });
       });
-      // sort by due date + time
       arr.sort((a, b) => {
         const ad = a.date || "", bd = b.date || "";
         if (ad < bd) return -1;
@@ -209,7 +212,7 @@ export default function ManuscriptSubmission() {
     }
   };
 
-  // delete row
+  // single delete
   const handleDelete = async (id) => {
     if (!window.confirm("Delete this manuscript submission?")) return;
     try {
@@ -234,10 +237,50 @@ export default function ManuscriptSubmission() {
     );
   }, [query, rows]);
 
+  // bulk helpers
+  const toggleSelect = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+  const allVisibleIds = useMemo(() => filtered.map((r) => r.id), [filtered]);
+  const allSelected = selected.size > 0 && allVisibleIds.every((id) => selected.has(id));
+  const toggleSelectAll = () => {
+    setSelected((prev) => (allSelected ? new Set() : new Set(allVisibleIds)));
+  };
+
+  const handleBulkDeleteClick = async () => {
+    // first click -> enter bulk mode
+    if (!bulkMode) {
+      setBulkMode(true);
+      return;
+    }
+    // already in bulk mode
+    if (selected.size === 0) {
+      alert("Select at least one submission to delete.");
+      return;
+    }
+    const ok = window.confirm(`Delete ${selected.size} selected submission(s)? This cannot be undone.`);
+    if (!ok) return;
+
+    try {
+      await Promise.all(
+        Array.from(selected).map((id) => deleteDoc(doc(db, COLLECTION, id)))
+      );
+      exitBulk();
+      await loadRows();
+    } catch (e) {
+      console.error("[Manuscripts] Bulk delete failed:", e);
+      alert("Failed to delete some submissions. See console for details.");
+      await loadRows();
+    }
+  };
+
   // open menu & anchor to button (viewport coords)
   const onOpenMenu = (id, e) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    // align right edge, leave 4px gap below
     const menuWidth = 160;
     const x = Math.max(8, rect.right - menuWidth);
     const y = rect.bottom + 4;
@@ -261,9 +304,29 @@ export default function ManuscriptSubmission() {
         <div className="flex items-center gap-3">
           <Btn icon={Plus} onClick={() => setShowCreate(true)}>Create Schedule</Btn>
         </div>
-        <Btn icon={Trash2} variant="outline" onClick={() => alert("Select a row’s ••• menu to delete.")}>
-          Delete
-        </Btn>
+
+        <div className="flex items-center">
+          {bulkMode && (
+            <button
+              onClick={exitBulk}
+              className="mr-3 inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 border border-neutral-300 bg-white"
+            >
+              Cancel
+            </button>
+          )}
+          <button
+            onClick={handleBulkDeleteClick}
+            className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium border
+              ${bulkMode
+                ? "border-red-600 text-white bg-red-600 hover:bg-red-700"
+                : "border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50"}`}
+            aria-label={bulkMode ? "Delete Selected" : "Delete"}
+            title={bulkMode ? "Delete Selected" : "Delete"}
+          >
+            <Trash2 size={16} />
+            {bulkMode ? `Delete Selected (${selected.size})` : "Delete"}
+          </button>
+        </div>
       </div>
 
       {/* table card */}
@@ -288,11 +351,23 @@ export default function ManuscriptSubmission() {
         </div>
 
         {/* table */}
-        <div className="overflow-x-auto"> {/* keep horizontal scroll; menu is fixed so it won't be clipped */}
+        <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-neutral-50 text-neutral-600">
               <tr>
-                <th className="text-left px-4 py-3 w-16">NO</th>
+                {bulkMode ? (
+                  <th className="px-4 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all"
+                      checked={allSelected}
+                      onChange={toggleSelectAll}
+                      className="h-4 w-4"
+                    />
+                  </th>
+                ) : (
+                  <th className="text-left px-4 py-3 w-16">NO</th>
+                )}
                 <th className="text-left px-4 py-3">Team</th>
                 <th className="text-left px-4 py-3">Title</th>
                 <th className="text-left px-4 py-3">
@@ -315,74 +390,89 @@ export default function ManuscriptSubmission() {
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-8 text-center text-neutral-500" colSpan={10}>
-                    No records match your search.
-                  </td>
+                  <td className="px-4 py-6 text-neutral-500" colSpan={10}>No matches for “{query}”.</td>
                 </tr>
               ) : (
-                filtered.map((r, idx) => (
-                  <tr key={r.id} className={idx % 2 ? "bg-neutral-50/60" : "bg-white"}>
-                    <td className="px-4 py-3 text-neutral-600">{idx + 1}.</td>
-                    <td className="px-4 py-3 font-medium text-neutral-800">{r.team}</td>
-                    <td className="px-4 py-3 text-neutral-800">{r.title}</td>
-                    <td className="px-4 py-3 text-neutral-700">{fmtDateHuman(r.date)}</td>
-                    <td className="px-4 py-3 text-neutral-700">{to12h(r.time)}</td>
-                    <td className={`px-4 py-3 font-semibold ${pctClass(r.plag)}`}>{r.plag}%</td>
-                    <td className={`px-4 py-3 font-semibold ${pctClass(r.ai)}`}>{r.ai}%</td>
-                    <td className="px-4 py-3 text-neutral-700">{r.file || "—"}</td>
-                    <td className="px-4 py-3">
-                      <div className="relative inline-flex items-center">
-                        <select
-                          value={r.verdict || "Pending"}
-                          onChange={(e) => handleChangeVerdict(r.id, e.target.value)}
-                          className="appearance-none pr-8 pl-3 py-1.5 rounded-md border text-sm"
-                          style={{ borderColor: MAROON, color: "#111827" }}
-                        >
-                          <option>Pending</option>
-                          <option>Recheck</option>
-                          <option>Passed</option>
-                        </select>
-                        <ChevronDown size={16} className="absolute right-2 pointer-events-none text-neutral-500" />
-                      </div>
-                    </td>
-                    <td className="px-2 py-3">
-                      <button
-                        data-menu-root
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-neutral-100 cursor-pointer"
-                        onClick={(e) => onOpenMenu(r.id, e)}
-                      >
-                        <MoreVertical size={18} />
-                      </button>
-                      {/* Fixed-position floating menu; not clipped by scroll containers */}
-                      {menuOpenId === r.id && (
-                        <div
-                          data-menu-root
-                          className="fixed z-50 w-40 rounded-md border bg-white shadow"
-                          style={{ left: menuPos.x, top: menuPos.y }}
-                        >
-                          <button
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
-                            onClick={() => { setViewRow(r); setMenuOpenId(null); }}
-                          >
-                            View
-                          </button>
-                          <button
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
-                            onClick={() => { setEditRow(r); setMenuOpenId(null); }}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-neutral-50"
-                            onClick={() => handleDelete(r.id)}
-                          >
-                            Delete
-                          </button>
-                        </div>
+                filtered.map((r, idx) => {
+                  const isChecked = selected.has(r.id);
+                  return (
+                    <tr key={r.id} className={idx % 2 ? "bg-neutral-50/60" : "bg-white"}>
+                      {bulkMode ? (
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${r.title || r.team}`}
+                            checked={isChecked}
+                            onChange={() => toggleSelect(r.id)}
+                            className="h-4 w-4"
+                          />
+                        </td>
+                      ) : (
+                        <td className="px-4 py-3 text-neutral-600">{idx + 1}.</td>
                       )}
-                    </td>
-                  </tr>
-                ))
+
+                      <td className="px-4 py-3 font-medium text-neutral-800">{r.team}</td>
+                      <td className="px-4 py-3 text-neutral-800">{r.title}</td>
+                      <td className="px-4 py-3 text-neutral-700">{fmtDateHuman(r.date)}</td>
+                      <td className="px-4 py-3 text-neutral-700">{to12h(r.time)}</td>
+                      <td className={`px-4 py-3 font-semibold ${pctClass(r.plag)}`}>{r.plag}%</td>
+                      <td className={`px-4 py-3 font-semibold ${pctClass(r.ai)}`}>{r.ai}%</td>
+                      <td className="px-4 py-3 text-neutral-700">{r.file || "—"}</td>
+                      <td className="px-4 py-3">
+                        <div className="relative inline-flex items-center">
+                          <select
+                            value={r.verdict || "Pending"}
+                            onChange={(e) => handleChangeVerdict(r.id, e.target.value)}
+                            disabled={bulkMode}
+                            className={`appearance-none pr-8 pl-3 py-1.5 rounded-md border text-sm ${bulkMode ? "opacity-60 cursor-not-allowed" : ""}`}
+                            style={{ borderColor: MAROON, color: "#111827" }}
+                          >
+                            <option>Pending</option>
+                            <option>Recheck</option>
+                            <option>Passed</option>
+                          </select>
+                          <ChevronDown size={16} className="absolute right-2 pointer-events-none text-neutral-500" />
+                        </div>
+                      </td>
+                      <td className="px-2 py-3">
+                        <button
+                          data-menu-root
+                          disabled={bulkMode}
+                          className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${bulkMode ? "opacity-40 cursor-not-allowed" : "hover:bg-neutral-100"}`}
+                          onClick={(e) => onOpenMenu(r.id, e)}
+                        >
+                          <MoreVertical size={18} />
+                        </button>
+                        {!bulkMode && menuOpenId === r.id && (
+                          <div
+                            data-menu-root
+                            className="fixed z-50 w-40 rounded-md border bg-white shadow"
+                            style={{ left: menuPos.x, top: menuPos.y }}
+                          >
+                            <button
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+                              onClick={() => { setViewRow(r); setMenuOpenId(null); }}
+                            >
+                              View
+                            </button>
+                            <button
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+                              onClick={() => { setEditRow(r); setMenuOpenId(null); }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-neutral-50"
+                              onClick={() => handleDelete(r.id)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -439,7 +529,6 @@ function CreateOrEditDialog({
   const [plag, setPlag] = useState(String(initial?.plag ?? 0));
   const [ai, setAi] = useState(String(initial?.ai ?? 0));
 
-  // File name is controlled by back office / uploader — keep as placeholder only
   const fileVal = "—";
 
   const disabled =
@@ -456,7 +545,7 @@ function CreateOrEditDialog({
         time,
         plag: Number(plag) || 0,
         ai: Number(ai) || 0,
-        file: fileVal, // always placeholder here
+        file: fileVal,
       };
 
       if (isEdit) {
@@ -587,7 +676,7 @@ function CreateOrEditDialog({
                 />
               </div>
 
-              {/* File name (removed input; shown as read-only text to reflect policy) */}
+              {/* File name (read-only note) */}
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-neutral-700 mb-2">File Uploaded (name)</label>
                 <div className="w-full pl-3 pr-3 py-2 rounded-md border border-neutral-200 bg-neutral-50 text-sm text-neutral-500">

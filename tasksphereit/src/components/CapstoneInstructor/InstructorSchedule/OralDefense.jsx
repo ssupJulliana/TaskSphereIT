@@ -107,6 +107,18 @@ export default function OralDefense() {
   const [editSchedule, setEditSchedule] = useState(null);
   const [viewSchedule, setViewSchedule] = useState(null);
 
+  /* ===== Bulk delete state ===== */
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+  const exitBulk = () => { setBulkMode(false); setSelected(new Set()); };
+  const toggleSelect = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
   // Load Teams + Advisers
   useEffect(() => {
     let alive = true;
@@ -192,7 +204,7 @@ export default function OralDefense() {
     }
   };
 
-  // delete
+  // per-row delete
   const handleDelete = async (scheduleId) => {
     if (!window.confirm("Delete this schedule?")) return;
     try {
@@ -217,6 +229,39 @@ export default function OralDefense() {
     );
   }, [query, schedules]);
 
+  // Select-all based on filtered
+  const allVisibleIds = useMemo(() => filtered.map((s) => s.id), [filtered]);
+  const allSelected = selected.size > 0 && allVisibleIds.every((id) => selected.has(id));
+  const toggleSelectAll = () => {
+    setSelected((prev) => (allSelected ? new Set() : new Set(allVisibleIds)));
+  };
+
+  // Delete button behavior (bulk)
+  const handleBulkDeleteClick = async () => {
+    if (!bulkMode) {
+      setBulkMode(true);
+      return;
+    }
+    if (selected.size === 0) {
+      alert("Select at least one schedule to delete.");
+      return;
+    }
+    const ok = window.confirm(`Delete ${selected.size} selected schedule(s)? This cannot be undone.`);
+    if (!ok) return;
+
+    try {
+      await Promise.all(
+        Array.from(selected).map((id) => deleteDoc(doc(db, COLLECTION, id)))
+      );
+      exitBulk();
+      await loadSchedules();
+    } catch (e) {
+      console.error("Bulk delete failed:", e);
+      alert("Failed to delete some schedules. See console for details.");
+      await loadSchedules();
+    }
+  };
+
   return (
     <div className="p-6">
       <Breadcrumbs />
@@ -225,21 +270,48 @@ export default function OralDefense() {
       </div>
 
       {/* actions */}
-      <div className="mt-5 flex items-center justify-between">
+      <div className="mt-6 space-y-4">
+        {/* Row 1: Create + Export */}
         <div className="flex items-center gap-3">
           <Btn icon={Plus} onClick={() => setShowCreate(true)}>Create Schedule</Btn>
           <Btn icon={Download} variant="outline">Export</Btn>
         </div>
 
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="pl-10 pr-3 py-2 w-64 rounded-md border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-300"
-          />
-          <Search size={16} className="absolute left-3 top-2.5 text-neutral-400" />
+        {/* Row 2: Search (left) + Delete (right) */}
+        <div className="flex items-center justify-between">
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="pl-10 pr-3 py-2 w-72 rounded-md border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-300"
+            />
+            <Search size={16} className="absolute left-3 top-2.5 text-neutral-400" />
+          </div>
+
+          <div className="flex items-center">
+            {bulkMode && (
+              <button
+                onClick={exitBulk}
+                className="mr-3 inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 border border-neutral-300 bg-white"
+              >
+                Cancel
+              </button>
+            )}
+
+            <button
+              onClick={handleBulkDeleteClick}
+              className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium border
+                ${bulkMode
+                  ? "border-red-600 text-white bg-red-600 hover:bg-red-700"
+                  : "border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50"}`}
+              aria-label={bulkMode ? "Delete Selected" : "Delete"}
+              title={bulkMode ? "Delete Selected" : "Delete"}
+            >
+              {bulkMode ? `Delete Selected (${selected.size})` : "Delete"}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -248,7 +320,19 @@ export default function OralDefense() {
         <table className="w-full text-sm">
           <thead className="bg-neutral-50 text-neutral-600">
             <tr>
-              <th className="text-left px-4 py-3 w-16">NO</th>
+              {bulkMode ? (
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all"
+                    checked={allSelected}
+                    onChange={toggleSelectAll}
+                    className="h-4 w-4"
+                  />
+                </th>
+              ) : (
+                <th className="text-left px-4 py-3 w-16">NO</th>
+              )}
               <th className="text-left px-4 py-3">Team</th>
               <th className="text-left px-4 py-3">
                 <div className="inline-flex items-center gap-2"><CalIcon size={16} /> Date</div>
@@ -268,67 +352,87 @@ export default function OralDefense() {
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td className="px-4 py-8 text-center text-neutral-500" colSpan={7}>
-                  No records match your search.
-                </td>
+                <td className="px-4 py-6 text-neutral-500" colSpan={7}>No matches for “{query}”.</td>
               </tr>
             ) : (
-              filtered.map((s, idx) => (
-                <tr key={s.id} className={idx % 2 ? "bg-neutral-50/60" : "bg-white"}>
-                  <td className="px-4 py-3 text-neutral-600">{idx + 1}.</td>
-                  <td className="px-4 py-3 font-medium text-neutral-800">{s.teamName}</td>
-                  <td className="px-4 py-3 text-neutral-700">{fmtDate(s.date)}</td>
-                  <td className="px-4 py-3 text-neutral-700">{fmtTimeRange(s.timeStart, s.timeEnd)}</td>
-                  <td className="px-4 py-3 text-neutral-700">{s.panelists.join(", ")}</td>
-                  <td className="px-4 py-3">
-                    <div className="relative inline-flex items-center">
-                      <select
-                        value={s.verdict || "Pending"}
-                        onChange={(e) => handleChangeVerdict(s.id, e.target.value)}
-                        className="appearance-none pr-8 pl-3 py-1.5 rounded-md border text-sm"
-                        style={{ borderColor: MAROON, color: "#111827" }}
-                      >
-                        <option>Pending</option>
-                        <option>Passed</option>
-                        <option>Re-Defense</option>
-                        <option>Failed</option>
-                      </select>
-                      <ChevronDown size={16} className="absolute right-2 pointer-events-none text-neutral-500" />
-                    </div>
-                  </td>
-                  <td className="px-2 py-3 relative">
-                    <button
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-neutral-100"
-                      onClick={() => setMenuOpenId(menuOpenId === s.id ? null : s.id)}
-                    >
-                      <MoreVertical size={18} />
-                    </button>
-
-                    {menuOpenId === s.id && (
-                      <div className="absolute right-2 mt-1 z-20 w-40 rounded-md border bg-white shadow">
-                        <button
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
-                          onClick={() => { setViewSchedule(s); setMenuOpenId(null); }}
-                        >
-                          View
-                        </button>
-                        <button
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
-                          onClick={() => { setEditSchedule(s); setMenuOpenId(null); }}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-neutral-50"
-                          onClick={() => handleDelete(s.id)}
-                        >
-                          Delete
-                        </button>
-                      </div>
+              filtered.map((s, idx) => {
+                const isChecked = selected.has(s.id);
+                return (
+                  <tr key={s.id} className={idx % 2 ? "bg-neutral-50/60" : "bg-white"}>
+                    {bulkMode ? (
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${s.teamName}`}
+                          checked={isChecked}
+                          onChange={() => toggleSelect(s.id)}
+                          className="h-4 w-4"
+                        />
+                      </td>
+                    ) : (
+                      <td className="px-4 py-3 text-neutral-600">{idx + 1}.</td>
                     )}
-                  </td>
-                </tr>
-              ))
+
+                    <td className="px-4 py-3 font-medium text-neutral-800">{s.teamName}</td>
+                    <td className="px-4 py-3 text-neutral-700">{fmtDate(s.date)}</td>
+                    <td className="px-4 py-3 text-neutral-700">{fmtTimeRange(s.timeStart, s.timeEnd)}</td>
+                    <td className="px-4 py-3 text-neutral-700">{s.panelists.join(", ")}</td>
+
+                    {/* Verdict disabled during bulk mode */}
+                    <td className="px-4 py-3">
+                      <div className="relative inline-flex items-center">
+                        <select
+                          value={s.verdict || "Pending"}
+                          onChange={(e) => handleChangeVerdict(s.id, e.target.value)}
+                          disabled={bulkMode}
+                          className={`appearance-none pr-8 pl-3 py-1.5 rounded-md border text-sm ${bulkMode ? "opacity-60 cursor-not-allowed" : ""}`}
+                          style={{ borderColor: MAROON, color: "#111827" }}
+                        >
+                          <option>Pending</option>
+                          <option>Passed</option>
+                          <option>Re-Defense</option>
+                          <option>Failed</option>
+                        </select>
+                        <ChevronDown size={16} className="absolute right-2 pointer-events-none text-neutral-500" />
+                      </div>
+                    </td>
+
+                    {/* Row actions hidden in bulk mode */}
+                    <td className="px-2 py-3 relative">
+                      <button
+                        disabled={bulkMode}
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${bulkMode ? "opacity-40 cursor-not-allowed" : "hover:bg-neutral-100"}`}
+                        onClick={() => setMenuOpenId(menuOpenId === s.id ? null : s.id)}
+                      >
+                        <MoreVertical size={18} />
+                      </button>
+
+                      {!bulkMode && menuOpenId === s.id && (
+                        <div className="absolute right-2 mt-1 z-20 w-40 rounded-md border bg-white shadow">
+                          <button
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+                            onClick={() => { setViewSchedule(s); setMenuOpenId(null); }}
+                          >
+                            View
+                          </button>
+                          <button
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+                            onClick={() => { setEditSchedule(s); setMenuOpenId(null); }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-neutral-50"
+                            onClick={() => handleDelete(s.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
