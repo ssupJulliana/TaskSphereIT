@@ -47,8 +47,7 @@ const Field = ({ label, children }) => (
     <div className="text-sm text-neutral-900">{children}</div>
   </div>
 );
-
-export default function MemberProfile() {
+ function MemberProfile() {
   const [loading, setLoading] = useState(true);
   const [userDoc, setUserDoc] = useState(null);
   const [error, setError] = useState("");
@@ -443,3 +442,6 @@ export default function MemberProfile() {
     </div>
   );
 }
+
+
+export default MemberProfile

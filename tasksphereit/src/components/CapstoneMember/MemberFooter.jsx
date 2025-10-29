@@ -1,6 +1,6 @@
 import React from "react";
 
-export default function MemberFooter() {
+function MemberFooter() {
   return (
     <footer className="w-full">
       {/* thin maroon accent strip */}
@@ -16,3 +16,5 @@ export default function MemberFooter() {
     </footer>
   );
 }
+
+export default  MemberFooter
