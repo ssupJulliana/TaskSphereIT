@@ -1,11 +1,21 @@
-import React, { useState } from "react";
+// src/components/CapstoneAdviser/AdviserLayout.jsx
+import React, { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
-  Home, Calendar, ClipboardList, Users, FileText, Bell, ListChecks, LogOut
+  Home,
+  Calendar,
+  ClipboardList,
+  Users,
+  FileText,
+  Bell,
+  ListChecks,
+  LogOut,
 } from "lucide-react";
 import TaskSphereLogo from "../../assets/imgs/TaskSphereLogo.png";
 import AdviserHeader from "./AdviserHeader";
 import AdviserFooter from "./AdviserFooter";
+
+import AdviserProfile from "./AdviserProfile";
 
 // Firebase
 import { auth } from "../../config/firebase";
@@ -15,24 +25,32 @@ const AdviserLayout = () => {
   const navigate = useNavigate();
   const [loggingOut, setLoggingOut] = useState(false);
 
+  // PROFILE DRAWER STATE
+  const [showProfile, setShowProfile] = useState(false);
+
+  // close on Esc
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && setShowProfile(false);
+    if (showProfile) window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showProfile]);
+
   const item = (isActive) =>
     `flex items-center gap-3 px-4 py-2 rounded-lg text-sm font-medium ${
-      isActive ? "bg-[#6A0F14]/10 text-[#6A0F14]" : "text-neutral-700 hover:bg-neutral-100"
+      isActive
+        ? "bg-[#6A0F14]/10 text-[#6A0F14]"
+        : "text-neutral-700 hover:bg-neutral-100"
     }`;
 
   const handleLogout = async () => {
     try {
       setLoggingOut(true);
       await signOut(auth);
-      // Clear stored session info
       localStorage.removeItem("uid");
       localStorage.removeItem("role");
-      // If you stored anything else related to auth, clear here as well:
-      // localStorage.removeItem("token"); etc.
       navigate("/login", { replace: true });
     } catch (e) {
       console.error("Logout failed:", e);
-      // Fallback: still clear and send to login
       localStorage.removeItem("uid");
       localStorage.removeItem("role");
       navigate("/login", { replace: true });
@@ -51,25 +69,46 @@ const AdviserLayout = () => {
           </div>
 
           <nav className="flex-1 px-4 space-y-1">
-            <NavLink to="/adviser/dashboard" className={({isActive}) => item(isActive)}>
+            <NavLink
+              to="/adviser/dashboard"
+              className={({ isActive }) => item(isActive)}
+            >
               <Home className="w-5 h-5" /> Dashboard
             </NavLink>
-            <NavLink to="/adviser/teams-summary" className={({isActive}) => item(isActive)}>
+            <NavLink
+              to="/adviser/teams-summary"
+              className={({ isActive }) => item(isActive)}
+            >
               <FileText className="w-5 h-5" /> Teams Summary
             </NavLink>
-            <NavLink to="/adviser/tasks" className={({isActive}) => item(isActive)}>
+            <NavLink
+              to="/adviser/tasks"
+              className={({ isActive }) => item(isActive)}
+            >
               <ListChecks className="w-5 h-5" /> Tasks
             </NavLink>
-            <NavLink to="/adviser/teams-board" className={({isActive}) => item(isActive)}>
+            <NavLink
+              to="/adviser/teams-board"
+              className={({ isActive }) => item(isActive)}
+            >
               <Users className="w-5 h-5" /> Teams Board
             </NavLink>
-            <NavLink to="/adviser/task-record" className={({isActive}) => item(isActive)}>
+            <NavLink
+              to="/adviser/task-record"
+              className={({ isActive }) => item(isActive)}
+            >
               <ClipboardList className="w-5 h-5" /> Task Record
             </NavLink>
-            <NavLink to="/adviser/events" className={({isActive}) => item(isActive)}>
+            <NavLink
+              to="/adviser/events"
+              className={({ isActive }) => item(isActive)}
+            >
               <Calendar className="w-5 h-5" /> Events
             </NavLink>
-            <NavLink to="/adviser/notifications" className={({isActive}) => item(isActive)}>
+            <NavLink
+              to="/adviser/notifications"
+              className={({ isActive }) => item(isActive)}
+            >
               <Bell className="w-5 h-5" /> Notifications
             </NavLink>
           </nav>
@@ -89,7 +128,8 @@ const AdviserLayout = () => {
 
       {/* Main column */}
       <div className="flex-1 flex flex-col min-h-0">
-        <AdviserHeader />
+        {/* Pass the opener to the header */}
+        <AdviserHeader onProfileClick={() => setShowProfile(true)} />
 
         {/* Scroll area */}
         <main className="flex-1 min-h-0 overflow-y-auto px-4 py-6 md:px-8">
@@ -98,6 +138,31 @@ const AdviserLayout = () => {
 
         <AdviserFooter />
       </div>
+
+      {/* PROFILE DRAWER (matches Instructor UX) */}
+      {showProfile && (
+        <>
+          {/* Overlay */}
+          <div
+            className="fixed inset-0 z-[60] bg-black/40"
+            onClick={() => setShowProfile(false)}
+          />
+          {/* Panel */}
+          <aside
+            className="fixed right-0 top-0 z-[61] h-full
+                 w-[560px] md:w-[520px] sm:w-[480px]     /* ← wider, like Instructor */
+                 bg-white border-l border-neutral-200 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="h-full overflow-y-auto p-6">
+              {" "}
+              {/* ← match Instructor padding */}
+              <AdviserProfile />
+            </div>
+          </aside>
+        </>
+      )}
     </div>
   );
 };

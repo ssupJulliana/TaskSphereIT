@@ -13,11 +13,11 @@ import {
   updateDoc,
   serverTimestamp,
 } from "firebase/firestore";
-import { Loader2, Shield, Edit3 } from "lucide-react";
+import { Loader2, Edit3 } from "lucide-react"; // removed Shield
 import Swal from "sweetalert2";
 
-import RoleTransferDialog from "./RoleTransfer";
-import ChangePasswordDialog from "./ChangePassword";
+// Removed RoleTransferDialog import
+import ChangePasswordDialog from "../CapstoneInstructor/ChangePassword";
 
 const MAROON = "#6A0F14";
 const isNone = (v) => !v || String(v).toLowerCase() === "none";
@@ -48,22 +48,22 @@ const Field = ({ label, children }) => (
   </div>
 );
 
-export default function InstructorProfile() {
+export default function AdviserProfile() {
   const [loading, setLoading] = useState(true);
   const [userDoc, setUserDoc] = useState(null);
   const [error, setError] = useState("");
 
-  const [openRoleDialog, setOpenRoleDialog] = useState(false);
+  // Removed openRoleDialog state
   const [openChangePw, setOpenChangePw] = useState(false);
 
   // edit + avatar
   const [editMode, setEditMode] = useState(false);
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState("");
-  const [removePending, setRemovePending] = useState(false); // NEW
+  const [removePending, setRemovePending] = useState(false);
   const fileInputRef = useRef(null);
 
-  // form
+  // Only email needs to be editable now, but keep structure for future
   const [form, setForm] = useState({
     firstName: "",
     middleName: "",
@@ -176,6 +176,7 @@ export default function InstructorProfile() {
   const startEdit = () => {
     if (!userDoc) return;
     setForm({
+      // keep names for display, but they stay read-only in UI
       firstName: userDoc.firstName || "",
       middleName: userDoc.middleName || "",
       lastName: userDoc.lastName || "",
@@ -192,7 +193,7 @@ export default function InstructorProfile() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // NEW: mark photo for removal (defer delete until Save)
+  // mark photo for removal (delete happens on Save)
   const markRemove = () => {
     setRemovePending(true);
     setAvatarFile(null);
@@ -203,15 +204,12 @@ export default function InstructorProfile() {
   const saveEdit = async () => {
     if (!userDoc?.id) return;
 
-    const firstName = form.firstName.trim();
-    const middleName = form.middleName.trim();
-    const lastName = form.lastName.trim();
     const email = form.email.trim();
-    if (!firstName || !lastName || !email) {
+    if (!email) {
       Swal.fire({
         icon: "error",
-        title: "Missing info",
-        text: "First name, Last name, and Email are required.",
+        title: "Missing email",
+        text: "Email is required.",
       });
       return;
     }
@@ -237,7 +235,7 @@ export default function InstructorProfile() {
       let imageUrl = userDoc.imageUrl || "None";
 
       // If removal is pending and there is an existing image, delete it
-      if (removePending && !isNone(userDoc.imageUrl)) {
+      if (removePending && !isNone(userDoc.imageUrl) && userDoc.email) {
         const keyToDelete = safeKeyFromEmail(userDoc.email); // delete by current stored email key
         await supabase.storage
           .from("user-images")
@@ -246,14 +244,8 @@ export default function InstructorProfile() {
         imageUrl = "None";
       }
 
-      // NOTE: This request focuses on removal flow. If you also want to allow
-      // uploading a *new* image in the same save, you can extend here.
-      // For now, we ignore avatarFile when removePending is true.
-
+      // Update Firestore — ONLY email + imageUrl + updatedAt
       await updateDoc(doc(db, "users", userDoc.id), {
-        firstName,
-        middleName,
-        lastName,
         email,
         imageUrl,
         updatedAt: serverTimestamp(),
@@ -261,9 +253,6 @@ export default function InstructorProfile() {
 
       setUserDoc({
         ...userDoc,
-        firstName,
-        middleName,
-        lastName,
         email,
         imageUrl,
       });
@@ -343,7 +332,7 @@ export default function InstructorProfile() {
                   {fullName}
                 </h1>
               )}
-              <div className="text-sm text-neutral-500">Instructor</div>
+              <div className="text-sm text-neutral-500">Adviser</div>
             </div>
           </div>
 
@@ -362,55 +351,20 @@ export default function InstructorProfile() {
                 <span className="font-medium">{fullName}</span>
               </Field>
 
-              <Field label="First Name">
-                {!editMode ? (
-                  userDoc.firstName || "-"
-                ) : (
-                  <input
-                    value={form.firstName}
-                    onChange={(e) =>
-                      setForm((s) => ({ ...s, firstName: e.target.value }))
-                    }
-                    className="w-64 rounded-md border border-neutral-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-300"
-                  />
-                )}
-              </Field>
+              {/* Names are always read-only now */}
+              <Field label="First Name">{userDoc.firstName || "-"}</Field>
 
               <Field label="Middle Name">
-                {!editMode ? (
-                  userDoc.middleName ? (
-                    `${userDoc.middleName} (${(
+                {userDoc.middleName
+                  ? `${userDoc.middleName} (${(
                       userDoc.middleName[0] || ""
                     ).toUpperCase()}.)`
-                  ) : (
-                    "-"
-                  )
-                ) : (
-                  <input
-                    value={form.middleName}
-                    onChange={(e) =>
-                      setForm((s) => ({ ...s, middleName: e.target.value }))
-                    }
-                    className="w-64 rounded-md border border-neutral-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-300"
-                    placeholder="Optional"
-                  />
-                )}
+                  : "-"}
               </Field>
 
-              <Field label="Last Name">
-                {!editMode ? (
-                  userDoc.lastName || "-"
-                ) : (
-                  <input
-                    value={form.lastName}
-                    onChange={(e) =>
-                      setForm((s) => ({ ...s, lastName: e.target.value }))
-                    }
-                    className="w-64 rounded-md border border-neutral-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-300"
-                  />
-                )}
-              </Field>
+              <Field label="Last Name">{userDoc.lastName || "-"}</Field>
 
+              {/* Only Email is editable when in edit mode */}
               <Field label="Email">
                 {!editMode ? (
                   userDoc.email || "-"
@@ -449,19 +403,11 @@ export default function InstructorProfile() {
                 >
                   Change Password
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setOpenRoleDialog(true)}
-                  className="inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm"
-                  style={{ backgroundColor: MAROON }}
-                >
-                  <Shield className="w-4 h-4" />
-                  Turn over of data
-                </button>
+                {/* Removed "Turn over of data" button */}
               </>
             ) : (
               <>
-                {/* NEW: Remove Photo (marks for removal; actual delete on Save) */}
+                {/* Remove Photo (marks for removal; actual delete on Save) */}
                 <button
                   type="button"
                   onClick={markRemove}
@@ -490,14 +436,7 @@ export default function InstructorProfile() {
         </div>
       </div>
 
-      {openRoleDialog && (
-        <RoleTransferDialog
-          currentName={fullName}
-          currentIdNo={userDoc?.idNo}
-          currentEmail={userDoc?.email}
-          onClose={() => setOpenRoleDialog(false)}
-        />
-      )}
+      {/* Removed RoleTransferDialog section */}
       {openChangePw && (
         <ChangePasswordDialog onClose={() => setOpenChangePw(false)} />
       )}
