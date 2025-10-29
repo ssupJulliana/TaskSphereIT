@@ -19,7 +19,7 @@ import {
   LogOut,
 } from "lucide-react";
 
-export default function MemberLayout() {
+ function MemberLayout() {
   const navigate = useNavigate();
   const [loggingOut, setLoggingOut] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -145,3 +145,5 @@ export default function MemberLayout() {
     </div>
   );
 }
+
+export default MemberLayout
