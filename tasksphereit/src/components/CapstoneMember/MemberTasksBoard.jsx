@@ -53,7 +53,7 @@ function TaskCard({ task, color, onOpenAttachment }) {
           <button
             type="button"
             onClick={() => onOpenAttachment(task)}
-            className="shrink-0 p-1 rounded hover:bg-neutral-100"
+            className="shrink-0 p-1 rounded hover:bg-neutral-100 cursor-pointer"
             title="Open attachments"
             aria-label="Open attachments"
           >
