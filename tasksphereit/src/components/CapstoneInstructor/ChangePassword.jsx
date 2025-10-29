@@ -1,4 +1,3 @@
-// src/components/CapstoneInstructor/ChangePassword.jsx
 import React, { useState } from "react";
 import { auth } from "../../config/firebase";
 import { updatePassword } from "firebase/auth";
