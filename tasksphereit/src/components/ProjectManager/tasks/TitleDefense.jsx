@@ -1,5 +1,5 @@
 // src/components/ProjectManager/tasks/TitleDefense.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Search,
   Trash2,
@@ -14,73 +14,159 @@ import {
   X,
 } from "lucide-react";
 
+/* ===== Firebase ===== */
+import { auth, db } from "../../../config/firebase";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  where,
+} from "firebase/firestore";
+
 const MAROON = "#6A0F14";
+const TASKS_COLLECTION = "titleDefenseTasks";
 
-/* ----------------------------- SAMPLE DATA ----------------------------- */
-const RAW_ROWS = [
-  { no: 1, assigned: "Team", type: "Documentation", phase: "Planning", task: "Brainstorming", created: "Dec 10, 2025", due: "Dec 12, 2025", time: "8:00 AM", revision: "No Revision", status: "To Review" },
-  { no: 2, assigned: "Team", type: "Documentation", phase: "Planning", task: "Data Gathering: Internet Research", created: "Dec 21, 2025", due: "Dec 25, 2025", time: "12:00 PM", revision: "No Revision", status: "To Review" },
-  { no: 3, assigned: "Team", type: "Documentation", phase: "Planning", task: "Title Proposal: Concepts & Layout", created: "Jan 3, 2025", due: "Jan 8, 2025", time: "9:00 AM", revision: "No Revision", status: "In Progress" },
-  { no: 4, assigned: "Team", type: "Discussion & Review", phase: "Planning", task: "Title Defense: Mock Defense", created: "Jan 9, 2025", due: "Jan 10, 2025", time: "8:00 AM", revision: "No Revision", status: "In Progress" },
-  { no: 5, assigned: "Team", type: "Discussion & Review", phase: "Planning", task: "Title Defense", created: "Jan 11, 2025", due: "Jan 11, 2025", time: "10:00 AM", revision: "No Revision", status: "To Do" },
-  { no: 6, assigned: "Team", type: "Discussion & Review", phase: "Planning", task: "Re-Defense: Title Gathering", created: "Jan 13, 2025", due: "Jan 13, 2025", time: "12:30 PM", revision: "No Revision", status: "To Do" },
-  { no: 7, assigned: "Team", type: "Discussion & Review", phase: "Planning", task: "Re-Defense: Refining the Selected Title", created: "Jan 14, 2025", due: "Jan 15, 2025", time: "7:00 AM", revision: "No Revision", status: "To Do" },
-  { no: 8, assigned: "Team", type: "Discussion & Review", phase: "Planning", task: "Re-Defense: Re-Defense Presentation", created: "Jan 22, 2025", due: "Jan 22, 2025", time: "9:30 AM", revision: "No Revision", status: "To Do" },
+/* ---------- Options ---------- */
+const DOC_TASKS = [
+  "Brainstorming",
+  "Data Gathering: Internet Research",
+  "Title Proposal: Concepts and Layouts",
+  "Interview User/Client",
+  "Collect User/Client Requirements",
+  "Title Proposal: Selection of Three Titles",
+  "Refining Selected Title",
+  "Prepare: PowerPoint Presentation",
+  "Title Defense: Mock Defense",
+  "Title Defense",
+  "Title Re-Defense Planning",
+  "Revise Based on the Title Defense Feedback.",
+  "Panel-Requested Enhancements Presentation",
+  "Team Request for Advisership",
+  "Re-Defense: Title Gathering",
+  "Re-Defense: Refining the Selected Title",
+  "Feedback Gathering",
+  "Prepare: Title Re-Defense PowerPoint Presentation",
+  "Title Re-Defense: Mock Defense",
+  "Title Re-Defense Presentation",
+  "Revise Based on the Title Re-Defense Feedback.",
+  "Team Request for Advisership",
 ];
+const DISCUSS_TASKS = ["Capstone Meeting"];
 
-/* ------------------------------- HELPERS -------------------------------- */
+/* ---------- Small UI ---------- */
 const StatusBadge = ({ value }) => {
   const map = {
+    "To Do": "bg-[#D9A81E] text-white",
     "To Review": "bg-[#6FA8DC] text-white",
     "In Progress": "bg-[#7C9C3B] text-white",
-    "To Do": "bg-[#D9A81E] text-white",
+    Completed: "bg-[#6A0F14] text-white",
   };
   return (
-    <span
-      className={
-        `inline-flex items-center whitespace-nowrap leading-tight 
-         px-2.5 py-0.5 rounded-full text-[12px] font-medium ${map[value] || ""}`
-      }
-    >
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[12px] font-medium ${map[value] || "bg-neutral-200"}`}>
       {value}
     </span>
   );
 };
 
-const RevisionSelect = ({ value, onChange }) => {
-  return (
-    <select
-      className="text-xs font-medium border border-neutral-300 rounded-lg px-3 py-1 bg-white"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    >
-      <option>No Revision</option>
-      <option>Revision 1</option>
-      <option>Revision 2</option>
-      <option>Revision 3</option>
-    </select>
-  );
-};
+const RevisionPill = ({ value }) => (
+  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[12px] font-medium bg-neutral-100 border border-neutral-200">
+    {value}
+  </span>
+);
 
-/* ------------------------------ CREATE MODAL ----------------------------- */
-function CreateTaskDialog({ open, onClose, onCreate }) {
-  const [phase, setPhase] = useState("Planning");
-  const [type, setType] = useState("");
+/* ================= Create Task Dialog ================= */
+function CreateTaskDialog({ open, onClose, onCreated, pm, teams = [], members = [] }) {
+  const [phase] = useState("Planning"); // fixed for Title Defense
+  const [type, setType] = useState(""); // Documentation | Discussion & Review
   const [task, setTask] = useState("");
-  const [due, setDue] = useState("2025-02-15");
-  const [time, setTime] = useState("08:00");
-  const [assigned, setAssigned] = useState("");
-  const [team, setTeam] = useState("Harzwel B. Lacson");
-  const [comment, setComment] = useState("Make sure your diagrams are aligned with your scope.");
+  const [due, setDue] = useState("");   // YYYY-MM-DD
+  const [time, setTime] = useState(""); // HH:mm (24h)
+  const [pickedUid, setPickedUid] = useState("");
+  const [assignees, setAssignees] = useState([]); // [{uid,name}]
+  const [comment, setComment] = useState("");
+
+  // pick first team (most PMs manage exactly one team; supports multiple)
+  const [teamId, setTeamId] = useState("");
+  useEffect(() => {
+    if (open && teams.length && !teamId) setTeamId(teams[0].id);
+  }, [open, teams, teamId]);
+
+  useEffect(() => {
+    if (!open) {
+      setType("");
+      setTask("");
+      setDue("");
+      setTime("");
+      setPickedUid("");
+      setAssignees([]);
+      setComment("");
+      setTeamId(teams[0]?.id || "");
+    }
+  }, [open, teams]);
+
+  const availableTasks = useMemo(() => {
+    if (type === "Documentation") return DOC_TASKS;
+    if (type === "Discussion & Review") return DISCUSS_TASKS;
+    return [];
+  }, [type]);
+
+  const addAssignee = () => {
+    if (!pickedUid) return;
+    const found = members.find((m) => m.uid === pickedUid);
+    if (!found) return;
+    if (!assignees.some((a) => a.uid === pickedUid)) {
+      setAssignees((arr) => [...arr, found]);
+    }
+    setPickedUid("");
+  };
+
+  const removeAssignee = (uid) => {
+    setAssignees((arr) => arr.filter((a) => a.uid !== uid));
+  };
+
+  const canSave =
+    teamId &&
+    type &&
+    task &&
+    due &&
+    time &&
+    assignees.length > 0;
+
+  const handleSave = async () => {
+    const dueAt = new Date(`${due}T${time}:00`);
+    const team = teams.find((t) => t.id === teamId);
+
+    const payload = {
+      phase,                 // "Planning"
+      type,                  // "Documentation" | "Discussion & Review"
+      task,                  // string
+      dueDate: due,          // "YYYY-MM-DD"
+      dueTime: time,         // "HH:mm"
+      dueAtMs: dueAt.getTime(),
+      status: "To Do",       // default
+      revision: "No Revision",
+      assignees: assignees.map((a) => ({ uid: a.uid, name: a.name })),
+      team: team ? { id: team.id, name: team.name } : null,
+      comment: comment || "",
+      createdBy: pm ? { uid: pm.uid, name: pm.name, role: "Project Manager" } : null,
+      createdAt: serverTimestamp(),
+    };
+
+    await addDoc(collection(db, TASKS_COLLECTION), payload);
+    onCreated?.();
+    onClose();
+  };
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50">
-      {/* backdrop */}
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-
-      {/* dialog */}
       <div className="relative z-10 mx-auto mt-10 w-[900px] max-w-[95vw]">
         <div className="bg-white rounded-2xl shadow-2xl border border-neutral-200">
           {/* header */}
@@ -89,11 +175,7 @@ function CreateTaskDialog({ open, onClose, onCreate }) {
               <PlusCircle className="w-5 h-5" />
               <span>Create Task</span>
             </div>
-            <button
-              onClick={onClose}
-              className="p-1 rounded-md hover:bg-neutral-100 text-neutral-500"
-              aria-label="Close"
-            >
+            <button onClick={onClose} className="p-1 rounded-md hover:bg-neutral-100 text-neutral-500" aria-label="Close">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -101,45 +183,58 @@ function CreateTaskDialog({ open, onClose, onCreate }) {
 
           {/* body */}
           <div className="p-5 space-y-5">
-            {/* row 1 */}
+            {/* row A: team */}
             <div className="grid grid-cols-12 gap-4">
-              <div className="col-span-4">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Project Phase</label>
+              <div className="col-span-6">
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Team</label>
                 <select
                   className="w-full rounded-lg border border-neutral-300 px-3 py-2"
-                  value={phase}
-                  onChange={(e) => setPhase(e.target.value)}
+                  value={teamId}
+                  onChange={(e) => setTeamId(e.target.value)}
                 >
-                  <option>Planning</option>
-                  <option>Research</option>
-                  <option>Implementation</option>
-                  <option>Testing</option>
-                  <option>Presentation</option>
+                  {teams.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
                 </select>
               </div>
-
-              <div className="col-span-4">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Tasks Type</label>
-                <input
-                  className="w-full rounded-lg border border-neutral-300 px-3 py-2"
-                  value={type}
-                  onChange={(e) => setType(e.target.value)}
-                  placeholder="e.g., Documentation"
-                />
-              </div>
-
-              <div className="col-span-4">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Tasks</label>
-                <input
-                  className="w-full rounded-lg border border-neutral-300 px-3 py-2"
-                  value={task}
-                  onChange={(e) => setTask(e.target.value)}
-                  placeholder="e.g., Draft Chapter 1"
-                />
+              <div className="col-span-6">
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Project Phase</label>
+                <input className="w-full rounded-lg border border-neutral-300 px-3 py-2 bg-neutral-100" value="Planning" disabled />
               </div>
             </div>
 
-            {/* row 2 */}
+            {/* row B: cascading selects */}
+            <div className="grid grid-cols-12 gap-4">
+              <div className="col-span-4">
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Task Type</label>
+                <select
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2"
+                  value={type}
+                  onChange={(e) => { setType(e.target.value); setTask(""); }}
+                >
+                  <option value="">Select</option>
+                  <option>Documentation</option>
+                  <option>Discussion & Review</option>
+                </select>
+              </div>
+
+              <div className="col-span-8">
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Tasks</label>
+                <select
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2"
+                  value={task}
+                  onChange={(e) => setTask(e.target.value)}
+                  disabled={!type}
+                >
+                  <option value="">{type ? "Select task" : "Select Task Type first"}</option>
+                  {availableTasks.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* row C: due date/time */}
             <div className="grid grid-cols-12 gap-4">
               <div className="col-span-4">
                 <label className="block text-sm font-medium text-neutral-700 mb-1">Due Date</label>
@@ -148,9 +243,9 @@ function CreateTaskDialog({ open, onClose, onCreate }) {
                   className="w-full rounded-lg border border-neutral-300 px-3 py-2"
                   value={due}
                   onChange={(e) => setDue(e.target.value)}
+                  disabled={!task}
                 />
               </div>
-
               <div className="col-span-4">
                 <label className="block text-sm font-medium text-neutral-700 mb-1">Time</label>
                 <input
@@ -158,52 +253,58 @@ function CreateTaskDialog({ open, onClose, onCreate }) {
                   className="w-full rounded-lg border border-neutral-300 px-3 py-2"
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
+                  disabled={!due}
                 />
-              </div>
-
-              <div className="col-span-4">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Assigned</label>
-                <select
-                  className="w-full rounded-lg border border-neutral-300 px-3 py-2"
-                  value={assigned}
-                  onChange={(e) => setAssigned(e.target.value)}
-                >
-                  <option value="">Select assignee</option>
-                  <option>Addrialene M.</option>
-                  <option>Harzwel L.</option>
-                  <option>Alejandro F.</option>
-                  <option>Julliana C.</option>
-                </select>
               </div>
             </div>
 
-            {/* row 3 */}
+            {/* row D: assignees */}
             <div className="grid grid-cols-12 gap-4">
-              <div className="col-span-4">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Team</label>
-                <select
-                  className="w-full rounded-lg border border-neutral-300 px-3 py-2"
-                  value={team}
-                  onChange={(e) => setTeam(e.target.value)}
-                >
-                  <option>Harzwel B. Lacson</option>
-                  <option>Mendoza, Et Al</option>
-                  <option>Bernardo, Et Al</option>
-                  <option>Aguas, Et Al</option>
-                </select>
+              <div className="col-span-12">
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Assign Members</label>
+                <div className="flex gap-2">
+                  <select
+                    className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                    value={pickedUid}
+                    onChange={(e) => setPickedUid(e.target.value)}
+                    disabled={!time}
+                  >
+                    <option value="">{time ? "Select member" : "Set date & time first"}</option>
+                    {members.map((m) => (
+                      <option key={m.uid} value={m.uid}>{m.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={addAssignee}
+                    disabled={!pickedUid}
+                    className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50 disabled:opacity-50"
+                  >
+                    <PlusCircle className="w-4 h-4" /> Add
+                  </button>
+                </div>
+
+                {/* chips */}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {assignees.map((a) => (
+                    <span key={a.uid} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-neutral-100 border border-neutral-200">
+                      {a.name}
+                      <button className="p-0.5 hover:bg-neutral-200 rounded-full" onClick={() => removeAssignee(a.uid)} aria-label={`Remove ${a.name}`}>
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
 
             {/* comment box */}
             <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">
-                Leave Comment:
-              </label>
-
+              <label className="block text-sm font-medium text-neutral-700 mb-2">Leave Comment:</label>
               <div className="rounded-xl border border-neutral-300 bg-white p-3 shadow-sm">
                 <div className="flex items-center gap-2 mb-2">
                   <UserCircle2 className="w-5 h-5 text-neutral-600" />
-                  <span className="text-sm font-semibold text-neutral-800">Addrialene G. Mendoza</span>
+                  <span className="text-sm font-semibold text-neutral-800">{pm?.name || "Project Manager"}</span>
                 </div>
                 <textarea
                   rows={3}
@@ -212,13 +313,8 @@ function CreateTaskDialog({ open, onClose, onCreate }) {
                   onChange={(e) => setComment(e.target.value)}
                 />
                 <div className="mt-2 flex items-center justify-end">
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-800"
-                    title="Attach"
-                  >
-                    <Paperclip className="w-4 h-4" />
-                    Attach
+                  <button type="button" className="inline-flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-800" title="Attach">
+                    <Paperclip className="w-4 h-4" /> Attach
                   </button>
                 </div>
               </div>
@@ -227,20 +323,14 @@ function CreateTaskDialog({ open, onClose, onCreate }) {
 
           {/* footer */}
           <div className="flex items-center justify-end gap-2 px-5 pb-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
-            >
+            <button type="button" onClick={onClose} className="rounded-lg border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50">
               Cancel
             </button>
             <button
               type="button"
-              onClick={() => {
-                onCreate?.({ phase, type, task, due, time, assigned, team, comment });
-                onClose();
-              }}
-              className="rounded-lg px-4 py-2 text-sm font-semibold text-white shadow"
+              onClick={handleSave}
+              disabled={!canSave}
+              className="rounded-lg px-4 py-2 text-sm font-semibold text-white shadow disabled:opacity-50"
               style={{ backgroundColor: MAROON }}
             >
               Create
@@ -252,56 +342,168 @@ function CreateTaskDialog({ open, onClose, onCreate }) {
   );
 }
 
-/* --------------------------------- MAIN --------------------------------- */
+/* ================= Main ================= */
 const TitleDefense = ({ onBack }) => {
-  const handleBack = () => {
-    if (typeof onBack === "function") onBack();
-    else window.history.back();
-  };
+  const handleBack = () => (typeof onBack === "function" ? onBack() : window.history.back());
 
   const [q, setQ] = useState("");
-  const [rows, setRows] = useState(RAW_ROWS);
-  const [selected, setSelected] = useState(new Set());
   const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState(new Set());
   const [showCreate, setShowCreate] = useState(false);
   const pageSize = 8;
 
+  // current PM
+  const pmUid = auth.currentUser?.uid || localStorage.getItem("uid") || "";
+  const [pmProfile, setPmProfile] = useState(null); // {uid,name}
+
+  // PM teams & members
+  const [teams, setTeams] = useState([]); // [{id,name, memberUids:[], memberNames:[]}]
+  const [members, setMembers] = useState([]); // [{uid,name}]
+
+  // Tasks from Firestore
+  const [tasks, setTasks] = useState([]); // [{id,...}]
+
+  /* --- Load PM profile --- */
+  useEffect(() => {
+    if (!pmUid) return;
+    const unsub = onSnapshot(
+      query(collection(db, "users"), where("uid", "==", pmUid)),
+      (snap) => {
+        const d = snap.docs[0]?.data();
+        if (d) setPmProfile({ uid: pmUid, name: [d.firstName, d.middleName, d.lastName].filter(Boolean).join(" ") });
+      }
+    );
+    return () => unsub && unsub();
+  }, [pmUid]);
+
+  /* --- Load PM team(s) and members --- */
+  useEffect(() => {
+    if (!pmUid) return;
+
+    // teams where manager.uid == pmUid
+    const unsubTeams = onSnapshot(
+      query(collection(db, "teams"), where("manager.uid", "==", pmUid)),
+      (snap) => {
+        const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setTeams(rows);
+
+        // gather member uids
+        const memberUids = Array.from(
+          new Set(rows.flatMap((t) => t.memberUids || []))
+        );
+        if (memberUids.length === 0) {
+          setMembers([]);
+          return;
+        }
+
+        // Firestore "in" supports up to 10; chunk if needed
+        const chunks = [];
+        for (let i = 0; i < memberUids.length; i += 10) chunks.push(memberUids.slice(i, i + 10));
+
+        const unsubs = chunks.map((uids) =>
+          onSnapshot(
+            query(collection(db, "users"), where("uid", "in", uids)),
+            (s) => {
+              // Merge chunks
+              const list = s.docs.map((x) => {
+                const d = x.data();
+                const name = [d.firstName, d.middleName, d.lastName].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+                return { uid: d.uid || x.id, name };
+              });
+              // NOTE: We’ll rebuild after all chunks fire—simplest is to refetch on any chunk:
+              setMembers((prev) => {
+                const map = new Map(prev.map((m) => [m.uid, m]));
+                list.forEach((m) => map.set(m.uid, m));
+                // Keep only those in memberUids (remove stale)
+                return Array.from(map.values()).filter((m) => memberUids.includes(m.uid));
+              });
+            }
+          )
+        );
+
+        return () => unsubs.forEach((u) => u && u());
+      }
+    );
+
+    return () => unsubTeams && unsubTeams();
+  }, [pmUid]);
+
+  /* --- Load tasks created by this PM (live) --- */
+  useEffect(() => {
+    if (!pmUid) return;
+    const unsub = onSnapshot(
+      query(
+        collection(db, TASKS_COLLECTION),
+        where("createdBy.uid", "==", pmUid),
+        orderBy("createdAt", "desc")
+      ),
+      (snap) => {
+        const rows = snap.docs.map((d, idx) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            no: idx + 1,
+            assigned: (data.assignees || []).map((a) => a.name).join(", "),
+            type: data.type || "",
+            phase: data.phase || "Planning",
+            task: data.task || "",
+            created: data.createdAt?.toDate
+              ? data.createdAt.toDate().toLocaleDateString()
+              : "",
+            due: data.dueDate || "",
+            time: data.dueTime || "",
+            revision: data.revision || "No Revision",
+            status: data.status || "To Do",
+          };
+        });
+        setTasks(rows);
+        setPage(1);
+        setSelected(new Set());
+      }
+    );
+    return () => unsub && unsub();
+  }, [pmUid]);
+
+  /* --- Search & paging --- */
   const filtered = useMemo(() => {
-    if (!q.trim()) return rows;
-    const s = q.toLowerCase();
-    return rows.filter(
+    const s = q.trim().toLowerCase();
+    if (!s) return tasks;
+    return tasks.filter(
       (r) =>
         String(r.no).includes(s) ||
         r.assigned.toLowerCase().includes(s) ||
-        r.type.toLowerCase().includes(s) ||            // ⬅️ include Task Type
+        r.type.toLowerCase().includes(s) ||
         r.task.toLowerCase().includes(s) ||
         r.created.toLowerCase().includes(s) ||
         r.due.toLowerCase().includes(s) ||
         r.time.toLowerCase().includes(s) ||
         r.status.toLowerCase().includes(s) ||
-        r.phase.toLowerCase().includes(s)              // ⬅️ include Project Phase
+        r.phase.toLowerCase().includes(s)
     );
-  }, [q, rows]);
+  }, [q, tasks]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize);
 
-  const toggleSelect = (no) => {
+  /* --- Selection & deletion --- */
+  const toggleSelect = (id) => {
     const s = new Set(selected);
-    s.has(no) ? s.delete(no) : s.add(no);
+    s.has(id) ? s.delete(id) : s.add(id);
     setSelected(s);
   };
 
-  const deleteSelected = () => {
+  const deleteSelected = async () => {
     if (selected.size === 0) return;
-    setRows((prev) => prev.filter((r) => !selected.has(r.no)));
+    const ids = Array.from(selected);
+    // delete one-by-one
+    await Promise.all(ids.map((id) => deleteDoc(doc(db, TASKS_COLLECTION, id))));
     setSelected(new Set());
     setPage(1);
   };
 
   return (
     <div className="space-y-4">
-      {/* toolbar: Back + Create + Search (left) | Delete + Filter (right) */}
+      {/* toolbar */}
       <div className="flex items-center justify-between gap-3 flex-nowrap">
         <div className="flex items-center gap-3">
           <button
@@ -321,7 +523,6 @@ const TitleDefense = ({ onBack }) => {
             + Create Task
           </button>
 
-          {/* search sits BESIDE the create button */}
           <div className="w-[360px]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
@@ -343,6 +544,7 @@ const TitleDefense = ({ onBack }) => {
             onClick={deleteSelected}
             className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50"
             title="Delete"
+            disabled={selected.size === 0}
           >
             <Trash2 className="w-4 h-4" />
             Delete
@@ -369,15 +571,14 @@ const TitleDefense = ({ onBack }) => {
                     type="checkbox"
                     onChange={(e) => {
                       if (e.target.checked) {
-                        setSelected(new Set(pageRows.map((r) => r.no)));
+                        setSelected(new Set(pageRows.map((r) => r.id)));
                       } else setSelected(new Set());
                     }}
-                    checked={pageRows.every((r) => selected.has(r.no)) && pageRows.length > 0}
+                    checked={pageRows.length > 0 && pageRows.every((r) => selected.has(r.id))}
                   />
                 </th>
                 <th className="py-2 pr-3 w-16">NO</th>
                 <th className="py-2 pr-3">Assigned</th>
-                {/* added */}
                 <th className="py-2 pr-3">Task Type</th>
                 <th className="py-2 pr-3">Task</th>
                 <th className="py-2 pr-3">
@@ -397,42 +598,28 @@ const TitleDefense = ({ onBack }) => {
                 </th>
                 <th className="py-2 pr-3">Revision NO</th>
                 <th className="py-2 pr-6">Status</th>
-                {/* added */}
                 <th className="py-2 pr-6">Project Phase</th>
               </tr>
             </thead>
             <tbody>
-              {pageRows.map((r) => (
-                <tr key={r.no} className="border-t border-neutral-200">
+              {pageRows.map((r, idx) => (
+                <tr key={r.id} className="border-t border-neutral-200">
                   <td className="py-2 pl-6 pr-3">
                     <input
                       type="checkbox"
-                      checked={selected.has(r.no)}
-                      onChange={() => toggleSelect(r.no)}
+                      checked={selected.has(r.id)}
+                      onChange={() => toggleSelect(r.id)}
                     />
                   </td>
-                  <td className="py-2 pr-3">{r.no}.</td>
+                  <td className="py-2 pr-3">{(page - 1) * pageSize + idx + 1}.</td>
                   <td className="py-2 pr-3">{r.assigned}</td>
-                  {/* added */}
                   <td className="py-2 pr-3">{r.type}</td>
                   <td className="py-2 pr-3">{r.task}</td>
                   <td className="py-2 pr-3">{r.created}</td>
                   <td className="py-2 pr-3">{r.due}</td>
                   <td className="py-2 pr-3">{r.time}</td>
-                  <td className="py-2 pr-3">
-                    <RevisionSelect
-                      value={r.revision}
-                      onChange={(v) =>
-                        setRows((prev) =>
-                          prev.map((x) => (x.no === r.no ? { ...x, revision: v } : x))
-                        )
-                      }
-                    />
-                  </td>
-                  <td className="py-2 pr-6">
-                    <StatusBadge value={r.status} />
-                  </td>
-                  {/* added */}
+                  <td className="py-2 pr-3"><RevisionPill value={r.revision} /></td>
+                  <td className="py-2 pr-6"><StatusBadge value={r.status} /></td>
                   <td className="py-2 pr-6">{r.phase}</td>
                 </tr>
               ))}
@@ -440,7 +627,7 @@ const TitleDefense = ({ onBack }) => {
               {pageRows.length === 0 && (
                 <tr>
                   <td colSpan={11} className="py-10 text-center text-neutral-500">
-                    No results.
+                    No tasks yet.
                   </td>
                 </tr>
               )}
@@ -469,11 +656,14 @@ const TitleDefense = ({ onBack }) => {
         </div>
       </div>
 
-      {/* modal mount */}
+      {/* modal */}
       <CreateTaskDialog
         open={showCreate}
         onClose={() => setShowCreate(false)}
-        onCreate={() => {}}
+        onCreated={() => {}}
+        pm={pmProfile || { uid: pmUid, name: "Project Manager" }}
+        teams={teams}
+        members={members}
       />
     </div>
   );
