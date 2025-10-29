@@ -16,7 +16,10 @@ import {
 } from "lucide-react";
 
 import { auth, db } from "../../config/firebase";
-import { createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
+import {
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+} from "firebase/auth";
 import {
   addDoc,
   collection,
@@ -33,6 +36,7 @@ import {
 
 const DEFAULT_PASSWORD = "UserUser321";
 const ROLES = ["Adviser", "Project Manager", "Member"];
+const DEFAULT_IMAGE_URL = "None";
 
 const InstructorEnroll = () => {
   // role filter
@@ -64,10 +68,13 @@ const InstructorEnroll = () => {
 
   // bulk selection
   const [selectedIds, setSelectedIds] = useState([]);
-  const allSelected = selectedIds.length > 0 && selectedIds.length === users.length;
-  const someSelected = selectedIds.length > 0 && selectedIds.length < users.length;
+  const allSelected =
+    selectedIds.length > 0 && selectedIds.length === users.length;
+  const someSelected =
+    selectedIds.length > 0 && selectedIds.length < users.length;
 
-  const onChange = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  const onChange = (key) => (e) =>
+    setForm((f) => ({ ...f, [key]: e.target.value }));
 
   // live query by role
   useEffect(() => {
@@ -118,7 +125,7 @@ const InstructorEnroll = () => {
         DEFAULT_PASSWORD
       );
 
-      // 2) Firestore (do NOT store password)
+      // 2) Firestore (include imageUrl: "None")
       await addDoc(collection(db, "users"), {
         uid: cred.user.uid,
         email: form.email.trim(),
@@ -127,9 +134,10 @@ const InstructorEnroll = () => {
         lastName: form.lastName.trim(),
         middleName: form.middleName.trim(),
         role: form.role,
+        imageUrl: DEFAULT_IMAGE_URL, // <-- NEW
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        mustChangePassword: true, // they should change after first login
+        mustChangePassword: true,
       });
 
       // reset + close
@@ -139,7 +147,7 @@ const InstructorEnroll = () => {
         firstName: "",
         middleName: "",
         idNumber: "",
-        role: selectedRole, // keep current tab as default
+        role: selectedRole,
       });
       setOpenAddUser(false);
     } catch (e) {
@@ -187,7 +195,9 @@ const InstructorEnroll = () => {
         forceDefaultPassword: true,
         updatedAt: serverTimestamp(),
       });
-      alert("Password will be reset to default on the user's next successful login.");
+      alert(
+        "Password will be reset to default on the user's next successful login."
+      );
     } catch (e) {
       console.error(e);
       alert("Failed to set reset flag.");
@@ -206,7 +216,9 @@ const InstructorEnroll = () => {
 
   // ===== bulk actions =====
   const toggleOne = (id) =>
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
 
   const toggleAll = () => {
     if (selectedIds.length === users.length) setSelectedIds([]);
@@ -226,7 +238,12 @@ const InstructorEnroll = () => {
 
   const bulkResetDefault = async () => {
     if (selectedIds.length === 0) return;
-    if (!confirm(`Reset password to default for ${selectedIds.length} account(s)?`)) return;
+    if (
+      !confirm(
+        `Reset password to default for ${selectedIds.length} account(s)?`
+      )
+    )
+      return;
 
     for (const id of selectedIds) {
       await updateDoc(doc(db, "users", id), {
@@ -337,26 +354,45 @@ const InstructorEnroll = () => {
                         onChange={toggleAll}
                       />
                     </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">No.</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">ID Number</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">Last Name</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">First Name</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">Middle Initial</th>
-                    <th className="px-4 py-3 text-center text-sm font-medium text-neutral-700">Action</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">
+                      No.
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">
+                      ID Number
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">
+                      Last Name
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">
+                      First Name
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">
+                      Middle Initial
+                    </th>
+                    <th className="px-4 py-3 text-center text-sm font-medium text-neutral-700">
+                      Action
+                    </th>
                   </tr>
                 </thead>
 
                 <tbody className="divide-y divide-neutral-200">
                   {loadingList ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-6 text-center text-sm text-neutral-500">
+                      <td
+                        colSpan={7}
+                        className="px-4 py-6 text-center text-sm text-neutral-500"
+                      >
                         Loading…
                       </td>
                     </tr>
                   ) : filteredUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-6 text-center text-sm text-neutral-500">
-                        No users found for <span className="font-medium">{selectedRole}</span>.
+                      <td
+                        colSpan={7}
+                        className="px-4 py-6 text-center text-sm text-neutral-500"
+                      >
+                        No users found for{" "}
+                        <span className="font-medium">{selectedRole}</span>.
                       </td>
                     </tr>
                   ) : (
@@ -369,26 +405,34 @@ const InstructorEnroll = () => {
                             onChange={() => toggleOne(u.id)}
                           />
                         </td>
-                        <td className="px-4 py-3 text-sm text-neutral-700">{idx + 1}</td>
-                        <td className="px-4 py-3 text-sm text-neutral-700">{u.idNumber || "—"}</td>
-                        <td className="px-4 py-3 text-sm text-neutral-700">{u.lastName || "—"}</td>
-                        <td className="px-4 py-3 text-sm text-neutral-700">{u.firstName || "—"}</td>
+                        <td className="px-4 py-3 text-sm text-neutral-700">
+                          {idx + 1}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-neutral-700">
+                          {u.idNumber || "—"}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-neutral-700">
+                          {u.lastName || "—"}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-neutral-700">
+                          {u.firstName || "—"}
+                        </td>
                         <td className="px-4 py-3 text-sm text-neutral-700">
                           {middleInitial(u.middleName)}
                         </td>
                         <td className="px-4 py-3 text-sm text-neutral-700 text-center relative">
                           <button
                             className="p-2 rounded-full hover:bg-neutral-100"
-                            onClick={() => setOpenMenuId(openMenuId === u.id ? null : u.id)}
+                            onClick={() =>
+                              setOpenMenuId(openMenuId === u.id ? null : u.id)
+                            }
                           >
                             <MoreVertical className="w-4 h-4 text-neutral-500" />
                           </button>
 
                           {/* tiny menu */}
                           {openMenuId === u.id && (
-                            <div
-                              className="absolute right-0 top-full mt-2 z-50 w-52 bg-white border border-neutral-200 rounded-xl shadow-xl"
-                            >
+                            <div className="absolute right-0 top-full mt-2 z-50 w-52 bg-white border border-neutral-200 rounded-xl shadow-xl">
                               <button
                                 className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-neutral-50"
                                 onClick={() => {
@@ -412,7 +456,8 @@ const InstructorEnroll = () => {
                               <button
                                 className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-neutral-50 text-red-700"
                                 onClick={() => {
-                                  if (confirm("Delete/Block this account?")) deleteAndBlock(u);
+                                  if (confirm("Delete/Block this account?"))
+                                    deleteAndBlock(u);
                                   setOpenMenuId(null);
                                 }}
                               >
@@ -421,8 +466,6 @@ const InstructorEnroll = () => {
                               </button>
                             </div>
                           )}
-
-
                         </td>
                       </tr>
                     ))
@@ -459,16 +502,28 @@ const InstructorEnroll = () => {
 
       {/* Add User Dialog */}
       {openAddUser && (
-        <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" onClick={() => setOpenAddUser(false)}>
+        <div
+          className="fixed inset-0 z-50"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setOpenAddUser(false)}
+        >
           <div className="absolute inset-0 bg-black/40" />
-          <div className="relative z-10 flex items-center justify-center min-h-full p-4" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="relative z-10 flex items-center justify-center min-h-full p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl border border-neutral-200">
               <div className="flex items-center justify-between px-6 py-4 border-b">
                 <div className="flex items-center gap-2 text-[#6A0F14]">
                   <PlusCircle className="w-5 h-5" />
                   <h3 className="text-lg font-semibold">Add User</h3>
                 </div>
-                <button className="p-2 rounded-full hover:bg-neutral-100" onClick={() => setOpenAddUser(false)} aria-label="Close">
+                <button
+                  className="p-2 rounded-full hover:bg-neutral-100"
+                  onClick={() => setOpenAddUser(false)}
+                  aria-label="Close"
+                >
                   <X className="w-5 h-5 text-neutral-600" />
                 </button>
               </div>
@@ -476,7 +531,9 @@ const InstructorEnroll = () => {
               <div className="px-6 py-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-neutral-700">Email Address</label>
+                    <label className="block text-sm font-medium text-neutral-700">
+                      Email Address
+                    </label>
                     <input
                       type="email"
                       placeholder="Email Address"
@@ -486,7 +543,9 @@ const InstructorEnroll = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-neutral-700">Last Name</label>
+                    <label className="block text-sm font-medium text-neutral-700">
+                      Last Name
+                    </label>
                     <input
                       type="text"
                       placeholder="Last Name"
@@ -496,7 +555,9 @@ const InstructorEnroll = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-neutral-700">Student ID number</label>
+                    <label className="block text-sm font-medium text-neutral-700">
+                      Student ID number
+                    </label>
                     <input
                       type="text"
                       placeholder="ID Number"
@@ -506,7 +567,9 @@ const InstructorEnroll = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-neutral-700">Password</label>
+                    <label className="block text-sm font-medium text-neutral-700">
+                      Password
+                    </label>
                     <input
                       type="text"
                       readOnly
@@ -515,7 +578,9 @@ const InstructorEnroll = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-neutral-700">First Name</label>
+                    <label className="block text-sm font-medium text-neutral-700">
+                      First Name
+                    </label>
                     <input
                       type="text"
                       placeholder="First Name"
@@ -525,7 +590,9 @@ const InstructorEnroll = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-neutral-700">Select Role</label>
+                    <label className="block text-sm font-medium text-neutral-700">
+                      Select Role
+                    </label>
                     <select
                       value={form.role}
                       onChange={onChange("role")}
@@ -539,7 +606,9 @@ const InstructorEnroll = () => {
                     </select>
                   </div>
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-neutral-700">Middle Name</label>
+                    <label className="block text-sm font-medium text-neutral-700">
+                      Middle Name
+                    </label>
                     <input
                       type="text"
                       placeholder="Middle Name"
@@ -548,18 +617,31 @@ const InstructorEnroll = () => {
                       className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                     />
                   </div>
-                  {error && <div className="md:col-span-2 text-sm text-red-600">{error}</div>}
+                  {error && (
+                    <div className="md:col-span-2 text-sm text-red-600">
+                      {error}
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div className="px-6 pb-6 flex justify-end gap-3">
-                <button className="px-4 py-2 rounded-full border border-[#6A0F14] text-sm font-medium text-[#6A0F14] hover:bg-[#6A0F14]/10" onClick={() => setOpenAddUser(false)} disabled={saving}>
+                <button
+                  className="px-4 py-2 rounded-full border border-[#6A0F14] text-sm font-medium text-[#6A0F14] hover:bg-[#6A0F14]/10"
+                  onClick={() => setOpenAddUser(false)}
+                  disabled={saving}
+                >
                   Cancel
                 </button>
                 <button
                   className="px-6 py-2 rounded-full bg-[#6A0F14] text-sm font-medium text-white hover:bg-[#5c0d12] disabled:opacity-60"
                   onClick={handleSaveUser}
-                  disabled={saving || !form.email.trim() || !form.firstName.trim() || !form.lastName.trim()}
+                  disabled={
+                    saving ||
+                    !form.email.trim() ||
+                    !form.firstName.trim() ||
+                    !form.lastName.trim()
+                  }
                 >
                   {saving ? "Saving..." : "Save"}
                 </button>
@@ -571,31 +653,51 @@ const InstructorEnroll = () => {
 
       {/* Change password dialog (explains limitation + offers reset email) */}
       {pwdModal.open && pwdModal.user && (
-        <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" onClick={() => setPwdModal({ open: false, user: null })}>
+        <div
+          className="fixed inset-0 z-50"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setPwdModal({ open: false, user: null })}
+        >
           <div className="absolute inset-0 bg-black/40" />
-          <div className="relative z-10 flex items-center justify-center min-h-full p-4" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="relative z-10 flex items-center justify-center min-h-full p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-neutral-200">
               <div className="flex items-center justify-between px-6 py-4 border-b">
                 <div className="flex items-center gap-2 text-[#6A0F14]">
                   <KeyRound className="w-5 h-5" />
                   <h3 className="text-lg font-semibold">Manage Password</h3>
                 </div>
-                <button className="p-2 rounded-full hover:bg-neutral-100" onClick={() => setPwdModal({ open: false, user: null })}>
+                <button
+                  className="p-2 rounded-full hover:bg-neutral-100"
+                  onClick={() => setPwdModal({ open: false, user: null })}
+                >
                   <X className="w-5 h-5 text-neutral-600" />
                 </button>
               </div>
               <div className="px-6 py-5 space-y-3 text-sm text-neutral-700">
                 <p>
-                  For security, changing another user's password directly requires the Firebase <b>Admin SDK</b>.
-                  From the web app we can either:
+                  For security, changing another user's password directly
+                  requires the Firebase <b>Admin SDK</b>. From the web app we
+                  can either:
                 </p>
                 <ul className="list-disc pl-5">
-                  <li>Send a password reset email to <b>{pwdModal.user.email}</b>.</li>
-                  <li>Mark the account to <b>reset to default</b> on next successful login.</li>
+                  <li>
+                    Send a password reset email to <b>{pwdModal.user.email}</b>.
+                  </li>
+                  <li>
+                    Mark the account to <b>reset to default</b> on next
+                    successful login.
+                  </li>
                 </ul>
               </div>
               <div className="px-6 pb-6 flex justify-end gap-3">
-                <button className="px-4 py-2 rounded-full border border-neutral-300 text-sm text-neutral-700 hover:bg-neutral-100" onClick={() => sendResetEmail(pwdModal.user)}>
+                <button
+                  className="px-4 py-2 rounded-full border border-neutral-300 text-sm text-neutral-700 hover:bg-neutral-100"
+                  onClick={() => sendResetEmail(pwdModal.user)}
+                >
                   Send Reset Email
                 </button>
                 <button
