@@ -140,7 +140,7 @@ function getMonthMatrix(today = new Date()) {
 }
 
 /* -------------------- Page -------------------- */
-export default function MemberDashboard() {
+ function MemberDashboard() {
   const today = new Date();
   const monthWeeks = useMemo(() => getMonthMatrix(today), [today]);
   const monthName = today.toLocaleString("default", { month: "long" });
@@ -287,3 +287,5 @@ export default function MemberDashboard() {
     </div>
   );
 }
+
+export default MemberDashboard

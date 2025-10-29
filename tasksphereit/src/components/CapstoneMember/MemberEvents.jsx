@@ -90,7 +90,7 @@ const finalDefense = [
 ];
 
 /* ---------- page ---------- */
-export default function MemberEvents() {
+function MemberEvents() {
   return (
     <div className="p-6">
       <h2
@@ -256,3 +256,5 @@ export default function MemberEvents() {
     </div>
   );
 }
+
+export default MemberEvents

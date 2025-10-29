@@ -1,9 +1,10 @@
+// src/components/CapstoneMember/MemberAdviserTasks.jsx
 import React, { useState } from "react";
-import { Search, Filter, Eye } from "lucide-react";
+import { ClipboardList, Search, Filter, Eye } from "lucide-react";
 
 const MAROON = "#6A0F14";
 
-export default function MemberAdviserTasks() {
+ function MemberAdviserTasks() {
   const [rows, setRows] = useState([
     {
       id: 1,
@@ -37,41 +38,38 @@ export default function MemberAdviserTasks() {
   const statusOptions = ["To Do", "In Progress", "Complete"];
 
   const handleRevisionChange = (id, value) => {
-    setRows(
-      rows.map((row) => (row.id === id ? { ...row, revision: value } : row))
-    );
+    setRows(rows.map((row) => (row.id === id ? { ...row, revision: value } : row)));
   };
 
   const handleStatusChange = (id, value) => {
-    setRows(
-      rows.map((row) => (row.id === id ? { ...row, status: value } : row))
-    );
+    setRows(rows.map((row) => (row.id === id ? { ...row, status: value } : row)));
   };
 
   return (
-    <div className="p-4 md:p-6">
-      {/* Title */}
-      <div className="mb-3 flex items-center gap-2">
-        <span
-          className="inline-flex h-5 w-5 items-center justify-center rounded-full"
-          style={{ border: `2px solid ${MAROON}` }}
-        />
-        <h2
-          className="text-sm md:text-base font-semibold tracking-wide"
+    <div className="p-4 md:p-6 space-y-4">
+      {/* ===== Title + underline (matches PM Tasks design) ===== */}
+      <div className="space-y-2">
+        <div
+          className="flex items-center gap-2 text-[18px] font-semibold"
           style={{ color: MAROON }}
         >
-          Adviser Tasks
-        </h2>
+          <ClipboardList className="w-5 h-5" />
+          <span>Adviser Tasks</span>
+        </div>
+        <div className="h-[3px] w-full" style={{ backgroundColor: MAROON }} />
       </div>
 
       {/* Controls */}
-      <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3">
         <div className="relative w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
           <input
             type="text"
             placeholder="Search"
             className="w-full rounded-md border border-neutral-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-neutral-400"
+            style={{ boxShadow: `0 0 0 2px transparent` }}
+            onFocus={(e) => (e.target.style.boxShadow = `0 0 0 2px ${MAROON}33`)}
+            onBlur={(e) => (e.target.style.boxShadow = "0 0 0 2px transparent")}
           />
         </div>
         <button
@@ -106,10 +104,7 @@ export default function MemberAdviserTasks() {
             </thead>
             <tbody>
               {rows.map((r, i) => (
-                <tr
-                  key={r.id}
-                  className={i % 2 ? "bg-neutral-50/60" : "bg-white"}
-                >
+                <tr key={r.id} className={i % 2 ? "bg-neutral-50/60" : "bg-white"}>
                   <td className="px-4 py-3 text-neutral-600">{i + 1}.</td>
                   <td className="px-4 py-3">{r.assigned}</td>
                   <td className="px-4 py-3">{r.task}</td>
@@ -121,9 +116,7 @@ export default function MemberAdviserTasks() {
                   <td className="px-4 py-3">
                     <select
                       value={r.revision}
-                      onChange={(e) =>
-                        handleRevisionChange(r.id, e.target.value)
-                      }
+                      onChange={(e) => handleRevisionChange(r.id, e.target.value)}
                       className="w-full rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 outline-none focus:border-neutral-400"
                     >
                       {revisionOptions.map((option) => (
@@ -166,12 +159,10 @@ export default function MemberAdviserTasks() {
                   </td>
                 </tr>
               ))}
+
               {rows.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={13}
-                    className="px-4 py-10 text-center text-neutral-500"
-                  >
+                  <td colSpan={13} className="px-4 py-10 text-center text-neutral-500">
                     No adviser tasks found.
                   </td>
                 </tr>
@@ -183,3 +174,5 @@ export default function MemberAdviserTasks() {
     </div>
   );
 }
+
+export default MemberAdviserTasks
