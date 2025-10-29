@@ -10,28 +10,28 @@ const UPCOMING = [
     task: "Revise: Chapter 1",
     date: "Feb 2, 2025",
     time: "8:00 AM",
-    color: "#6A0F14", // yellow
+    color: "#D9A81E", // yellow
   },
   {
     team: "Bernardo, Et Al",
     task: "Prepare: Chapter 2",
     date: "Feb 2, 2025",
     time: "8:00 AM",
-    color: "#6A0F14",
+    color: "#D9A81E",
   },
   {
     team: "Aguas, Et Al",
     task: "Prepare: Chapter 3",
     date: "Feb 5, 2025",
     time: "8:00 AM",
-    color: "#6A0F14", // blue
+    color: "#6FA8DC", // blue
   },
   {
     team: "Mendoza, Et Al",
     task: "Prepare: Chapter 3",
     date: "Feb 5, 2025",
     time: "8:00 AM",
-    color: "#6A0F14", // green
+    color: "#7C9C3B", // green
   },
 ];
 

@@ -1,4 +1,7 @@
+// src/App.jsx
 import { Routes, Route, Navigate } from "react-router-dom";
+
+// Auth
 import LoginPage from "./components/auth/LoginPage.jsx";
 import ForgotPassword from "./components/auth/ForgotPassword.jsx";
 import ResetPassword from "./components/auth/resetPassword.jsx";
@@ -34,13 +37,20 @@ import MemberAdviserTasks from "./components/CapstoneMember/MemberAdviserTasks.j
 import MemberTasksBoard from "./components/CapstoneMember/MemberTasksBoard.jsx";
 import MemberTasksRecord from "./components/CapstoneMember/MemberTasksRecord.jsx";
 import MemberEvents from "./components/CapstoneMember/MemberEvents.jsx";
+
+// Project Manager
 import ProjectManagerLayout from "./components/ProjectManager/ProjectManagerLayout.jsx";
 import ProjectManagerDashboard from "./components/ProjectManager/ProjectManagerDashboard.jsx";
+import ProjectManagerAdviserTaskRecord from "./components/ProjectManager/ProjectManagerAdviserTaskRecord.jsx";
+import ProjectManagerTaskBoard from "./components/ProjectManager/ProjectManagerTaskBoard.jsx";
+import ProjectManagerEvents from "./components/ProjectManager/ProjectManagerEvents.jsx";
+import ProjectManagerTasks from "./components/ProjectManager/ProjectManagerTasks.jsx";
 
 export default function App() {
   return (
     <div className="min-h-screen font-sans">
       <Routes>
+        {/* Auth */}
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -53,10 +63,7 @@ export default function App() {
           <Route path="teams" element={<InstructorTeams />} />
           <Route path="schedule" element={<InstructorSchedule />} />
           <Route path="schedule/title-defense" element={<TitleDefense />} />
-          <Route
-            path="schedule/manuscript"
-            element={<ManuscriptSubmission />}
-          />
+          <Route path="schedule/manuscript" element={<ManuscriptSubmission />} />
           <Route path="schedule/oral-defense" element={<OralDefense />} />
           <Route path="schedule/final-defense" element={<FinalDefense />} />
         </Route>
@@ -77,6 +84,10 @@ export default function App() {
         <Route path="/projectmanager" element={<ProjectManagerLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<ProjectManagerDashboard />} />
+          <Route path="tasks-board" element={<ProjectManagerTaskBoard />} />
+          <Route path="tasks-record" element={<ProjectManagerAdviserTaskRecord />} />
+          <Route path="events" element={<ProjectManagerEvents />} />
+          <Route path="tasks" element={<ProjectManagerTasks />} />
         </Route>
         {/* Member section */}
         <Route path="/member" element={<MemberLayout />}>
@@ -88,7 +99,9 @@ export default function App() {
           <Route path="tasks-record" element={<MemberTasksRecord />} />
           <Route path="events" element={<MemberEvents />} />
         </Route>
+
         \{/* Fallback */}
+
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </div>
