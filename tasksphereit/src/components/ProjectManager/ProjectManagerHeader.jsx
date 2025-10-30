@@ -1,16 +1,8 @@
 import React from "react";
 import { Menu, Bell, User, NotebookText } from "lucide-react";
-
-
-export default function ProjectManagerHeader({ onOpenProfile }) {
-  return (
-    <header className="bg-white border-b border-neutral-200 shadow-sm">
-      <div className="flex items-center justify-between px-6 py-3">
-        {/* Left: (reserved for future) */}
-
 import { useNavigate } from "react-router-dom";
 
-const ProjectManagerHeader = () => {
+export default function ProjectManagerHeader({ onOpenProfile }) {
   const navigate = useNavigate();
 
   return (
@@ -23,11 +15,7 @@ const ProjectManagerHeader = () => {
           </button>
         </div>
 
-
         {/* Right: icons */}
-
-        {/* Right: notes, notifications, and profile */}
-
         <div className="flex items-center gap-4">
           <button
             className="p-2 rounded-full hover:bg-neutral-100 cursor-pointer"
