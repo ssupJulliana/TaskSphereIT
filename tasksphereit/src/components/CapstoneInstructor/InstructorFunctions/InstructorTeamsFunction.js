@@ -8,6 +8,9 @@ import {
   onSnapshot,
   serverTimestamp,
   updateDoc,
+  getDocs,
+  query,
+  where
 } from "firebase/firestore";
 
 /* ---------- helpers (exported in case you want them elsewhere) ---------- */
@@ -116,32 +119,88 @@ export function useInstructorTeams() {
 
   const removeMember = (uid) => setCtMemberIds((v) => v.filter((x) => x !== uid));
 
-  const saveCreateTeam = async () => {
-    const pm =
-      managers.find((m) => (m.uid || m.id) === ctManagerId) ||
-      availableManagers.find((m) => (m.uid || m.id) === ctManagerId);
-    if (!pm) return false;
+    const saveCreateTeam = async () => {
+        const pm =
+            managers.find((m) => (m.uid || m.id) === ctManagerId) ||
+            availableManagers.find((m) => (m.uid || m.id) === ctManagerId);
+        if (!pm) return false;
 
-    const pickedMembers = members.filter((m) => ctMemberIds.includes(m.uid || m.id));
+        const pickedMembers = members.filter((m) => ctMemberIds.includes(m.uid || m.id));
+        const teamName = (ctTeamName || `${pm.lastName}, Et Al`).trim();
 
-    await addDoc(collection(db, "teams"), {
-      name: ctTeamName || `${pm.lastName}, Et Al`,
-      manager: {
-        uid: pm.uid || pm.id,
-        fullName: pm.fullName,
-      },
-      memberUids: pickedMembers.map((m) => m.uid || m.id),
-      memberNames: pickedMembers.map((m) => m.fullName),
-      adviser: null,
-      createdAt: serverTimestamp(),
-    });
+        // 1) Create the team doc
+        const teamDocRef = await addDoc(collection(db, "teams"), {
+            name: teamName,
+            manager: {
+            uid: pm.uid || pm.id,
+            fullName: pm.fullName,
+            },
+            memberUids: pickedMembers.map((m) => m.uid || m.id),
+            memberNames: pickedMembers.map((m) => m.fullName),
+            adviser: null,
+            createdAt: serverTimestamp(),
+        });
 
-    // reset (UI can close modal based on returned true)
-    setCtManagerId("");
-    setCtTeamName("");
-    setCtMemberIds([]);
-    return true;
-  };
+        // 2) Create placeholder schedule/docs (Title Defense already existed; kept)
+        await Promise.all([
+            // Title Defense (existing pattern)
+            addDoc(collection(db, "titleDefenseSchedules"), {
+            teamId: teamDocRef.id,
+            teamName,
+            date: "",
+            timeStart: "",
+            timeEnd: "",
+            panelists: [],
+            verdict: "Pending",
+            createdAt: serverTimestamp(),
+            }),
+
+            // Manuscript Submissions (extra params)
+            addDoc(collection(db, "manuscriptSubmissions"), {
+            teamId: teamDocRef.id,
+            teamName,
+            title: "",
+            date: "",
+            time: "",
+            plag: 0,
+            ai: 0,
+            file: "",
+            verdict: "Pending",
+            createdAt: serverTimestamp(),
+            }),
+
+            // Oral Defense
+            addDoc(collection(db, "oralDefenseSchedules"), {
+            teamId: teamDocRef.id,
+            teamName,
+            date: "",
+            timeStart: "",
+            timeEnd: "",
+            panelists: [],
+            verdict: "Pending",
+            createdAt: serverTimestamp(),
+            }),
+
+            // Final Defense
+            addDoc(collection(db, "finalDefenseSchedules"), {
+            teamId: teamDocRef.id,
+            teamName,
+            date: "",
+            timeStart: "",
+            timeEnd: "",
+            panelists: [],
+            verdict: "Pending",
+            createdAt: serverTimestamp(),
+            }),
+        ]);
+
+        // 3) reset UI state
+        setCtManagerId("");
+        setCtTeamName("");
+        setCtMemberIds([]);
+        return true;
+    };
+
 
   const saveAssign = async () => {
     if (!asTeamId || !asAdviserUid) return false;
@@ -161,10 +220,37 @@ export function useInstructorTeams() {
     return true;
   };
 
-  const dissolveTeam = async (teamId) => {
+    const dissolveTeam = async (teamId) => {
+  try {
+    // 1) Delete the team document
     await deleteDoc(doc(db, "teams", teamId));
-    setMenuOpenId(null);
-  };
+
+    // 2) Delete related schedules from all the necessary collections
+    const collectionsToDelete = [
+      "titleDefenseSchedules",
+      "manuscriptSubmissions",
+      "oralDefenseSchedules",
+      "finalDefenseSchedules"
+    ];
+
+    // 2.1) Loop through each collection and delete documents that contain teamId as a field
+    await Promise.all(
+      collectionsToDelete.map(async (collectionName) => {
+        const snapshot = await getDocs(
+          query(collection(db, collectionName), where("teamId", "==", teamId))
+        );
+        snapshot.forEach((doc) => deleteDoc(doc.ref)); // delete each matched document
+      })
+    );
+
+    setMenuOpenId(null); // Close the team menu after dissolution
+  } catch (err) {
+    console.error("Failed to dissolve team:", err);
+    alert("Failed to dissolve team. See console for details.");
+  }
+};
+
+
 
   /* === NEW: edit team (rename / change PM / members) === */
   const editTeam = async (teamId, { managerUid, teamName, memberUids }) => {
