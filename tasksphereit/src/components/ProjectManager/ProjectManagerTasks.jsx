@@ -12,7 +12,7 @@ import PMTitleDefense from "./tasks/TitleDefense.jsx";
 import PMOralDefense from "./tasks/OralDefense.jsx";
 import PMFinalDefense from "./tasks/FinalDefense.jsx";
 import PMFinalRedefense from "./tasks/FinalRedefense.jsx";
-import PMAllocation from "./tasks/Allocation.jsx";
+
 
 const MAROON = "#6A0F14";
 
@@ -22,7 +22,7 @@ const CARDS = [
   { key: "oral",       label: "Oral Defense",      icon: CalendarRange },
   { key: "final",      label: "Final Defense",     icon: CalendarRange },
   { key: "redefense",  label: "Final Re-Defense",  icon: CalendarRange },
-  { key: "allocation", label: "Tasks Allocation",  icon: UsersIcon },
+  
 ];
 
 /* --------------------------- Local view renderer -------------------------- */
@@ -31,7 +31,7 @@ const VIEW_COMPONENT = {
   oral: PMOralDefense,
   final: PMFinalDefense,
   redefense: PMFinalRedefense,
-  allocation: PMAllocation,
+  
 };
 
 function TaskCard({ label, icon: Icon, onClick }) {
