@@ -25,7 +25,7 @@ import TaskRecord from "./components/CapstoneAdviser/TaskRecord.jsx";
 import TeamsBoard from "./components/CapstoneAdviser/TeamsBoard.jsx";
 import TeamsSummary from "./components/CapstoneAdviser/TeamsSummary.jsx";
 import Events from "./components/CapstoneAdviser/Events.jsx";
-import Notes from "./components/CapstoneAdviser/Notes.jsx";
+import Notes from "./components/Notes.jsx";
 import Notifications from "./components/CapstoneAdviser/Notifications.jsx";
 import Profile from "./components/CapstoneAdviser/Profile.jsx";
 
@@ -106,6 +106,7 @@ export default function App() {
           />
           <Route path="events" element={<ProjectManagerEvents />} />
           <Route path="tasks" element={<ProjectManagerTasks />} />
+          <Route path="notes" element={<Notes />} />
         </Route>
         {/* Member section */}
         <Route path="/member" element={<MemberLayout />}>
@@ -116,6 +117,7 @@ export default function App() {
           <Route path="tasks-board" element={<MemberTasksBoard />} />
           <Route path="tasks-record" element={<MemberTasksRecord />} />
           <Route path="events" element={<MemberEvents />} />
+          <Route path="notes" element={<Notes />} />
         </Route>
         \{/* Fallback */}
         <Route path="*" element={<Navigate to="/login" replace />} />

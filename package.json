@@ -1,5 +1,8 @@
 {
   "dependencies": {
+    "lodash": "^4.17.21",
+    "quill": "2.0.0",
+    "react-quill": "2.0.0",
     "recharts": "^3.3.0"
   }
 }
