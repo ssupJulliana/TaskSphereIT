@@ -3,7 +3,7 @@ import { Menu, Bell, User, NotebookText } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 export default function ProjectManagerHeader({ onOpenProfile }) {
-  const navigate = useNavigate();
+  const navigate = useNavigate(); // sample usage of useNavigate
 
   return (
     <header className="bg-white border-b border-neutral-200 shadow-sm">
