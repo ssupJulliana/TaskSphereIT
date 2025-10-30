@@ -1,47 +1,137 @@
 // src/components/TermsofService.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { auth } from "../config/firebase";
+import { auth, db } from "../config/firebase";
+import {
+  collection,
+  query,
+  where,
+  limit,
+  getDocs,
+  doc,
+  onSnapshot,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 
 const MAROON = "#6A0F14";
 const TOS_VERSION = "2025-05-09"; // bump to force re-consent after edits
 
-function TermsofService() {
+export default function TermsofService() {
   const navigate = useNavigate();
   const loc = useLocation();
+
   const [uid, setUid] = useState(null);
+  const [docId, setDocId] = useState(null);
+  const [role, setRole] = useState(null);
   const [show, setShow] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const fromRoute = useMemo(() => loc.state?.from ?? null, [loc.state]);
 
-  const storageKey = useMemo(
-    () => (uid ? `tsit_tos:${TOS_VERSION}:${uid}` : null),
-    [uid]
-  );
+  const unsubRef = useRef(null);
 
+  const routeForRole = (r) => {
+    if (r === "Adviser") return "/adviser/dashboard";
+    if (r === "Member") return "/member/dashboard";
+    if (r === "Project Manager") return "/projectmanager/dashboard";
+    return "/instructor/dashboard";
+  };
+
+  // watch auth
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUid(u?.uid ?? null));
     return () => unsub();
   }, []);
 
+  // resolve user doc & LIVE subscribe so UI updates immediately after Accept
   useEffect(() => {
-    if (!uid) { setShow(false); return; }
-    const accepted = storageKey && localStorage.getItem(storageKey) === "1";
-    const onTosRoute = loc.pathname === "/terms-of-service";
-    setShow(onTosRoute || !accepted);
-  }, [uid, storageKey, loc.pathname]);
+    (async () => {
+      if (!uid) {
+        setShow(false);
+        setLoading(false);
+        return;
+      }
 
-  const accept = () => {
-    if (storageKey) localStorage.setItem(storageKey, "1");
-    setShow(false);
-    if (loc.pathname === "/terms-of-service") navigate(-1);
+      const usersRef = collection(db, "users");
+      const byUid = query(usersRef, where("uid", "==", uid), limit(1));
+      const snap = await getDocs(byUid);
+
+      if (snap.empty) {
+        await signOut(auth);
+        navigate("/login", { replace: true });
+        return;
+      }
+
+      const d = snap.docs[0];
+      setDocId(d.id);
+      setRole(d.data()?.role || null);
+
+      // clean previous listener if any
+      if (unsubRef.current) unsubRef.current();
+
+      unsubRef.current = onSnapshot(doc(db, "users", d.id), async (ds) => {
+        const data = ds.data() || {};
+
+        // ensure the boolean exists (default false)
+        if (typeof data.isTosAccepted !== "boolean") {
+          await updateDoc(ds.ref, {
+            isTosAccepted: false,
+            tosVersion: null,
+            tosAcceptedAt: null,
+            updatedAt: serverTimestamp(),
+          });
+          return;
+        }
+
+        const accepted = data.isTosAccepted === true;
+
+        if (accepted) {
+          setShow(false);
+          // if we're sitting on /terms-of-service, bounce to where we came from or role default
+          if (loc.pathname === "/terms-of-service") {
+            navigate(fromRoute || routeForRole(data.role), { replace: true });
+          }
+        } else {
+          setShow(true);
+        }
+
+        setLoading(false);
+      });
+    })();
+
+    return () => {
+      if (unsubRef.current) unsubRef.current();
+    };
+    // re-evaluate when auth changes or route changes
+  }, [uid, loc.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const accept = async () => {
+    if (!docId) return;
+    try {
+      await updateDoc(doc(db, "users", docId), {
+        isTosAccepted: true,
+        tosVersion: TOS_VERSION,
+        tosAcceptedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      // make it vanish immediately (listener will also confirm)
+      setShow(false);
+      navigate(fromRoute || routeForRole(role), { replace: true });
+    } catch (e) {
+      console.error("Accept TOS error:", e);
+    }
   };
 
   const decline = async () => {
-    if (storageKey) localStorage.removeItem(storageKey);
-    try { await signOut(auth); } finally { navigate("/login", { replace: true }); }
+    try {
+      await signOut(auth);
+    } finally {
+      navigate("/login", { replace: true });
+    }
   };
 
-  if (!show) return null;
+  if (!show || loading) return null;
 
   return (
     <div
@@ -51,7 +141,7 @@ function TermsofService() {
       aria-labelledby="tos-title"
     >
       <div className="bg-white w-[min(960px,92vw)] max-h-[85vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
-        {/* Header (fixed) */}
+        {/* Header */}
         <div className="px-6 py-4" style={{ backgroundColor: MAROON }}>
           <h2 id="tos-title" className="text-white text-xl font-semibold">Terms of Service</h2>
           <p className="text-white/90 text-xs">
@@ -77,23 +167,23 @@ function TermsofService() {
                 <p className="mt-3">All users are expected to use the system ethically and responsibly.</p>
               </>],
             ["3. Account Security",
-              "You are responsible for safeguarding your login credentials. Report any unauthorized use immediately to your Capstone Instructor. Some accounts (e.g., Project Manager, Member) require in-person password reset requests."],
+              "You are responsible for safeguarding your login credentials. Report any unauthorized use immediately to your Capstone Instructor."],
             ["4. Privacy and Data Protection",
-              "TaskSphere IT collects and stores data relevant to academic and task progress. Data is managed securely and used solely for system functionality. Users must not misuse or distribute any data obtained through the system."],
+              "TaskSphere IT collects and stores data relevant to academic and task progress. Data is managed securely and used solely for system functionality."],
             ["5. Prohibited Activities",
-              "Users agree not to tamper with functionalities; use the system for illegal/unauthorized purposes; upload malicious/offensive content; or misrepresent roles or academic data."],
+              "Do not tamper with functionalities; use the system for illegal/unauthorized purposes; upload malicious/offensive content; or misrepresent roles or academic data."],
             ["6. Intellectual Property",
               "All system content (templates, UI, schedules, software) is TaskSphere IT property. Access is limited to educational use; copying or repurposing is prohibited."],
             ["7. System Access and Termination",
-              "Accounts may be suspended/terminated for violations, abuse, or compromising security/academic integrity. Access to account data may be lost permanently upon termination."],
+              "Accounts may be suspended/terminated for violations, abuse, or compromising security/academic integrity."],
             ["8. Changes to Terms or System",
               "TaskSphere IT may modify these Terms at any time. Notice will be provided in-system or via email. Continued use indicates acceptance."],
             ["9. Limitation of Liability",
-              "Not liable for data loss due to user error/technical malfunction; missed deadlines from non-use; or security breaches due to negligence. Provided “as is” without warranties."],
+              "Provided “as is” without warranties; not liable for losses due to misuse, outages, or user error."],
             ["10. Indemnification",
-              "You agree to hold harmless TaskSphere IT, its developers, instructors, and affiliates from claims/damages resulting from misuse or breach of these Terms."],
+              "You agree to hold harmless TaskSphere IT, its developers, instructors, and affiliates from claims/damages from misuse or breach."],
             ["11. Governing Law and Dispute Resolution",
-              "Governed by the laws of the Republic of the Philippines; disputes under the jurisdiction of courts in Capas, Tarlac, Philippines."],
+              "Republic of the Philippines; courts in Capas, Tarlac."],
             ["12. Contact Information",
               "Email: tasksphereit@gmail.com • Location: Capas, Tarlac, Philippines"],
           ].map(([title, content], i) => (
@@ -105,7 +195,7 @@ function TermsofService() {
           ))}
         </div>
 
-        {/* Footer (fixed at bottom) */}
+        {/* Footer */}
         <div className="p-4 border-t bg-neutral-50 flex items-center justify-end gap-3 shrink-0">
           <button
             onClick={decline}
@@ -125,5 +215,3 @@ function TermsofService() {
     </div>
   );
 }
-
-export default TermsofService
