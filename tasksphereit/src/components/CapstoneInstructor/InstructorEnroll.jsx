@@ -1,5 +1,5 @@
 // src/components/CapstoneInstructor/InstructorEnroll.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronRight,
   Download,
@@ -12,8 +12,9 @@ import {
   Trash2,
   Undo2,
   KeyRound,
-  CheckSquare,
 } from "lucide-react";
+
+import ExcelJS from "exceljs"; // read Excel + images in browser
 
 import { auth, db } from "../../config/firebase";
 import {
@@ -37,6 +38,8 @@ import {
 const DEFAULT_PASSWORD = "UserUser321";
 const ROLES = ["Adviser", "Project Manager", "Member"];
 const DEFAULT_IMAGE_URL = "None";
+
+const MAROON = "#6A0F14";
 
 const InstructorEnroll = () => {
   // role filter
@@ -76,7 +79,208 @@ const InstructorEnroll = () => {
   const onChange = (key) => (e) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
 
-  // live query by role
+  // ---------- IMPORT (Excel) ----------
+  const fileRef = useRef(null);
+  const [importState, setImportState] = useState({
+    open: false,
+    rows: [], // [{idNumber, lastName, firstName, middleName, email, role, imageDataUrl, _select}]
+    parsing: false,
+    saving: false,
+    err: "",
+  });
+
+  const triggerImport = () => fileRef.current?.click();
+
+  const parseExcel = async (file) => {
+    try {
+      setImportState((p) => ({ ...p, parsing: true, err: "" }));
+      const buf = await file.arrayBuffer();
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(buf);
+      const ws = wb.worksheets[0];
+      if (!ws) throw new Error("No worksheet found in file.");
+
+      // Map images to approximate row (top-left of image)
+      const imageByRow = {};
+      const imgs = ws.getImages();
+      imgs.forEach(({ imageId, range }) => {
+        const meta = wb.getImage(imageId);
+        if (!meta?.base64) return;
+        const tlRow = Math.ceil(range.tl.row || 1);
+        const ext = meta.extension || "png";
+        const dataUrl = `data:image/${ext};base64,${meta.base64}`;
+        if (!imageByRow[tlRow]) imageByRow[tlRow] = dataUrl;
+      });
+
+      // Find header row (first non-empty row)
+      let headerRowIdx = 1;
+      for (let r = 1; r <= ws.actualRowCount; r++) {
+        const row = ws.getRow(r);
+        const hasAny = row.values.some((v) => (typeof v === "string" ? v.trim() : v));
+        if (hasAny) {
+          headerRowIdx = r;
+          break;
+        }
+      }
+
+      const headerRow = ws.getRow(headerRowIdx);
+      const headers = {};
+      headerRow.eachCell((cell, colNumber) => {
+        const key = String(cell.value || "").toLowerCase().trim();
+        headers[colNumber] = key;
+      });
+
+      // helper to get by header name softly
+      const colIndexOf = (names) => {
+        const want = names.map((n) => n.toLowerCase());
+        const pair = Object.entries(headers).find(([, v]) =>
+          want.includes(v)
+        );
+        return pair ? Number(pair[0]) : null;
+      };
+
+      const colId = colIndexOf(["id number", "student id", "id"]);
+      const colLast = colIndexOf(["last name", "lastname", "surname"]);
+      const colFirst = colIndexOf(["first name", "firstname", "given name"]);
+      const colMid = colIndexOf([
+        "middle initial",
+        "middle name",
+        "middlename",
+        "mi",
+      ]);
+      const colEmail = colIndexOf(["email", "email address"]);
+      const colRole = colIndexOf(["role"]);
+
+      if (!colId || !colLast || !colFirst) {
+        throw new Error(
+          "Missing required headers. Need at least: ID Number, Last Name, First Name."
+        );
+      }
+
+      const out = [];
+      for (let r = headerRowIdx + 1; r <= ws.actualRowCount; r++) {
+        const row = ws.getRow(r);
+        const idNumber = String(row.getCell(colId).value || "").trim();
+        const lastName = String(row.getCell(colLast).value || "").trim();
+        const firstName = String(row.getCell(colFirst).value || "").trim();
+        const middleName = colMid
+          ? String(row.getCell(colMid).value || "").trim()
+          : "";
+        const email = colEmail
+          ? String(row.getCell(colEmail).value || "").trim()
+          : "";
+        const role = colRole
+          ? String(row.getCell(colRole).value || "").trim()
+          : selectedRole;
+
+        if (!idNumber && !lastName && !firstName && !email) continue;
+
+        const imageDataUrl = imageByRow[r] || null;
+
+        out.push({
+          idNumber,
+          lastName,
+          firstName,
+          middleName,
+          email,
+          role: role || selectedRole,
+          imageDataUrl,
+          _select: true,
+          _row: r,
+        });
+      }
+
+      if (out.length === 0) throw new Error("No data rows found.");
+
+      // de-dup within file by (idNumber + email)
+      const seen = new Set();
+      const deduped = out.filter((x) => {
+        const key = `${x.idNumber}::${x.email}`.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      setImportState({
+        open: true,
+        rows: deduped,
+        parsing: false,
+        saving: false,
+        err: "",
+      });
+    } catch (e) {
+      setImportState({
+        open: true,
+        rows: [],
+        parsing: false,
+        saving: false,
+        err:
+          e?.message ||
+          "Failed to read the Excel file. Ensure it's .xlsx and has headers.",
+      });
+    } finally {
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const handleImportChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ok =
+      file.type ===
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+      file.name.toLowerCase().endsWith(".xlsx");
+    if (!ok) {
+      setImportState({
+        open: true,
+        rows: [],
+        parsing: false,
+        saving: false,
+        err: "Please select a .xlsx Excel file.",
+      });
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+    parseExcel(file);
+  };
+
+  const saveImportedRows = async () => {
+    const rows = importState.rows.filter((r) => r._select);
+    if (rows.length === 0) {
+      setImportState((p) => ({ ...p, err: "Nothing selected to save." }));
+      return;
+    }
+    setImportState((p) => ({ ...p, saving: true, err: "" }));
+    try {
+      // Save to Firestore (Auth creation intentionally skipped here)
+      for (const r of rows) {
+        await addDoc(collection(db, "users"), {
+          uid: null,
+          email: r.email || null,
+          idNumber: r.idNumber || "",
+          firstName: r.firstName || "",
+          lastName: r.lastName || "",
+          middleName: r.middleName || "",
+          role: selectedRole, // stick to current tab/role
+          imageUrl: DEFAULT_IMAGE_URL, // photo not required
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          mustChangePassword: false,
+          forceDefaultPassword: false,
+        });
+      }
+      setImportState({ open: false, rows: [], parsing: false, saving: false, err: "" });
+      // live query will auto refresh the table
+    } catch (e) {
+      setImportState((p) => ({
+        ...p,
+        saving: false,
+        err: e?.message || "Failed to save imported records.",
+      }));
+    }
+  };
+
+  // ---------- live query by role ----------
   useEffect(() => {
     setLoadingList(true);
     setSelectedIds([]); // clear selections on role switch
@@ -118,14 +322,12 @@ const InstructorEnroll = () => {
     setError("");
     setSaving(true);
     try {
-      // 1) Auth
       const cred = await createUserWithEmailAndPassword(
         auth,
         form.email.trim(),
         DEFAULT_PASSWORD
       );
 
-      // 2) Firestore (include imageUrl: "None")
       await addDoc(collection(db, "users"), {
         uid: cred.user.uid,
         email: form.email.trim(),
@@ -134,13 +336,12 @@ const InstructorEnroll = () => {
         lastName: form.lastName.trim(),
         middleName: form.middleName.trim(),
         role: form.role,
-        imageUrl: DEFAULT_IMAGE_URL, // <-- NEW
+        imageUrl: DEFAULT_IMAGE_URL,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         mustChangePassword: true,
       });
 
-      // reset + close
       setForm({
         email: "",
         lastName: "",
@@ -167,7 +368,6 @@ const InstructorEnroll = () => {
   // ===== row actions =====
 
   const deleteAndBlock = async (u) => {
-    // move to blockedUsers and remove from users
     try {
       const fromRef = doc(db, "users", u.id);
       const snap = await getDoc(fromRef);
@@ -177,7 +377,6 @@ const InstructorEnroll = () => {
       await setDoc(doc(db, "blockedUsers", u.id), {
         ...data,
         blockedAt: serverTimestamp(),
-        // include both uid and email for sign-in checks
         uid: data.uid || null,
         email: data.email || null,
       });
@@ -206,11 +405,12 @@ const InstructorEnroll = () => {
 
   const sendResetEmail = async (u) => {
     try {
+      if (!u?.email) throw new Error("No email on record.");
       await sendPasswordResetEmail(auth, u.email);
       alert(`Password reset email sent to ${u.email}.`);
     } catch (e) {
       console.error(e);
-      alert("Failed to send reset email.");
+      alert(e?.message || "Failed to send reset email.");
     }
   };
 
@@ -257,6 +457,15 @@ const InstructorEnroll = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-neutral-50">
+      {/* hidden file input for Excel */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        className="hidden"
+        onChange={handleImportChange}
+      />
+
       <main className="flex-1 flex flex-col px-6 md:px-10 py-6">
         {/* Breadcrumb & top actions */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -291,7 +500,10 @@ const InstructorEnroll = () => {
                   <Download className="w-4 h-4" />
                   Download
                 </button>
-                <button className="flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100">
+                <button
+                  onClick={triggerImport}
+                  className="flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
+                >
                   <Upload className="w-4 h-4" />
                   Import
                 </button>
@@ -430,7 +642,6 @@ const InstructorEnroll = () => {
                             <MoreVertical className="w-4 h-4 text-neutral-500" />
                           </button>
 
-                          {/* tiny menu */}
                           {openMenuId === u.id && (
                             <div className="absolute right-0 top-full mt-2 z-50 w-52 bg-white border border-neutral-200 rounded-xl shadow-xl">
                               <button
@@ -441,17 +652,7 @@ const InstructorEnroll = () => {
                                 }}
                               >
                                 <KeyRound className="w-4 h-4 text-[#6A0F14]" />
-                                Change Password
-                              </button>
-                              <button
-                                className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-neutral-50"
-                                onClick={() => {
-                                  resetToDefault(u);
-                                  setOpenMenuId(null);
-                                }}
-                              >
-                                <Undo2 className="w-4 h-4 text-[#6A0F14]" />
-                                Reset to Default
+                                Manage Password
                               </button>
                               <button
                                 className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-neutral-50 text-red-700"
@@ -651,7 +852,7 @@ const InstructorEnroll = () => {
         </div>
       )}
 
-      {/* Change password dialog (explains limitation + offers reset email) */}
+      {/* Manage password dialog */}
       {pwdModal.open && pwdModal.user && (
         <div
           className="fixed inset-0 z-50"
@@ -677,23 +878,7 @@ const InstructorEnroll = () => {
                   <X className="w-5 h-5 text-neutral-600" />
                 </button>
               </div>
-              <div className="px-6 py-5 space-y-3 text-sm text-neutral-700">
-                <p>
-                  For security, changing another user's password directly
-                  requires the Firebase <b>Admin SDK</b>. From the web app we
-                  can either:
-                </p>
-                <ul className="list-disc pl-5">
-                  <li>
-                    Send a password reset email to <b>{pwdModal.user.email}</b>.
-                  </li>
-                  <li>
-                    Mark the account to <b>reset to default</b> on next
-                    successful login.
-                  </li>
-                </ul>
-              </div>
-              <div className="px-6 pb-6 flex justify-end gap-3">
+              <div className="px-6 pb-6 flex justify-end gap-3 pt-5">
                 <button
                   className="px-4 py-2 rounded-full border border-neutral-300 text-sm text-neutral-700 hover:bg-neutral-100"
                   onClick={() => sendResetEmail(pwdModal.user)}
@@ -708,6 +893,165 @@ const InstructorEnroll = () => {
                   }}
                 >
                   Reset to Default
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* === Import Preview Modal (only the 4 columns) === */}
+      {importState.open && (
+        <div
+          className="fixed inset-0 z-50"
+          role="dialog"
+          aria-modal="true"
+          onClick={() =>
+            !importState.saving &&
+            setImportState((p) => ({ ...p, open: false, rows: [], err: "" }))
+          }
+        >
+          <div className="absolute inset-0 bg-black/40" />
+          <div
+            className="relative z-10 flex items-center justify-center min-h-full p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-neutral-200">
+              <div className="flex items-center justify-between px-6 py-4 border-b">
+                <div className="flex items-center gap-2 text-[#6A0F14]">
+                  <Upload className="w-5 h-5" />
+                  <h3 className="text-lg font-semibold">
+                    Import Preview ({importState.rows.length})
+                  </h3>
+                </div>
+                <button
+                  className="p-2 rounded-full hover:bg-neutral-100"
+                  onClick={() =>
+                    !importState.saving &&
+                    setImportState((p) => ({
+                      ...p,
+                      open: false,
+                      rows: [],
+                      err: "",
+                    }))
+                  }
+                >
+                  <X className="w-5 h-5 text-neutral-600" />
+                </button>
+              </div>
+
+              <div className="px-6 py-5">
+                {importState.err && (
+                  <div className="mb-4 text-sm text-red-600">
+                    {importState.err}
+                  </div>
+                )}
+
+                {importState.parsing ? (
+                  <div className="py-10 text-center text-sm text-neutral-600">
+                    Reading file…
+                  </div>
+                ) : importState.rows.length === 0 ? (
+                  <div className="py-10 text-center text-sm text-neutral-600">
+                    No rows found.
+                  </div>
+                ) : (
+                  <div className="border border-neutral-200 rounded-xl overflow-hidden">
+                    <table className="min-w-full divide-y divide-neutral-200">
+                      <thead className="bg-neutral-100">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-700">
+                            <input
+                              type="checkbox"
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setImportState((p) => ({
+                                  ...p,
+                                  rows: p.rows.map((r) => ({
+                                    ...r,
+                                    _select: checked,
+                                  })),
+                                }));
+                              }}
+                              checked={
+                                importState.rows.every((r) => r._select) &&
+                                importState.rows.length > 0
+                              }
+                              ref={(el) =>
+                                el &&
+                                (el.indeterminate =
+                                  importState.rows.some((r) => r._select) &&
+                                  !importState.rows.every((r) => r._select))
+                              }
+                            />
+                          </th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-700">
+                            ID Number
+                          </th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-700">
+                            Last Name
+                          </th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-700">
+                            First Name
+                          </th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-700">
+                            Middle Initial
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-neutral-200">
+                        {importState.rows.map((r, i) => (
+                          <tr key={i}>
+                            <td className="px-3 py-2">
+                              <input
+                                type="checkbox"
+                                checked={!!r._select}
+                                onChange={() =>
+                                  setImportState((p) => {
+                                    const rows = [...p.rows];
+                                    rows[i] = { ...rows[i], _select: !r._select };
+                                    return { ...p, rows };
+                                  })
+                                }
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-sm">{r.idNumber}</td>
+                            <td className="px-3 py-2 text-sm">{r.lastName}</td>
+                            <td className="px-3 py-2 text-sm">{r.firstName}</td>
+                            <td className="px-3 py-2 text-sm">
+                              {r.middleName
+                                ? `${r.middleName[0].toUpperCase()}.`
+                                : ""}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-6 pb-6 flex justify-end gap-3">
+                <button
+                  className="px-4 py-2 rounded-full border border-[#6A0F14] text-sm font-medium text-[#6A0F14] hover:bg-[#6A0F14]/10 disabled:opacity-60"
+                  onClick={() =>
+                    setImportState((p) => ({
+                      ...p,
+                      open: false,
+                      rows: [],
+                      err: "",
+                    }))
+                  }
+                  disabled={importState.saving}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="px-6 py-2 rounded-full bg-[#6A0F14] text-sm font-medium text-white hover:bg-[#5c0d12] disabled:opacity-60"
+                  onClick={saveImportedRows}
+                  disabled={importState.saving || importState.parsing}
+                >
+                  {importState.saving ? "Saving…" : "Save and Enroll"}
                 </button>
               </div>
             </div>

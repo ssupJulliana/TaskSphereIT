@@ -1,10 +1,12 @@
-// src/App.jsx
+import React, { useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
+import TermsofService from "./components/TermsofService.jsx";
 
 // Auth
 import LoginPage from "./components/auth/LoginPage.jsx";
 import ForgotPassword from "./components/auth/ForgotPassword.jsx";
 import ResetPassword from "./components/auth/resetPassword.jsx";
+
 
 // Instructor
 import InstructorLayout from "./components/CapstoneInstructor/InsturctorLayout.jsx";
@@ -25,7 +27,7 @@ import TaskRecord from "./components/CapstoneAdviser/TaskRecord.jsx";
 import TeamsBoard from "./components/CapstoneAdviser/TeamsBoard.jsx";
 import TeamsSummary from "./components/CapstoneAdviser/TeamsSummary.jsx";
 import Events from "./components/CapstoneAdviser/Events.jsx";
-import Notes from "./components/CapstoneAdviser/Notes.jsx";
+import Notes from "./components/Notes.jsx";
 import Notifications from "./components/CapstoneAdviser/Notifications.jsx";
 import Profile from "./components/CapstoneAdviser/Profile.jsx";
 
@@ -47,14 +49,33 @@ import ProjectManagerEvents from "./components/ProjectManager/ProjectManagerEven
 import ProjectManagerTasks from "./components/ProjectManager/ProjectManagerTasks.jsx";
 
 export default function App() {
+  useEffect(() => {
+    const href = window.location.href;
+    const u = new URL(href);
+    const mode = u.searchParams.get("mode");
+
+    // If the email client dropped you on the wrong page,
+    // shove any sign-in link to /verify-invite (keep the full query string)
+    if (mode === "signIn" && !href.includes("/verify-invite")) {
+      window.location.replace(`/verify-invite${u.search}`);
+    }
+  }, []);
+
   return (
     <div className="min-h-screen font-sans">
+      {/* Mount globally so it can auto-pop after login and hide once accepted */}
+      <TermsofService />
+
       <Routes>
         {/* Auth */}
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+
+        {/* Direct route to open TOS explicitly if needed */}
+        <Route path="/terms-of-service" element={<TermsofService />} />
+
         {/* Instructor section */}
         <Route path="/instructor" element={<InstructorLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
@@ -67,6 +88,7 @@ export default function App() {
           <Route path="schedule/oral-defense" element={<OralDefense />} />
           <Route path="schedule/final-defense" element={<FinalDefense />} />
         </Route>
+
         {/* Adviser section */}
         <Route path="/adviser" element={<AdviserLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
@@ -80,6 +102,7 @@ export default function App() {
           <Route path="notifications" element={<Notifications />} />
           <Route path="profile" element={<Profile />} />
         </Route>
+
         {/* Project Manager section */}
         <Route path="/projectmanager" element={<ProjectManagerLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
@@ -88,7 +111,9 @@ export default function App() {
           <Route path="tasks-record" element={<ProjectManagerAdviserTaskRecord />} />
           <Route path="events" element={<ProjectManagerEvents />} />
           <Route path="tasks" element={<ProjectManagerTasks />} />
+          <Route path="notes" element={<Notes />} />
         </Route>
+
         {/* Member section */}
         <Route path="/member" element={<MemberLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
@@ -98,10 +123,10 @@ export default function App() {
           <Route path="tasks-board" element={<MemberTasksBoard />} />
           <Route path="tasks-record" element={<MemberTasksRecord />} />
           <Route path="events" element={<MemberEvents />} />
+          <Route path="notes" element={<Notes />} />
         </Route>
 
-        \{/* Fallback */}
-
+        {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </div>

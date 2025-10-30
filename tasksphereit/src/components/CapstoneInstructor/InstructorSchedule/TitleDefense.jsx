@@ -3,8 +3,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Search,
-  Plus,
-  PlusCircle,
   Download,
   MoreVertical,
   Calendar as CalIcon,
@@ -14,6 +12,7 @@ import {
   ChevronRight,
   User2,
   X,
+  PlusCircle,
 } from "lucide-react";
 
 /* ===== Firestore ===== */
@@ -21,12 +20,12 @@ import { db } from "../../../config/firebase";
 import {
   collection,
   getDocs,
-  addDoc,
-  serverTimestamp,
   doc,
   getDoc,
   updateDoc,
   deleteDoc,
+  query,
+  where,
 } from "firebase/firestore";
 
 const MAROON = "#6A0F14";
@@ -38,15 +37,23 @@ const fmtDate = (yyyy_mm_dd) => {
   const [y,m,d] = yyyy_mm_dd.split("-");
   return `${MONTHS[Number(m) - 1]} ${Number(d)}, ${y}`;
 };
+
 const fmtTimeRange = (start, end) => {
+  const isBlankish = (v) => v == null || ["", "-", "—", "——"].includes(String(v).trim());
   const to12h = (t) => {
-    if (!t) return "";
-    const [H, M] = t.split(":").map(Number);
+    if (isBlankish(t)) return "";
+    const [H, M] = String(t).split(":").map(Number);
+    if (Number.isNaN(H) || Number.isNaN(M)) return "";
     const ampm = H >= 12 ? "PM" : "AM";
     const hh = ((H + 11) % 12) + 1;
-    return `${hh}:${String(M).padStart(2,"0")} ${ampm}`;
+    return `${hh}:${String(M).padStart(2, "0")} ${ampm}`;
   };
-  return `${to12h(start)} - ${to12h(end)}`;
+  const a = to12h(start);
+  const b = to12h(end);
+  if (!a && !b) return "";
+  if (a && !b) return `${a} —`;
+  if (!a && b) return `— ${b}`;
+  return `${a} - ${b}`;
 };
 
 /* ------------------------- small button ------------------------- */
@@ -83,8 +90,7 @@ const Breadcrumbs = () => {
 };
 
 export default function TitleDefense() {
-  const [showCreate, setShowCreate] = useState(false);
-  const [query, setQuery] = useState("");
+  const [queryText, setQueryText] = useState("");
 
   const [editSchedule, setEditSchedule] = useState(null);
   const [viewSchedule, setViewSchedule] = useState(null);
@@ -103,7 +109,7 @@ export default function TitleDefense() {
   // Row menu
   const [menuOpenId, setMenuOpenId] = useState(null);
 
-  /* ===== Bulk delete state (TOP-LEVEL — important!) ===== */
+  /* ===== Bulk delete state ===== */
   const [bulkMode, setBulkMode] = useState(false);
   const [selected, setSelected] = useState(new Set());
 
@@ -119,34 +125,53 @@ export default function TitleDefense() {
     });
   };
 
-  // Load Teams + Advisers
+  // Load Teams
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
         const snap = await getDocs(collection(db, "teams"));
         const teamsRows = [];
-        const adviserSet = new Set();
         snap.forEach((docX) => {
           const data = docX.data();
           if (data?.name) teamsRows.push({ id: docX.id, name: data.name });
-          const adviserName = data?.adviser?.fullName;
-          if (adviserName && typeof adviserName === "string") {
-            adviserSet.add(adviserName.trim());
-          }
         });
         teamsRows.sort((a, b) => a.name.localeCompare(b.name));
-        const advisersArr = Array.from(adviserSet).sort((a, b) => a.localeCompare(b));
         if (!alive) return;
         setTeamOptions(teamsRows);
-        setAdviserOptions(advisersArr);
       } catch (e) {
-        console.error("Failed to load teams/advisers:", e);
+        console.error("Failed to load teams:", e);
       } finally {
-        if (alive) {
-          setLoadingTeams(false);
-          setLoadingAdvisers(false);
-        }
+        if (alive) setLoadingTeams(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // Load Advisers from users where role == "Adviser"
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const qUsers = query(collection(db, "users"), where("role", "==", "Adviser"));
+        const snap = await getDocs(qUsers);
+        const names = [];
+        snap.forEach((docX) => {
+          const d = docX.data() || {};
+          const full = [d.firstName, d.middleName, d.lastName]
+            .filter(Boolean)
+            .join(" ")
+            .replace(/\s+/g, " ")
+            .trim();
+          if (full) names.push(full);
+        });
+        names.sort((a, b) => a.localeCompare(b));
+        if (!alive) return;
+        setAdviserOptions(names);
+      } catch (e) {
+        console.error("Failed to load advisers from users:", e);
+      } finally {
+        if (alive) setLoadingAdvisers(false);
       }
     })();
     return () => { alive = false; };
@@ -221,7 +246,7 @@ export default function TitleDefense() {
 
   // search filter (client-side)
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = queryText.trim().toLowerCase();
     if (!q) return schedules;
     return schedules.filter((t) =>
       [
@@ -235,7 +260,7 @@ export default function TitleDefense() {
         .toLowerCase()
         .includes(q)
     );
-  }, [query, schedules]);
+  }, [queryText, schedules]);
 
   // Select-all works on the filtered (visible) list
   const allVisibleIds = useMemo(() => filtered.map((s) => s.id), [filtered]);
@@ -280,9 +305,8 @@ export default function TitleDefense() {
 
       {/* actions */}
       <div className="mt-6 space-y-4">
-        {/* Row 1: Create + Export (own line/height) */}
+        {/* Row 1: Export only (Create removed) */}
         <div className="flex items-center gap-3">
-          <Btn icon={Plus} onClick={() => setShowCreate(true)}>Create Schedule</Btn>
           <Btn icon={Download} variant="outline">Export</Btn>
         </div>
 
@@ -292,8 +316,8 @@ export default function TitleDefense() {
             <input
               type="text"
               placeholder="Search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              value={queryText}
+              onChange={(e) => setQueryText(e.target.value)}
               className="pl-10 pr-3 py-2 w-72 rounded-md border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-300"
             />
             <Search size={16} className="absolute left-3 top-2.5 text-neutral-400" />
@@ -365,110 +389,101 @@ export default function TitleDefense() {
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td className="px-4 py-6 text-neutral-500" colSpan={7}>No matches for “{query}”.</td>
+                <td className="px-4 py-6 text-neutral-500" colSpan={7}>No matches for “{queryText}”.</td>
               </tr>
             ) : (
-              filtered.map((s, idx) => {
-                const isChecked = selected.has(s.id);
-                return (
-                  <tr key={s.id} className={idx % 2 ? "bg-neutral-50/60" : "bg-white"}>
-                    {/* first column: checkbox or row number */}
-                    {bulkMode ? (
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          aria-label={`Select ${s.teamName}`}
-                          checked={isChecked}
-                          onChange={() => toggleSelect(s.id)}
-                          className="h-4 w-4"
-                        />
-                      </td>
-                    ) : (
-                      <td className="px-4 py-3 text-neutral-600">{idx + 1}.</td>
-                    )}
-
-                    <td className="px-4 py-3 font-medium text-neutral-800">{s.teamName}</td>
-                    <td className="px-4 py-3 text-neutral-700">{fmtDate(s.date)}</td>
-                    <td className="px-4 py-3 text-neutral-700">{fmtTimeRange(s.timeStart, s.timeEnd)}</td>
-                    <td className="px-4 py-3 text-neutral-700">{s.panelists.join(", ")}</td>
-
-                    {/* Verdict: disabled in bulk mode */}
+            filtered.map((s, idx) => {
+              const isChecked = selected.has(s.id);
+              return (
+                <tr key={s.id} className={idx % 2 ? "bg-neutral-50/60" : "bg-white"}>
+                  {/* first column: checkbox or row number */}
+                  {bulkMode ? (
                     <td className="px-4 py-3">
-                      <div className="relative inline-flex items-center">
-                        <select
-                          value={s.verdict || "Pending"}
-                          onChange={(e) => handleChangeVerdict(s.id, e.target.value)}
-                          disabled={bulkMode}
-                          className={`appearance-none pr-8 pl-3 py-1.5 rounded-md border text-sm ${bulkMode ? "opacity-60 cursor-not-allowed" : ""}`}
-                          style={{ borderColor: MAROON, color: "#111827" }}
-                        >
-                          <option>Pending</option>
-                          <option>Passed</option>
-                          <option>Re-Defense</option>
-                          <option>Failed</option>
-                        </select>
-                        <ChevronDown size={16} className="absolute right-2 pointer-events-none text-neutral-500" />
-                      </div>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${s.teamName}`}
+                        checked={isChecked}
+                        onChange={() => toggleSelect(s.id)}
+                        className="h-4 w-4"
+                      />
                     </td>
+                  ) : (
+                    <td className="px-4 py-3 text-neutral-600">{idx + 1}.</td>
+                  )}
 
-                    {/* Row actions: hidden/disabled in bulk mode */}
-                    <td className="px-2 py-3 relative">
-                      <button
+                  <td className="px-4 py-3 font-medium text-neutral-800">{s.teamName}</td>
+
+                  {/* Date */}
+                  <td className="px-4 py-3 text-neutral-700">{s.date || "—"}</td>
+
+                  {/* Time */}
+                  <td className="px-4 py-3 text-neutral-700">{fmtTimeRange(s.timeStart, s.timeEnd) || "—"}</td>
+
+                  {/* Panelists */}
+                  <td className="px-4 py-3 text-neutral-700">{s.panelists.length > 0 ? s.panelists.join(", ") : "—"}</td>
+
+                  {/* Verdict */}
+                  <td className="px-4 py-3">
+                    <div className="relative inline-flex items-center">
+                      <select
+                        value={s.verdict || "Pending"}
+                        onChange={(e) => handleChangeVerdict(s.id, e.target.value)}
                         disabled={bulkMode}
-                        className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${bulkMode ? "opacity-40 cursor-not-allowed" : "hover:bg-neutral-100"}`}
-                        onClick={() => setMenuOpenId(menuOpenId === s.id ? null : s.id)}
+                        className={`appearance-none pr-8 pl-3 py-1.5 rounded-md border text-sm ${bulkMode ? "opacity-60 cursor-not-allowed" : ""}`}
+                        style={{ borderColor: MAROON, color: "#111827" }}
                       >
-                        <MoreVertical size={18} />
-                      </button>
+                        <option>Pending</option>
+                        <option>Passed</option>
+                        <option>Re-Defense</option>
+                        <option>Failed</option>
+                      </select>
+                      <ChevronDown size={16} className="absolute right-2 pointer-events-none text-neutral-500" />
+                    </div>
+                  </td>
 
-                      {!bulkMode && menuOpenId === s.id && (
-                        <div className="absolute right-2 mt-1 z-20 w-40 rounded-md border bg-white shadow">
-                          <button
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
-                            onClick={() => { setViewSchedule(s); setMenuOpenId(null); }}
-                          >
-                            View
-                          </button>
-                          <button
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
-                            onClick={() => { setEditSchedule(s); setMenuOpenId(null); }}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-neutral-50"
-                            onClick={() => handleDelete(s.id)}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
+                  {/* Row actions */}
+                  <td className="px-2 py-3 relative">
+                    <button
+                      disabled={bulkMode}
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${bulkMode ? "opacity-40 cursor-not-allowed" : "hover:bg-neutral-100"}`}
+                      onClick={() => setMenuOpenId(menuOpenId === s.id ? null : s.id)}
+                    >
+                      <MoreVertical size={18} />
+                    </button>
+
+                    {!bulkMode && menuOpenId === s.id && (
+                      <div className="absolute right-2 mt-1 z-20 w-40 rounded-md border bg-white shadow">
+                        <button
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+                          onClick={() => { setViewSchedule(s); setMenuOpenId(null); }}
+                        >
+                          View
+                        </button>
+                        <button
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+                          onClick={() => { setEditSchedule(s); setMenuOpenId(null); }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-neutral-50"
+                          onClick={() => handleDelete(s.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            }))}
           </tbody>
         </table>
       </div>
 
-      {/* Create Schedule Dialog */}
-      {showCreate && (
-        <ScheduleDialog
-          mode="create"
-          onClose={() => setShowCreate(false)}
-          onSaved={loadSchedules}
-          teamOptions={teamOptions}
-          loadingTeams={loadingTeams}
-          adviserOptions={adviserOptions}
-          loadingAdvisers={loadingAdvisers}
-        />
-      )}
-
       {/* Edit Schedule Dialog */}
       {editSchedule && (
         <ScheduleDialog
-          mode="edit"
           initial={editSchedule}
           onClose={() => setEditSchedule(null)}
           onSaved={loadSchedules}
@@ -490,9 +505,8 @@ export default function TitleDefense() {
   );
 }
 
-/* ------- Unified Create/Edit Dialog ------- */
+/* ------- Edit Dialog (Create flow removed) ------- */
 function ScheduleDialog({
-  mode = "create",
   initial = null,
   onClose,
   onSaved,
@@ -501,13 +515,11 @@ function ScheduleDialog({
   adviserOptions = [],
   loadingAdvisers = false,
 }) {
-  const isEdit = mode === "edit";
-
   // controlled inputs (prefill when editing)
   const [team, setTeam] = useState(initial?.teamName || "");
-  const [date, setDate] = useState(initial?.date || "2025-01-11");
-  const [time, setTime] = useState(initial?.timeStart || "09:00");
-  const [timeEnd, setTimeEnd] = useState(initial?.timeEnd || "10:00");
+  const [date, setDate] = useState(initial?.date || "");
+  const [time, setTime] = useState(initial?.timeStart || "");
+  const [timeEnd, setTimeEnd] = useState(initial?.timeEnd || "");
 
   const [panelistPick, setPanelistPick] = useState("");
   const [panelists, setPanelists] = useState(Array.isArray(initial?.panelists) ? initial.panelists : []);
@@ -521,7 +533,7 @@ function ScheduleDialog({
 
   const timeIsValid = time && timeEnd && time < timeEnd;
 
-  // create or update
+  // update only
   const handleSubmit = async () => {
     try {
       const selected = teamOptions.find((t) => t.name === team);
@@ -533,23 +545,15 @@ function ScheduleDialog({
         date,
         timeStart: time,
         timeEnd,
-        panelists: [...panelists],
+        panelists: Array.isArray(panelists) ? panelists : [],
       };
 
-      if (isEdit) {
-        await updateDoc(doc(db, "titleDefenseSchedules", initial.id), payload);
-      } else {
-        await addDoc(collection(db, "titleDefenseSchedules"), {
-          ...payload,
-          verdict: "Pending",
-          createdAt: serverTimestamp(),
-        });
-      }
+      await updateDoc(doc(db, "titleDefenseSchedules", initial.id), payload);
 
       if (typeof onSaved === "function") onSaved();
       onClose();
     } catch (err) {
-      console.error(isEdit ? "Failed to update schedule:" : "Failed to create schedule:", err);
+      console.error("Failed to update schedule:", err);
       alert("Operation failed. See console for details.");
     }
   };
@@ -565,10 +569,10 @@ function ScheduleDialog({
           <div className="px-6 pt-5 pb-3">
             <div className="flex items-center gap-2 text-[16px] font-semibold" style={{ color: MAROON }}>
               <PlusCircle size={18} />
-              {isEdit ? "Edit Schedule" : "Create Schedule"}
+              Edit Schedule
             </div>
             <div className="mt-3 h-[2px] w-full bg-neutral-200">
-              <div className="h-[2px]" style={{ backgroundColor: MAROON, width: isEdit ? 130 : 160 }} />
+              <div className="h-[2px]" style={{ backgroundColor: MAROON, width: 130 }} />
             </div>
           </div>
 
@@ -598,7 +602,7 @@ function ScheduleDialog({
                 </div>
               </div>
 
-              {/* Assign Panelists (from advisers) */}
+              {/* Assign Panelists (from users/Adviser) */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">Assign Panelists</label>
                 <div className="relative">
@@ -655,6 +659,9 @@ function ScheduleDialog({
                       </button>
                     </span>
                   ))}
+                  {panelists.length === 0 && (
+                    <span className="text-xs text-neutral-400 px-1 py-1">No panelists selected.</span>
+                  )}
                 </div>
               </div>
 
@@ -698,11 +705,11 @@ function ScheduleDialog({
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={(!team || panelists.length === 0 || !(time && timeEnd && time < timeEnd))}
-                className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white ${(!team || panelists.length === 0 || !(time && timeEnd && time < timeEnd)) ? "opacity-60 cursor-not-allowed" : ""}`}
+                disabled={(!team || !(time && timeEnd && time < timeEnd))}
+                className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white ${(!team || !(time && timeEnd && time < timeEnd)) ? "opacity-60 cursor-not-allowed" : ""}`}
                 style={{ backgroundColor: MAROON }}
               >
-                {isEdit ? "Save" : "Create"}
+                Save
               </button>
             </div>
           </div>
