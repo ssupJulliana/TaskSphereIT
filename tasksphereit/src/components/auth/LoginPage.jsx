@@ -44,110 +44,85 @@ const LoginPage = () => {
   };
 
   const handleSignIn = async (e) => {
-    e.preventDefault();
-    setErr("");
-    setLoading(true);
+  e.preventDefault();
+  setErr("");
+  setLoading(true);
 
-    try {
-      const emailTrim = email.trim();
+  try {
+    const emailTrim = email.trim();
 
-      // 0) PRE-CHECK: is this email blocked?
-      const blockedQ = query(
+    // 1) Auth FIRST (so Firestore reads have request.auth)
+    const cred = await signInWithEmailAndPassword(auth, emailTrim, pwd);
+
+    // 2) Load profile from users by uid
+    const usersRef = collection(db, "users");
+    const byUid = query(usersRef, where("uid", "==", cred.user.uid), limit(1));
+    const uidSnap = await getDocs(byUid);
+
+    if (uidSnap.empty) {
+      // Optional post-auth blocked check by uid (now allowed by rules)
+      const blockedByUid = query(
         collection(db, "blockedUsers"),
-        where("email", "==", emailTrim),
+        where("uid", "==", cred.user.uid),
         limit(1)
       );
-      const blockedSnap = await getDocs(blockedQ);
-      if (!blockedSnap.empty) {
-        setErr("Your account is blocked. Please contact the administrator.");
-        setLoading(false);
-        return;
-      }
+      const bsnap = await getDocs(blockedByUid);
 
-      // 1) Auth
-      const cred = await signInWithEmailAndPassword(auth, emailTrim, pwd);
-
-      // 2) Find role/profile in Firestore (users collection) — prefer by uid
-      const usersRef = collection(db, "users");
-      let profileDoc = null;
-
-      const byUid = query(usersRef, where("uid", "==", cred.user.uid), limit(1));
-      const uidSnap = await getDocs(byUid);
-      if (!uidSnap.empty) {
-        profileDoc = uidSnap.docs[0];
-      } else {
-        // Fallback to email
-        const byEmail = query(
-          usersRef,
-          where("email", "==", emailTrim),
-          limit(1)
-        );
-        const emailSnap = await getDocs(byEmail);
-        if (!emailSnap.empty) {
-          profileDoc = emailSnap.docs[0];
-        }
-      }
-
-      // If no profile in users, check if it's actually blocked now (by uid)
-      if (!profileDoc) {
-        const blockedByUid = query(
-          collection(db, "blockedUsers"),
-          where("uid", "==", cred.user.uid),
-          limit(1)
-        );
-        const bsnap = await getDocs(blockedByUid);
-
-        await signOut(auth);
-        setErr(
-          bsnap.empty
-            ? "Account profile not found. Please contact the administrator."
-            : "Your account is blocked."
-        );
-        setLoading(false);
-        return;
-      }
-
-      const profile = profileDoc.data();
-      const role = profile.role || null;
-
-      // 3) Store to localStorage
-      localStorage.setItem("uid", cred.user.uid);
-      if (role) localStorage.setItem("role", role);
-
-      // 4) Optional: Force default password if flagged
-      if (profile.forceDefaultPassword) {
-        try {
-          await updatePassword(cred.user, DEFAULT_PASSWORD);
-          await updateDoc(doc(db, "users", profileDoc.id), {
-            forceDefaultPassword: false,
-            updatedAt: new Date(),
-          });
-          // Optional toast
-          // alert("Your password has been reset to the default.");
-        } catch (pwErr) {
-          // If this fails, we still continue to route — user is signed in.
-          console.error("Auto-reset to default failed:", pwErr);
-        }
-      }
-
-      // 5) Navigate based on role
-      navigate(routeForRole(role), { replace: true });
-    } catch (e2) {
-      console.error(e2);
-      let msg = "Sign-in failed. Please check your credentials.";
-      if (e2.code === "auth/invalid-email") msg = "Invalid email address.";
-      else if (
-        e2.code === "auth/user-not-found" ||
-        e2.code === "auth/wrong-password"
-      )
-        msg = "Incorrect email or password.";
-      else if (e2.code === "auth/too-many-requests")
-        msg = "Too many attempts. Try again later.";
-      setErr(msg);
-    } finally {
+      await signOut(auth);
+      setErr(
+        bsnap.empty
+          ? "Account profile not found. Please contact the administrator."
+          : "Your account is blocked."
+      );
       setLoading(false);
+      return;
     }
-  };
+
+    const profileDoc = uidSnap.docs[0];
+    const profile = profileDoc.data();
+    const role = profile.role || null;
+
+    // 3) Recommended: keep a flag on user doc instead of a separate collection
+    if (profile.isBlocked === true) {
+      await signOut(auth);
+      setErr("Your account is blocked. Please contact the administrator.");
+      setLoading(false);
+      return;
+    }
+
+    // 4) Persist small bits in localStorage (fine)
+    localStorage.setItem("uid", cred.user.uid);
+    if (role) localStorage.setItem("role", role);
+
+    // 5) Optional: default password handling
+    if (profile.forceDefaultPassword) {
+      try {
+        await updatePassword(cred.user, DEFAULT_PASSWORD);
+        await updateDoc(doc(db, "users", profileDoc.id), {
+          forceDefaultPassword: false,
+          updatedAt: new Date(),
+        });
+      } catch (pwErr) {
+        console.error("Auto-reset to default failed:", pwErr);
+      }
+    }
+
+    // 6) Navigate based on role
+    navigate(routeForRole(role), { replace: true });
+  } catch (e2) {
+    console.error(e2);
+    let msg = "Sign-in failed. Please check your credentials.";
+    if (e2.code === "auth/invalid-email") msg = "Invalid email address.";
+    else if (e2.code === "auth/user-not-found" || e2.code === "auth/wrong-password")
+      msg = "Incorrect email or password.";
+    else if (e2.code === "auth/too-many-requests")
+      msg = "Too many attempts. Try again later.";
+    setErr(msg);
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <div className="min-h-screen flex flex-col bg-white">

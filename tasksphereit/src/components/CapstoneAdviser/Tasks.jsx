@@ -1,5 +1,5 @@
 // src/components/CapstoneAdviser/AdviserTasks.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   ClipboardList,
   CalendarDays,
@@ -9,7 +9,6 @@ import {
   Filter as FilterIcon,
   MoreVertical,
   Search,
-  UserCircle2,
   Clock,
   Loader2,
 } from "lucide-react";
@@ -24,7 +23,9 @@ import {
   query,
   updateDoc,
   where,
-} from "firebase/firestore"; // ← removed orderBy import
+  addDoc,
+} from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 
 const MAROON = "#6A0F14";
 
@@ -79,11 +80,11 @@ export default function AdviserTasks() {
   const pageSize = 10;
 
   /* -------- identity -------- */
-  const adviserUid = auth.currentUser?.uid || localStorage.getItem("uid") || "";
+  const [adviserUid, setAdviserUid] = useState("");
 
   /* -------- data state -------- */
   const [teams, setTeams] = useState([]); // teams under this adviser
-  const [teamId, setTeamId] = useState("");
+  const [teamId, setTeamId] = useState(""); // "ALL" | specific team id
   const [tasks, setTasks] = useState([]); // rows from Firestore
 
   /* -------- ui state -------- */
@@ -109,16 +110,29 @@ export default function AdviserTasks() {
 
   /* ================== Effects ================== */
 
-  // Load teams owned by this adviser (expects teams docs to have adviser.uid)
+  // 0) Track signed-in user reliably
+  useEffect(() => {
+    const stop = onAuthStateChanged(auth, (u) => {
+      const uid = u?.uid || localStorage.getItem("uid") || "";
+      setAdviserUid(uid);
+    });
+    return () => stop();
+  }, []);
+
+  // 1) Load teams owned by this adviser (expects teams docs to have adviser.uid)
   useEffect(() => {
     if (!adviserUid) return;
     setLoadingTeams(true);
+    const qTeams = query(
+      collection(db, "teams"),
+      where("adviser.uid", "==", adviserUid)
+    );
     const unsub = onSnapshot(
-      query(collection(db, "teams"), where("adviser.uid", "==", adviserUid)),
+      qTeams,
       (snap) => {
         const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         setTeams(rows);
-        if (!teamId && rows[0]?.id) setTeamId(rows[0].id);
+        if (!teamId) setTeamId("ALL");
         setLoadingTeams(false);
       },
       (e) => {
@@ -128,87 +142,150 @@ export default function AdviserTasks() {
       }
     );
     return () => unsub();
-  }, [adviserUid]);
+  }, [adviserUid]); // eslint-disable-line
 
-  // Load tasks for current category + team
+  // 2) Load tasks for current category + team(s) using batched `in` queries (chunks of 10)
   useEffect(() => {
     if (!collectionName) {
       setTasks([]);
       return;
     }
-    if (!teamId) {
+    if (loadingTeams) return;
+
+    // If no teams or no selection to fetch
+    const teamIdsToFetch =
+      teamId === "ALL"
+        ? teams.map((t) => t.id)
+        : teamId
+        ? [teamId]
+        : [];
+
+    if (teamIdsToFetch.length === 0) {
       setTasks([]);
-      setLoadingTasks(false);
       return;
     }
+
+    // Helper to chunk arrays into size n
+    const chunk = (arr, n = 10) =>
+      Array.from({ length: Math.ceil(arr.length / n) }, (_, i) =>
+        arr.slice(i * n, i * n + n)
+      );
+
     setLoadingTasks(true);
     setErr("");
 
-    // ❗ No orderBy here to avoid composite index requirement
-    const qRef = query(
-      collection(db, collectionName),
-      where("team.id", "==", teamId)
-    );
+    // We’ll attach multiple listeners (team.id in [...], teamId in [...]) and merge results by doc id
+    const colRef = collection(db, collectionName);
+    const idChunks = chunk(teamIdsToFetch, 10);
 
-    const unsub = onSnapshot(
-      qRef,
-      (snap) => {
-        // Map raw
-        let rows = snap.docs.map((d, idx) => {
-          const x = d.data();
-          const createdAtMillis =
-            typeof x.createdAt?.toMillis === "function"
-              ? x.createdAt.toMillis()
-              : 0;
+    const unsubs = [];
+    const merged = new Map(); // id -> data
+
+    const rebuildRows = () => {
+      let rows = Array.from(merged.values()).map((x, idx) => {
+        const createdAtMillis =
+          typeof x.createdAt?.toMillis === "function"
+            ? x.createdAt.toMillis()
+            : (typeof x.updatedAt?.toMillis === "function"
+                ? x.updatedAt.toMillis()
+                : 0);
+
+        // prefer embedded team then fallback to teamId
+        const teamObj = x.team || {};
+        const tId = teamObj.id || x.teamId || "no-team";
+        const foundTeam = teams.find((t) => t.id === tId) || null;
+
         return {
-            id: d.id,
-            no: idx + 1, // temporary; we recompute after sort for display
-            assigned: (x.assignees || []).map((a) => a.name).join(", "),
-            type: x.type || "null",
-            methodology: x.methodology || "null",
-            phase: x.phase || "null",
-            task: x.task || "null",
-            created:
-              typeof x.createdAt?.toDate === "function"
-                ? x.createdAt.toDate().toLocaleDateString()
-                : "null",
-            createdAtMillis,
-            due: x.dueDate || "null",
-            time: x.dueTime || "null",
-            revision: x.revision || "No Revision",
-            status: x.status || "To Do",
-          };
+          id: x.__id, // injected below
+          no: idx + 1,
+          assigned: (x.assignees || []).map((a) => a.name).join(", "),
+          type: x.type || "null",
+          methodology: x.methodology || "null",
+          phase: x.phase || "null",
+          task: x.task || "null",
+          created:
+            typeof x.createdAt?.toDate === "function"
+              ? x.createdAt.toDate().toLocaleDateString()
+              : "null",
+          createdAtMillis,
+          due: x.dueDate || "null",
+          time: x.dueTime || "null",
+          revision: x.revision || "No Revision",
+          status: x.status || "To Do",
+          teamId: tId,
+          teamName: teamObj.name || foundTeam?.name || "No Team",
+          __raw: x,
+        };
+      });
+
+      // Sort client-side by createdAt DESC
+      rows.sort((a, b) => (b.createdAtMillis || 0) - (a.createdAtMillis || 0));
+      // Re-number after sort
+      rows = rows.map((r, i) => ({ ...r, no: i + 1 }));
+
+      // Move "Completed" Oral tasks into Final using ORIGINAL doc shape
+      if (collectionName === "oralDefenseTasks") {
+        rows.forEach(async (r) => {
+          if (r.status === "Completed") {
+            try {
+              const payload = { ...(r.__raw || {}), status: "To Do" };
+              if (!payload.team || !payload.team.id) {
+                payload.team = payload.team || {};
+                payload.team.id = r.teamId;
+                payload.team.name = r.teamName;
+              }
+              await addDoc(collection(db, "finalDefenseTasks"), payload);
+              await deleteDoc(doc(db, "oralDefenseTasks", r.id));
+            } catch (moveErr) {
+              console.error("Move to final failed:", moveErr);
+            }
+          }
         });
-
-        // Sort client-side by createdAt DESC
-        rows.sort((a, b) => (b.createdAtMillis || 0) - (a.createdAtMillis || 0));
-
-        // Re-number after sort
-        rows = rows.map((r, i) => ({ ...r, no: i + 1 }));
-
-        setTasks(rows);
-        setSelected(new Set());
-        setPage(1);
-        setOptimistic({});
-        setLoadingTasks(false);
-      },
-      (e) => {
-        console.error("Tasks snapshot error:", e);
-        if (e.code === "permission-denied") {
-          setErr("Permission denied by Firestore rules for this adviser/team.");
-        } else {
-          setErr(e.message || "Failed to load tasks.");
-        }
-        setLoadingTasks(false);
       }
-    );
-    return () => unsub();
-  }, [collectionName, teamId]);
+
+      setTasks(rows);
+      setSelected(new Set());
+      setPage(1);
+      setOptimistic({});
+      setLoadingTasks(false);
+    };
+
+    const handleSnap = (snap) => {
+      snap.docs.forEach((d) => {
+        const x = d.data();
+        merged.set(d.id, { __id: d.id, ...x });
+      });
+      rebuildRows();
+    };
+
+    const handleErr = (e) => {
+      console.error("Tasks snapshot error:", e);
+      if (e.code === "permission-denied") {
+        setErr("Permission denied by Firestore rules for this adviser/team.");
+      } else {
+        setErr(e.message || "Failed to load tasks.");
+      }
+      setLoadingTasks(false);
+    };
+
+    // Attach listeners for both shapes using batched IN queries
+    idChunks.forEach((ids) => {
+      unsubs.push(
+        onSnapshot(query(colRef, where("team.id", "in", ids)), handleSnap, handleErr)
+      );
+      unsubs.push(
+        onSnapshot(query(colRef, where("teamId", "in", ids)), handleSnap, handleErr)
+      );
+    });
+
+    return () => {
+      unsubs.forEach((u) => u && u());
+    };
+  }, [collectionName, teamId, teams, loadingTeams]);
 
   /* ================== Helpers ================== */
 
   const rows = useMemo(() => {
-    // apply optimistic edits
     return tasks.map((r) => ({ ...r, ...(optimistic[r.id] || {}) }));
   }, [tasks, optimistic]);
 
@@ -218,20 +295,33 @@ export default function AdviserTasks() {
     return rows.filter(
       (r) =>
         String(r.no).includes(s) ||
-        r.assigned.toLowerCase().includes(s) ||
-        r.type.toLowerCase().includes(s) ||
-        r.methodology.toLowerCase().includes(s) ||
-        r.task.toLowerCase().includes(s) ||
-        r.created.toLowerCase().includes(s) ||
-        r.due.toLowerCase().includes(s) ||
-        r.time.toLowerCase().includes(s) ||
-        String(r.revision).toLowerCase().includes(s) ||
-        String(r.status).toLowerCase().includes(s)
+        (r.assigned || "").toLowerCase().includes(s) ||
+        (r.type || "").toLowerCase().includes(s) ||
+        (r.methodology || "").toLowerCase().includes(s) ||
+        (r.task || "").toLowerCase().includes(s) ||
+        (r.created || "").toLowerCase().includes(s) ||
+        (r.due || "").toLowerCase().includes(s) ||
+        (r.time || "").toLowerCase().includes(s) ||
+        String(r.revision || "").toLowerCase().includes(s) ||
+        String(r.status || "").toLowerCase().includes(s) ||
+        (r.teamName || "").toLowerCase().includes(s)
     );
   }, [q, rows]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize);
+
+  // When showing ALL teams, group the *paged* rows by team for display
+  const grouped = useMemo(() => {
+    if (teamId !== "ALL") return null;
+    const map = new Map();
+    for (const r of pageRows) {
+      const k = r.teamId || "no-team";
+      if (!map.has(k)) map.set(k, { teamId: k, teamName: r.teamName || "No Team", rows: [] });
+      map.get(k).rows.push(r);
+    }
+    return Array.from(map.values());
+  }, [teamId, pageRows]);
 
   const toggleSelect = (id) => {
     const s = new Set(selected);
@@ -240,7 +330,6 @@ export default function AdviserTasks() {
   };
 
   const startEdit = (row, field) => {
-    // Only adviser-editable fields
     if (!["due", "time", "revision", "status"].includes(field)) return;
     if (field === "time" && (row.due === "null" || !row.due)) return; // need due first
     setEditingCell({ id: row.id, field });
@@ -260,6 +349,13 @@ export default function AdviserTasks() {
     const hasTime = time && time !== "null";
     const dueAtMs = newDate && hasTime ? new Date(`${newDate}T${time}:00`).getTime() : null;
 
+    const createdDate =
+      row.createdAtMillis ? new Date(row.createdAtMillis).toISOString().split("T")[0] : null;
+    if (createdDate && newDate && newDate < createdDate) {
+      alert("Due Date must be after the task creation date.");
+      return;
+    }
+
     await savePatch(
       row.id,
       { dueDate: newDate || null, dueAtMs },
@@ -270,7 +366,8 @@ export default function AdviserTasks() {
 
   const saveTime = async (row, newTime) => {
     const due = optimistic[row.id]?.due ?? row.due;
-    const dueAtMs = due && due !== "null" && newTime ? new Date(`${due}T${newTime}:00`).getTime() : null;
+    const dueAtMs =
+      due && due !== "null" && newTime ? new Date(`${due}T${newTime}:00`).getTime() : null;
 
     await savePatch(row.id, { dueTime: newTime || null, dueAtMs }, { time: newTime || "null" });
     stopEdit();
@@ -349,6 +446,7 @@ export default function AdviserTasks() {
             onChange={(e) => setTeamId(e.target.value)}
             disabled={loadingTeams || teams.length === 0}
           >
+            <option value="ALL">All teams</option>
             {teams.length === 0 ? (
               <option value="">No teams</option>
             ) : (
@@ -403,10 +501,13 @@ export default function AdviserTasks() {
                   />
                 </th>
                 <th className="py-2 pr-3 w-16">NO</th>
-                <th className="py-2 pr-3">Assigned</th>
-                <th className="py-2 pr-3">Task Type</th>
-                <th className="py-2 pr-3">Methodology</th>
-                <th className="py-2 pr-3">Task</th>
+                <th className="py-2 pr-3">{teamId === "ALL" ? "Team" : "Assigned"}</th>
+                {teamId !== "ALL" && <th className="py-2 pr-3">Task Type</th>}
+                {teamId !== "ALL" && <th className="py-2 pr-3">Methodology</th>}
+                {teamId !== "ALL" && <th className="py-2 pr-3">Task</th>}
+                {teamId === "ALL" && <th className="py-2 pr-3">Task Type</th>}
+                {teamId === "ALL" && <th className="py-2 pr-3">Methodology</th>}
+                {teamId === "ALL" && <th className="py-2 pr-3">Task</th>}
                 <th className="py-2 pr-3">
                   <div className="inline-flex items-center gap-2">
                     <CalendarDays className="w-4 h-4" /> Date Created
@@ -446,12 +547,199 @@ export default function AdviserTasks() {
               {!loadingTeams && !loadingTasks && !err && pageRows.length === 0 && (
                 <tr>
                   <td colSpan={12} className="py-10 text-center text-neutral-500">
-                    No tasks for this team.
+                    No tasks {teamId === "ALL" ? "for your teams." : "for this team."}
                   </td>
                 </tr>
               )}
 
-              {!loadingTeams &&
+              {/* Grouped by Team (ALL teams) */}
+              {teamId === "ALL" &&
+                !loadingTeams &&
+                !loadingTasks &&
+                !err &&
+                (() => {
+                  return grouped?.map((g, gIdx) => (
+                    <React.Fragment key={g.teamId || `group-${gIdx}`}>
+                      <tr className="bg-neutral-50/60">
+                        <td colSpan={12} className="py-2 pl-6 pr-3 text-[13px] font-semibold text-neutral-800">
+                          Team: {g.teamName}
+                        </td>
+                      </tr>
+                      {g.rows.map((r, idx) => {
+                        const isEditing = (field) => editingCell?.id === r.id && editingCell?.field === field;
+
+                        return (
+                          <tr key={r.id} className="border-t border-neutral-200">
+                            <td className="py-2 pl-6 pr-3">
+                              <input
+                                type="checkbox"
+                                checked={selected.has(r.id)}
+                                onChange={() => toggleSelect(r.id)}
+                              />
+                            </td>
+
+                            <td className="py-2 pr-3">{(page - 1) * pageSize + idx + 1}.</td>
+                            <td className="py-2 pr-3">{g.teamName}</td>
+                            <td className="py-2 pr-3">{r.type}</td>
+                            <td className="py-2 pr-3">{r.methodology}</td>
+                            <td className="py-2 pr-3">{r.task}</td>
+                            <td className="py-2 pr-3">{r.created}</td>
+
+                            {/* Due Date (editable) */}
+                            <td
+                              className="py-2 pr-3"
+                              onDoubleClick={() => startEdit(r, "due")}
+                              title="Double-click to edit"
+                            >
+                              {isEditing("due") ? (
+                                <input
+                                  type="date"
+                                  autoFocus
+                                  className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+                                  defaultValue={r.due === "null" ? "" : r.due}
+                                  onBlur={(e) => saveDue(r, e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") e.currentTarget.blur();
+                                    if (e.key === "Escape") stopEdit();
+                                  }}
+                                />
+                              ) : (
+                                <span>{r.due}</span>
+                              )}
+                            </td>
+
+                            {/* Time (editable; requires due) */}
+                            <td
+                              className={`py-2 pr-3 ${r.due === "null" ? "text-neutral-400 cursor-not-allowed" : ""}`}
+                              onDoubleClick={() => startEdit(r, "time")}
+                              title={r.due === "null" ? "Set Due Date first" : "Double-click to edit"}
+                            >
+                              {isEditing("time") ? (
+                                <input
+                                  type="time"
+                                  autoFocus
+                                  className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+                                  defaultValue={r.time === "null" ? "" : r.time}
+                                  onBlur={(e) => saveTime(r, e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") e.currentTarget.blur();
+                                    if (e.key === "Escape") stopEdit();
+                                  }}
+                                />
+                              ) : (
+                                <span>{r.time}</span>
+                              )}
+                            </td>
+
+                            {/* Revision (editable) */}
+                            <td
+                              className="py-2 pr-3"
+                              onDoubleClick={() => startEdit(r, "revision")}
+                              title="Double-click to edit"
+                            >
+                              {isEditing("revision") ? (
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  placeholder="e.g., 1st Revision"
+                                  className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+                                  defaultValue={r.revision === "null" ? "" : r.revision}
+                                  onBlur={(e) => saveRevision(r, e.target.value.trim())}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") e.currentTarget.blur();
+                                    if (e.key === "Escape") stopEdit();
+                                  }}
+                                />
+                              ) : (
+                                <RevisionPill value={r.revision} />
+                              )}
+                            </td>
+
+                            {/* Status (editable) */}
+                            <td
+                              className="py-2 pr-6"
+                              onDoubleClick={() => startEdit(r, "status")}
+                              title="Double-click to edit"
+                            >
+                              {isEditing("status") ? (
+                                <select
+                                  autoFocus
+                                  className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+                                  defaultValue={r.status === "null" ? "" : r.status}
+                                  onBlur={(e) => saveStatus(r, e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") e.currentTarget.blur();
+                                    if (e.key === "Escape") stopEdit();
+                                  }}
+                                >
+                                  <option value="">null</option>
+                                  <option>To Do</option>
+                                  <option>To Review</option>
+                                  <option>In Progress</option>
+                                  <option>Completed</option>
+                                </select>
+                              ) : (
+                                <StatusBadge value={r.status} />
+                              )}
+                            </td>
+
+                            {/* Actions */}
+                            <td className="py-2 pr-6">
+                              <div className="relative flex justify-center">
+                                <button
+                                  className="p-1.5 rounded-md hover:bg-neutral-100"
+                                  onClick={() =>
+                                    setMenuOpenId(menuOpenId === r.id ? null : r.id)
+                                  }
+                                  aria-label="Row actions"
+                                >
+                                  <MoreVertical className="w-4 h-4 text-neutral-600" />
+                                </button>
+
+                                {menuOpenId === r.id && (
+                                  <div className="absolute right-0 top-6 z-10 w-44 bg-white border border-neutral-200 rounded-lg shadow-lg p-1">
+                                    <div className="flex flex-col">
+                                      <button
+                                        className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50"
+                                        onClick={() => {
+                                          setMenuOpenId(null);
+                                          alert(`Open detail: ${r.id}`);
+                                        }}
+                                      >
+                                        View
+                                      </button>
+                                      <button
+                                        className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50 disabled:opacity-50"
+                                        disabled={deletingId === r.id}
+                                        onClick={() => {
+                                          setMenuOpenId(null);
+                                          deleteRow(r.id);
+                                        }}
+                                      >
+                                        {deletingId === r.id ? (
+                                          <span className="inline-flex items-center gap-2">
+                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            Deleting…
+                                          </span>
+                                        ) : (
+                                          "Delete"
+                                        )}
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  ));
+                })()}
+
+              {/* Single team (original) */}
+              {teamId !== "ALL" &&
+                !loadingTeams &&
                 !loadingTasks &&
                 !err &&
                 pageRows.map((r, idx) => {
