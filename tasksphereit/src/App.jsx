@@ -1,4 +1,4 @@
-// src/App.jsx
+import React, { useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 
 // Auth
@@ -47,6 +47,18 @@ import ProjectManagerEvents from "./components/ProjectManager/ProjectManagerEven
 import ProjectManagerTasks from "./components/ProjectManager/ProjectManagerTasks.jsx";
 
 export default function App() {
+  useEffect(() => {
+    const href = window.location.href;
+    const u = new URL(href);
+    const mode = u.searchParams.get("mode");
+
+    // If the email client dropped you on the wrong page,
+    // shove any sign-in link to /verify-invite (keep the full query string)
+    if (mode === "signIn" && !href.includes("/verify-invite")) {
+      window.location.replace(`/verify-invite${u.search}`);
+    }
+  }, []);
+
   return (
     <div className="min-h-screen font-sans">
       <Routes>
@@ -63,7 +75,10 @@ export default function App() {
           <Route path="teams" element={<InstructorTeams />} />
           <Route path="schedule" element={<InstructorSchedule />} />
           <Route path="schedule/title-defense" element={<TitleDefense />} />
-          <Route path="schedule/manuscript" element={<ManuscriptSubmission />} />
+          <Route
+            path="schedule/manuscript"
+            element={<ManuscriptSubmission />}
+          />
           <Route path="schedule/oral-defense" element={<OralDefense />} />
           <Route path="schedule/final-defense" element={<FinalDefense />} />
         </Route>
@@ -85,7 +100,10 @@ export default function App() {
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<ProjectManagerDashboard />} />
           <Route path="tasks-board" element={<ProjectManagerTaskBoard />} />
-          <Route path="tasks-record" element={<ProjectManagerAdviserTaskRecord />} />
+          <Route
+            path="tasks-record"
+            element={<ProjectManagerAdviserTaskRecord />}
+          />
           <Route path="events" element={<ProjectManagerEvents />} />
           <Route path="tasks" element={<ProjectManagerTasks />} />
           <Route path="notes" element={<Notes />} />
@@ -101,9 +119,7 @@ export default function App() {
           <Route path="events" element={<MemberEvents />} />
           <Route path="notes" element={<Notes />} />
         </Route>
-
         \{/* Fallback */}
-
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </div>
