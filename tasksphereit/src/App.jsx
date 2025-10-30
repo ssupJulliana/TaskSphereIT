@@ -1,10 +1,12 @@
 import React, { useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
+import TermsofService from "./components/TermsofService.jsx";
 
 // Auth
 import LoginPage from "./components/auth/LoginPage.jsx";
 import ForgotPassword from "./components/auth/ForgotPassword.jsx";
 import ResetPassword from "./components/auth/resetPassword.jsx";
+
 
 // Instructor
 import InstructorLayout from "./components/CapstoneInstructor/InsturctorLayout.jsx";
@@ -61,12 +63,19 @@ export default function App() {
 
   return (
     <div className="min-h-screen font-sans">
+      {/* Mount globally so it can auto-pop after login and hide once accepted */}
+      <TermsofService />
+
       <Routes>
         {/* Auth */}
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+
+        {/* Direct route to open TOS explicitly if needed */}
+        <Route path="/terms-of-service" element={<TermsofService />} />
+
         {/* Instructor section */}
         <Route path="/instructor" element={<InstructorLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
@@ -75,13 +84,11 @@ export default function App() {
           <Route path="teams" element={<InstructorTeams />} />
           <Route path="schedule" element={<InstructorSchedule />} />
           <Route path="schedule/title-defense" element={<TitleDefense />} />
-          <Route
-            path="schedule/manuscript"
-            element={<ManuscriptSubmission />}
-          />
+          <Route path="schedule/manuscript" element={<ManuscriptSubmission />} />
           <Route path="schedule/oral-defense" element={<OralDefense />} />
           <Route path="schedule/final-defense" element={<FinalDefense />} />
         </Route>
+
         {/* Adviser section */}
         <Route path="/adviser" element={<AdviserLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
@@ -95,19 +102,18 @@ export default function App() {
           <Route path="notifications" element={<Notifications />} />
           <Route path="profile" element={<Profile />} />
         </Route>
+
         {/* Project Manager section */}
         <Route path="/projectmanager" element={<ProjectManagerLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<ProjectManagerDashboard />} />
           <Route path="tasks-board" element={<ProjectManagerTaskBoard />} />
-          <Route
-            path="tasks-record"
-            element={<ProjectManagerAdviserTaskRecord />}
-          />
+          <Route path="tasks-record" element={<ProjectManagerAdviserTaskRecord />} />
           <Route path="events" element={<ProjectManagerEvents />} />
           <Route path="tasks" element={<ProjectManagerTasks />} />
           <Route path="notes" element={<Notes />} />
         </Route>
+
         {/* Member section */}
         <Route path="/member" element={<MemberLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
@@ -119,7 +125,8 @@ export default function App() {
           <Route path="events" element={<MemberEvents />} />
           <Route path="notes" element={<Notes />} />
         </Route>
-        \{/* Fallback */}
+
+        {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </div>
