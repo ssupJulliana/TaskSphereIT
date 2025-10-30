@@ -10,8 +10,8 @@ import CCSLogo from "../../assets/imgs/ccs-logo.png";
 import { auth, db } from "../../config/firebase";
 import {
   signInWithEmailAndPassword,
-  updatePassword,
   signOut,
+  updatePassword,
 } from "firebase/auth";
 import {
   collection,
@@ -34,92 +34,12 @@ const LoginPage = () => {
 
   const navigate = useNavigate();
 
-  // route mapping by role
   const routeForRole = (role) => {
     if (role === "Adviser") return "/adviser/dashboard";
     if (role === "Member") return "/member/dashboard";
     if (role === "Project Manager") return "/projectmanager/dashboard";
-    // default: Instructor area (other instructor-side roles)
     return "/instructor/dashboard";
   };
-
-  /*const handleSignIn = async (e) => {
-    e.preventDefault();
-    setErr("");
-    setLoading(true);
-
-    try {
-      const emailTrim = email.trim();
-
-      // 1) Auth
-      const cred = await signInWithEmailAndPassword(auth, emailTrim, pwd);
-
-      // 2) Find role/profile in Firestore (users collection) — prefer by uid
-      const usersRef = collection(db, "users");
-      let profileDoc = null;
-
-      const byUid = query(
-        usersRef,
-        where("uid", "==", cred.user.uid),
-        limit(1)
-      );
-      const uidSnap = await getDocs(byUid);
-      if (!uidSnap.empty) {
-        profileDoc = uidSnap.docs[0];
-      } else {
-        // Fallback to email
-        const byEmail = query(
-          usersRef,
-          where("email", "==", emailTrim),
-          limit(1)
-        );
-        const emailSnap = await getDocs(byEmail);
-        if (!emailSnap.empty) {
-          profileDoc = emailSnap.docs[0];
-        }
-      }
-
-      if (!profileDoc) {
-        await signOut(auth);
-        setErr("Account profile not found. Please contact the administrator.");
-        setLoading(false);
-        return;
-      }
-
-      const profile = profileDoc.data();
-      const role = profile.role || null;
-
-      // 3) Store to localStorage
-      localStorage.setItem("uid", cred.user.uid);
-      if (role) localStorage.setItem("role", role);
-
-      // 4) Optional: Force default password if flagged
-      if (profile.forceDefaultPassword) {
-        await updatePassword(cred.user, DEFAULT_PASSWORD);
-        await updateDoc(doc(db, "users", profileDoc.id), {
-          forceDefaultPassword: false,
-          updatedAt: new Date(),
-        });
-      }
-
-      // 5) Navigate based on role
-      navigate(routeForRole(role), { replace: true });
-    } catch (e2) {
-      console.error(e2);
-      let msg = "Sign-in failed. Please check your credentials.";
-      if (e2.code === "auth/invalid-email") msg = "Invalid email address.";
-      else if (
-        e2.code === "auth/user-not-found" ||
-        e2.code === "auth/wrong-password"
-      )
-        msg = "Incorrect email or password.";
-      else if (e2.code === "auth/too-many-requests")
-        msg = "Too many attempts. Try again later.";
-      setErr(msg);
-    } finally {
-      setLoading(false);
-    }
-  };*/
 
   const handleSignIn = async (e) => {
     e.preventDefault();
@@ -128,33 +48,20 @@ const LoginPage = () => {
 
     try {
       const emailTrim = email.trim();
-
-      // 1) Auth
       const cred = await signInWithEmailAndPassword(auth, emailTrim, pwd);
 
-      // 2) Find the role/profile in Firestore (users collection)
+      // --- find user profile (prefer by uid, fallback by email) ---
       const usersRef = collection(db, "users");
-      const byUid = query(
-        usersRef,
-        where("uid", "==", cred.user.uid),
-        limit(1)
-      );
+      const byUid = query(usersRef, where("uid", "==", cred.user.uid), limit(1));
       const uidSnap = await getDocs(byUid);
-      let profileDoc = null;
 
+      let profileDoc = null;
       if (!uidSnap.empty) {
         profileDoc = uidSnap.docs[0];
       } else {
-        // Fallback to email search
-        const byEmail = query(
-          usersRef,
-          where("email", "==", emailTrim),
-          limit(1)
-        );
+        const byEmail = query(usersRef, where("email", "==", emailTrim), limit(1));
         const emailSnap = await getDocs(byEmail);
-        if (!emailSnap.empty) {
-          profileDoc = emailSnap.docs[0];
-        }
+        if (!emailSnap.empty) profileDoc = emailSnap.docs[0];
       }
 
       if (!profileDoc) {
@@ -168,11 +75,7 @@ const LoginPage = () => {
       const role = profile.role || null;
       const currentActivateStatus = profile.activate;
 
-      console.log("Logging in user:", profile.email);
-      console.log("Current activate status:", currentActivateStatus);
-      console.log("Role:", role);
-
-      // Check if the instructor is retired - prevent login
+      // hard block retired instructor accounts
       if (role === "Instructor" && currentActivateStatus === "retired") {
         await signOut(auth);
         setErr("Invalid credentials. This account is no longer active.");
@@ -180,9 +83,41 @@ const LoginPage = () => {
         return;
       }
 
+      // --- ensure isTosAccepted exists (default false if missing) ---
+      if (typeof profile.isTosAccepted !== "boolean") {
+        await updateDoc(doc(db, "users", profileDoc.id), {
+          isTosAccepted: false,
+          updatedAt: new Date(),
+        });
+        profile.isTosAccepted = false;
+      }
+
+      // cache minimal info
+      localStorage.setItem("uid", cred.user.uid);
+      if (role) localStorage.setItem("role", role);
+
+      // --- TOS gate: if not accepted yet, push to /terms-of-service and stop here ---
+      if (profile.isTosAccepted !== true) {
+        navigate("/terms-of-service", {
+          replace: true,
+          state: { from: routeForRole(role) }, // where to go after acceptance
+        });
+        setLoading(false);
+        return;
+      }
+
+      // (Only for already-accepted users) optional default password enforcement
+      if (profile.forceDefaultPassword) {
+        await updatePassword(cred.user, DEFAULT_PASSWORD);
+        await updateDoc(doc(db, "users", profileDoc.id), {
+          forceDefaultPassword: false,
+          updatedAt: new Date(),
+        });
+      }
+
+      // (Only for already-accepted users) your original Instructor activation logic
       if (role === "Instructor" && currentActivateStatus === "inactive") {
         try {
-          // Find the currently active instructor
           const activeInstructorQuery = query(
             usersRef,
             where("activate", "==", "active"),
@@ -190,63 +125,34 @@ const LoginPage = () => {
             limit(1)
           );
           const activeInstructorSnap = await getDocs(activeInstructorQuery);
-
           if (!activeInstructorSnap.empty) {
             const activeInstructorDoc = activeInstructorSnap.docs[0];
-            const activeInstructorData = activeInstructorDoc.data();
-
-            console.log(
-              "Found active instructor to retire:",
-              activeInstructorData.email
-            );
-            console.log(
-              "Active instructor document ID:",
-              activeInstructorDoc.id
-            );
-
-            // Set the currently active instructor to "retired"
             await updateDoc(doc(db, "users", activeInstructorDoc.id), {
               activate: "retired",
               updatedAt: new Date(),
             });
-
-            console.log(
-              `Successfully set ${activeInstructorData.email} to retired`
-            );
-          } else {
-            console.log("No active instructor found to retire");
           }
         } catch (retireError) {
           console.error("Error retiring active instructor:", retireError);
         }
       }
 
-      // Set the current user's 'activate' status to "active"
+      // mark current user active (same as your previous behavior)
       await updateDoc(doc(db, "users", profileDoc.id), {
         activate: "active",
         updatedAt: new Date(),
       });
 
-      console.log("Current user set to active");
-
-      // Store the user details in localStorage
-      localStorage.setItem("uid", cred.user.uid);
-      if (role) localStorage.setItem("role", role);
-
-      // Navigate based on the role
+      // go to dashboard
       navigate(routeForRole(role), { replace: true });
     } catch (e2) {
       console.error("Login error:", e2);
       let msg = "Sign-in failed. Please check your credentials.";
       if (e2.code === "auth/invalid-email") msg = "Invalid email address.";
-      else if (
-        e2.code === "auth/user-not-found" ||
-        e2.code === "auth/wrong-password"
-      ) {
+      else if (e2.code === "auth/user-not-found" || e2.code === "auth/wrong-password")
         msg = "Incorrect email or password.";
-      } else if (e2.code === "auth/too-many-requests") {
+      else if (e2.code === "auth/too-many-requests")
         msg = "Too many attempts. Try again later.";
-      }
       setErr(msg);
     } finally {
       setLoading(false);
@@ -255,12 +161,9 @@ const LoginPage = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
-      {/* Header */}
       <LoginHeader />
 
-      {/* Main section */}
       <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10 px-6 md:px-16 pt-10 pb-8">
-        {/* LEFT PANEL — login form */}
         <div className="flex justify-center md:justify-end">
           <div className="w-full max-w-lg bg-white border border-neutral-200 rounded-2xl shadow-lg px-10 py-12">
             <div className="text-center">
@@ -269,23 +172,14 @@ const LoginPage = () => {
                 <br />
                 TaskSphere IT
               </h1>
-
-              {/* Brand mark */}
               <div className="mx-auto mt-6 h-20 w-20 grid place-items-center">
-                <img
-                  src={TaskSphereLogo}
-                  alt="TaskSphere Logo"
-                  className="object-contain h-full w-full"
-                />
+                <img src={TaskSphereLogo} alt="TaskSphere Logo" className="object-contain h-full w-full" />
               </div>
             </div>
 
-            {/* FORM */}
             <form onSubmit={handleSignIn} className="mt-8 space-y-5">
               <div>
-                <label className="block text-sm font-medium text-neutral-700">
-                  Email Address
-                </label>
+                <label className="block text-sm font-medium text-neutral-700">Email Address</label>
                 <input
                   type="email"
                   value={email}
@@ -297,9 +191,7 @@ const LoginPage = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-700">
-                  Password
-                </label>
+                <label className="block text-sm font-medium text-neutral-700">Password</label>
                 <div className="relative">
                   <input
                     type={showPwd ? "text" : "password"}
@@ -317,60 +209,26 @@ const LoginPage = () => {
                     tabIndex={-1}
                   >
                     {showPwd ? (
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-5 w-5"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M3 3l18 18M10.584 10.59a3 3 0 104.243 4.243M9.88 5.08A8.967 8.967 0 0112 5c4.5 0 8.268 2.943 9.75 7-.365 1.053-.915 2.03-1.62 2.9m-3.014 2.518A10.013 10.013 0 0112 19c-4.5 0-8.268-2.943-9.542-7a11.415 11.415 0 012.694-4.042"
-                        />
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18M10.584 10.59a3 3 0 104.243 4.243M9.88 5.08A8.967 8.967 0 0112 5c4.5 0 8.268 2.943 9.75 7-.365 1.053-.915 2.03-1.62 2.9m-3.014 2.518A10.013 10.013 0 0112 19c-4.5 0-8.268-2.943-9.542-7a11.415 11.415 0 012.694-4.042" />
                       </svg>
                     ) : (
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-5 w-5"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                        />
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                        />
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                       </svg>
                     )}
                   </button>
                 </div>
 
-                {/* Error + Forgot password link */}
                 <div className="mt-2 flex items-center justify-between">
-                  <div className="h-5">
-                    {err && <p className="text-xs text-red-600">{err}</p>}
-                  </div>
-
-                  <Link
-                    to="/forgot-password"
-                    className="text-sm text-[#6A0F14] hover:underline"
-                  >
+                  <div className="h-5">{err && <p className="text-xs text-red-600">{err}</p>}</div>
+                  <Link to="/forgot-password" className="text-sm text-[#6A0F14] hover:underline">
                     Forgot password?
                   </Link>
                 </div>
               </div>
 
-              {/* SIGN IN */}
               <button
                 type="submit"
                 disabled={loading || !email.trim() || !pwd.trim()}
@@ -382,14 +240,9 @@ const LoginPage = () => {
           </div>
         </div>
 
-        {/* RIGHT SIDE */}
         <div className="flex items-center justify-center text-center md:text-left">
           <div className="flex flex-col md:flex-row md:items-center md:gap-6">
-            <img
-              src={CCSLogo}
-              alt="CCS Logo"
-              className="mx-auto md:mx-0 h-28 w-28 object-contain"
-            />
+            <img src={CCSLogo} alt="CCS Logo" className="mx-auto md:mx-0 h-28 w-28 object-contain" />
             <h2 className="mt-6 md:mt-0 text-2xl md:text-3xl font-bold text-neutral-700 max-w-md">
               A Task Management System for
               <br className="hidden md:block" />
@@ -399,7 +252,6 @@ const LoginPage = () => {
         </div>
       </div>
 
-      {/* Footer */}
       <LoginFooter />
     </div>
   );
