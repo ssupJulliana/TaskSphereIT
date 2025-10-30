@@ -67,7 +67,7 @@ const AddUserModal = ({
               </div>
               <div>
                 <label className="block text-sm font-medium text-neutral-700">
-                  Student ID number
+                  ID number
                 </label>
                 <input
                   type="text"
