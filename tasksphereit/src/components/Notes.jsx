@@ -1,5 +1,17 @@
 // src/components/Notes.jsx
 // Shared Notes component for Adviser, Project Manager, and Member roles.
+//
+// Firestore structure (as requested):
+// notes (collection)
+//   ├─ adviser (doc; can be empty)
+//   │   └─ adviserNotes (subcollection)       <-- notes live here
+//   ├─ projectManager (doc)
+//   │   └─ projectManagerNotes (subcollection)
+//   └─ member (doc)
+//       └─ memberNotes (subcollection)
+//
+// Each note document fields:
+//   { uid, role, title, content, createdAt, updatedAt?, email?, migratedAt? }
 
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
@@ -16,13 +28,12 @@ import {
   AlignRight,
   Undo2,
   Redo2,
-  Eraser,
   IndentIncrease,
   IndentDecrease,
   X,
   Strikethrough,
   Link as LinkIcon,
-  Image as ImageIcon, // NEW: attach image button icon (no handler yet)
+  Image as ImageIcon,
 } from "lucide-react";
 
 /* ===== Firebase ===== */
@@ -32,10 +43,14 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDocs,
+  limit,
   onSnapshot,
   orderBy,
   query,
+  setDoc,
   updateDoc,
+  where,
   serverTimestamp,
 } from "firebase/firestore";
 
@@ -47,6 +62,14 @@ const plainPreview = (html, max = 120) => {
   tmp.innerHTML = html || "";
   const text = tmp.textContent || tmp.innerText || "";
   return text.length > max ? `${text.slice(0, max)}…` : text;
+};
+
+const roleRoutingMap = {
+  // route segment -> { roleName, roleDocId, subColName }
+  adviser: { role: "Adviser", doc: "adviser", sub: "adviserNotes" },
+  projectmanager: { role: "Project Manager", doc: "projectManager", sub: "projectManagerNotes" },
+  "project-manager": { role: "Project Manager", doc: "projectManager", sub: "projectManagerNotes" },
+  member: { role: "Member", doc: "member", sub: "memberNotes" },
 };
 
 /* ---------------- Modals ---------------- */
@@ -104,7 +127,7 @@ function ConfirmModal({
 }
 
 /* ---------------- Toolbar ---------------- */
-const Toolbar = ({ onCmd, onClear, onInsertLink, onAttachImage, active }) => {
+const Toolbar = ({ onCmd, onInsertLink, onAttachImage, active }) => {
   const baseBtn =
     "inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border border-neutral-300 hover:bg-neutral-100 cursor-pointer select-none";
   const activeBtn = "bg-[#6A0F14] text-white border-[#6A0F14]";
@@ -118,66 +141,30 @@ const Toolbar = ({ onCmd, onClear, onInsertLink, onAttachImage, active }) => {
   return (
     <div className="flex flex-wrap items-center gap-3 p-2 border-b border-neutral-200 bg-neutral-50">
       <div className={group}>
-        <button
-          className={`${baseBtn} ${active.bold ? activeBtn : ""}`}
-          type="button"
-          onMouseDown={h("bold")}
-          title="Bold"
-          aria-pressed={active.bold}
-        >
+        <button className={`${baseBtn} ${active.bold ? activeBtn : ""}`} type="button" onMouseDown={h("bold")} title="Bold" aria-pressed={active.bold}>
           <BoldIcon className="w-4 h-4" />
           <span className="hidden sm:inline">Bold</span>
         </button>
-        <button
-          className={`${baseBtn} ${active.italic ? activeBtn : ""}`}
-          type="button"
-          onMouseDown={h("italic")}
-          title="Italic"
-          aria-pressed={active.italic}
-        >
+        <button className={`${baseBtn} ${active.italic ? activeBtn : ""}`} type="button" onMouseDown={h("italic")} title="Italic" aria-pressed={active.italic}>
           <ItalicIcon className="w-4 h-4" />
           <span className="hidden sm:inline">Italic</span>
         </button>
-        <button
-          className={`${baseBtn} ${active.underline ? activeBtn : ""}`}
-          type="button"
-          onMouseDown={h("underline")}
-          title="Underline"
-          aria-pressed={active.underline}
-        >
+        <button className={`${baseBtn} ${active.underline ? activeBtn : ""}`} type="button" onMouseDown={h("underline")} title="Underline" aria-pressed={active.underline}>
           <UnderlineIcon className="w-4 h-4" />
           <span className="hidden sm:inline">Underline</span>
         </button>
-        <button
-          className={`${baseBtn} ${active.strike ? activeBtn : ""}`}
-          type="button"
-          onMouseDown={h("strikeThrough")}
-          title="Strikethrough"
-          aria-pressed={active.strike}
-        >
+        <button className={`${baseBtn} ${active.strike ? activeBtn : ""}`} type="button" onMouseDown={h("strikeThrough")} title="Strikethrough" aria-pressed={active.strike}>
           <Strikethrough className="w-4 h-4" />
           <span className="hidden sm:inline">Strike</span>
         </button>
       </div>
 
       <div className={group}>
-        <button
-          className={`${baseBtn} ${active.ul ? activeBtn : ""}`}
-          type="button"
-          title="Bulleted list"
-          onMouseDown={h("insertUnorderedList")}
-          aria-pressed={active.ul}
-        >
+        <button className={`${baseBtn} ${active.ul ? activeBtn : ""}`} type="button" title="Bulleted list" onMouseDown={h("insertUnorderedList")} aria-pressed={active.ul}>
           <List className="w-4 h-4" />
           <span className="hidden sm:inline">Bullets</span>
         </button>
-        <button
-          className={`${baseBtn} ${active.ol ? activeBtn : ""}`}
-          type="button"
-          title="Numbered list"
-          onMouseDown={h("insertOrderedList")}
-          aria-pressed={active.ol}
-        >
+        <button className={`${baseBtn} ${active.ol ? activeBtn : ""}`} type="button" title="Numbered list" onMouseDown={h("insertOrderedList")} aria-pressed={active.ol}>
           <ListOrdered className="w-4 h-4" />
           <span className="hidden sm:inline">Numbered</span>
         </button>
@@ -190,31 +177,13 @@ const Toolbar = ({ onCmd, onClear, onInsertLink, onAttachImage, active }) => {
       </div>
 
       <div className={group}>
-        <button
-          className={`${baseBtn} ${active.align === "left" ? activeBtn : ""}`}
-          type="button"
-          onMouseDown={h("justifyLeft")}
-          title="Align left"
-          aria-pressed={active.align === "left"}
-        >
+        <button className={`${baseBtn} ${active.align === "left" ? activeBtn : ""}`} type="button" onMouseDown={h("justifyLeft")} title="Align left" aria-pressed={active.align === "left"}>
           <AlignLeft className="w-4 h-4" />
         </button>
-        <button
-          className={`${baseBtn} ${active.align === "center" ? activeBtn : ""}`}
-          type="button"
-          onMouseDown={h("justifyCenter")}
-          title="Align center"
-          aria-pressed={active.align === "center"}
-        >
+        <button className={`${baseBtn} ${active.align === "center" ? activeBtn : ""}`} type="button" onMouseDown={h("justifyCenter")} title="Align center" aria-pressed={active.align === "center"}>
           <AlignCenter className="w-4 h-4" />
         </button>
-        <button
-          className={`${baseBtn} ${active.align === "right" ? activeBtn : ""}`}
-          type="button"
-          onMouseDown={h("justifyRight")}
-          title="Align right"
-          aria-pressed={active.align === "right"}
-        >
+        <button className={`${baseBtn} ${active.align === "right" ? activeBtn : ""}`} type="button" onMouseDown={h("justifyRight")} title="Align right" aria-pressed={active.align === "right"}>
           <AlignRight className="w-4 h-4" />
         </button>
       </div>
@@ -232,14 +201,12 @@ const Toolbar = ({ onCmd, onClear, onInsertLink, onAttachImage, active }) => {
           <LinkIcon className="w-4 h-4" />
           <span className="hidden sm:inline">Link</span>
         </button>
-
-        {/* NEW: Attach Image (UI only) */}
         <button
           className={baseBtn}
           type="button"
           onMouseDown={(e) => {
             e.preventDefault();
-            onAttachImage?.(); // optional; intentionally does nothing for now
+            onAttachImage?.();
           }}
           title="Attach image"
         >
@@ -275,11 +242,9 @@ function NoteCard({ note, index, onEdit, onAskDelete }) {
         tabIndex={0}
         onKeyDown={(e) => e.key === "Enter" && onEdit(note)}
       >
-        {/* accents */}
         <div className="absolute left-0 top-0 h-full w-8 bg-[#6A0F14]" />
         <div className="absolute bottom-0 left-0 right-0 h-5 bg-[#6A0F14]" />
 
-        {/* menu button inside card, tight to edge */}
         <button
           className="absolute top-3 right-3 z-10 p-1.5 rounded-md hover:bg-neutral-100 cursor-pointer"
           onClick={(e) => {
@@ -351,7 +316,6 @@ function NoteForm({ existing, onSave, onCancel }) {
   const editorRef = useRef(null);
   const selectionRef = useRef(null);
 
-  // --- UTIL: ensure Tailwind doesn't hide bullets/numbering
   const normalizeEditorHTML = () => {
     const el = editorRef.current;
     if (!el) return;
@@ -368,15 +332,13 @@ function NoteForm({ existing, onSave, onCancel }) {
     });
   };
 
-  // Initialize editor HTML when switching notes
   useEffect(() => {
     if (editorRef.current) {
       editorRef.current.innerHTML = existing?.content || "";
-      normalizeEditorHTML(); // ensure bullets/numbers show on load
+      normalizeEditorHTML();
       setContent(editorRef.current.innerHTML);
       refreshActiveStates();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existing]);
 
   const saveSelection = () => {
@@ -408,58 +370,10 @@ function NoteForm({ existing, onSave, onCancel }) {
     editorRef.current.focus();
     restoreSelection();
     document.execCommand(cmd, false, null);
-    // if the command created/toggled lists, ensure they have visible bullets/numbers
     if (cmd === "insertUnorderedList" || cmd === "insertOrderedList") {
       normalizeEditorHTML();
     }
     setContent(editorRef.current.innerHTML);
-    saveSelection();
-    refreshActiveStates();
-  };
-
-  // Robust CLEAR: remove inline formatting + convert any UL/OL -> plain paragraphs
-  const clearFormatting = () => {
-    if (!editorRef.current) return;
-    const el = editorRef.current;
-    el.focus();
-    restoreSelection();
-
-    // Start with native clear
-    document.execCommand("removeFormat", false, null);
-    document.execCommand("unlink", false, null);
-
-    // Structural cleanup via DOM manipulation
-    const container = document.createElement("div");
-    container.innerHTML = el.innerHTML;
-
-    // unwrap inline tags
-    container
-      .querySelectorAll("b,strong,i,em,u,s,strike,code,mark,span,a")
-      .forEach((node) => {
-        const parent = node.parentNode;
-        while (node.firstChild) parent.insertBefore(node.firstChild, node);
-        parent.removeChild(node);
-      });
-
-    // lists -> paragraphs
-    container.querySelectorAll("ul,ol").forEach((list) => {
-      const frag = document.createDocumentFragment();
-      list.querySelectorAll("li").forEach((li) => {
-        const p = document.createElement("p");
-        p.textContent = li.textContent; // intentionally drop formatting
-        frag.appendChild(p);
-      });
-      list.parentNode.replaceChild(frag, list);
-    });
-
-    // alignment reset: strip align/style attrs
-    container.querySelectorAll("[style],[align]").forEach((node) => {
-      node.removeAttribute("style");
-      node.removeAttribute("align");
-    });
-
-    el.innerHTML = container.innerHTML;
-    setContent(el.innerHTML);
     saveSelection();
     refreshActiveStates();
   };
@@ -479,7 +393,7 @@ function NoteForm({ existing, onSave, onCancel }) {
 
   const onInput = () => {
     if (editorRef.current) {
-      normalizeEditorHTML(); // keep bullets visible if lists are pasted/edited
+      normalizeEditorHTML();
       setContent(editorRef.current.innerHTML);
       refreshActiveStates();
     }
@@ -528,22 +442,18 @@ function NoteForm({ existing, onSave, onCancel }) {
       <div className="rounded-2xl overflow-hidden border border-neutral-200 bg-white shadow-[0_6px_12px_rgba(0,0,0,0.12)]">
         <Toolbar
           onCmd={exec}
-          onClear={clearFormatting}
           onInsertLink={insertLink}
           onAttachImage={() => {}}
           active={active}
         />
         <div
           ref={editorRef}
-          className={`min-h-[220px] p-3 text-sm outline-none bg-white ${
-            focused ? "ring-2 ring-[#6A0F14]/30" : ""
-          }`}
+          className={`min-h-[220px] p-3 text-sm outline-none bg-white ${focused ? "ring-2 ring-[#6A0F14]/30" : ""}`}
           contentEditable
           suppressContentEditableWarning
           onInput={onInput}
           onPaste={onPaste}
           onKeyDown={(e) => {
-            // Indent/outdent with Tab in lists
             if (e.key === "Tab") {
               e.preventDefault();
               if (e.shiftKey) exec("outdent");
@@ -609,21 +519,86 @@ function Notes() {
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   const location = useLocation();
-  const pathSegments = location.pathname.split("/");
-  const roleSegment = pathSegments[1] || "adviser";
-  const roleMap = {
-    adviser: "adviserNotes",
-    projectManager: "projectManagerNotes",
-    member: "memberNotes",
-  };
-  const notesKey = roleMap[roleSegment] || "adviserNotes";
+  const seg1 = (location.pathname.split("/")[1] || "").toLowerCase();
+  const resolved = roleRoutingMap[seg1] || roleRoutingMap.adviser; // default
 
   const uid = auth.currentUser?.uid || localStorage.getItem("uid") || "";
-  const notesCol = uid ? collection(db, `users/${uid}/${notesKey}`) : null;
+  const roleName = resolved.role;
+  const roleDocId = resolved.doc;
+  const subColName = resolved.sub;
 
+  // destination collection (new desired location)
+  const destCol = collection(db, `notes/${roleDocId}/${subColName}`);
+
+  /* ---- one-time migrations from older layouts to new nested layout ---- */
   useEffect(() => {
-    if (!uid || !notesCol) return;
-    const qRef = query(notesCol, orderBy("createdAt", "desc"));
+    const migrateIfNeeded = async () => {
+      if (!uid) return;
+      try {
+        const flagKey = `tsit_notes_migrated:v2:${uid}:${roleDocId}:${subColName}`;
+        if (localStorage.getItem(flagKey) === "1") return;
+
+        const destHasAtLeastOne = await getDocs(query(destCol, where("uid", "==", uid), limit(1)));
+        if (!destHasAtLeastOne.empty) {
+          localStorage.setItem(flagKey, "1");
+          return;
+        }
+
+        // sources to migrate from (old shapes)
+        const userSubCol = collection(db, `users/${uid}/${subColName}`);          // old: users/{uid}/adviserNotes etc
+        const legacyTopLevel = collection(db, subColName);                         // old: adviserNotes etc (top-level)
+
+        const sources = [
+          { ref: userSubCol, deleteAfter: true },
+          { ref: legacyTopLevel, deleteAfter: true, filterByUid: true },
+        ];
+
+        for (const src of sources) {
+          const snap = await getDocs(src.ref);
+          if (snap.empty) continue;
+
+          const tasks = snap.docs.map(async (d) => {
+            const data = d.data() || {};
+            if (src.filterByUid && data.uid && data.uid !== uid) return;
+
+            const newRef = doc(db, `notes/${roleDocId}/${subColName}/${d.id}`); // keep same id when possible
+            await setDoc(
+              newRef,
+              {
+                uid,
+                role: roleName,
+                title: data.title || "",
+                content: data.content || "",
+                createdAt: data.createdAt || serverTimestamp(),
+                email: data.email || auth.currentUser?.email || "",
+                migratedAt: serverTimestamp(),
+              },
+              { merge: true }
+            );
+
+            if (src.deleteAfter) {
+              try {
+                await deleteDoc(d.ref);
+              } catch {}
+            }
+          });
+
+          await Promise.all(tasks);
+        }
+
+        localStorage.setItem(flagKey, "1");
+      } catch (e) {
+        console.error("Notes migration error:", e);
+      }
+    };
+
+    migrateIfNeeded();
+  }, [uid, roleDocId, subColName, roleName, destCol]);
+
+  /* ---- live subscription to the new nested location ---- */
+  useEffect(() => {
+    if (!uid) return;
+    const qRef = query(destCol, where("uid", "==", uid), orderBy("createdAt", "desc"));
     const unsub = onSnapshot(
       qRef,
       (snap) => {
@@ -637,39 +612,43 @@ function Notes() {
       }
     );
     return () => unsub();
-  }, [uid, notesCol]);
+  }, [uid, destCol]);
 
+  /* ---- CRUD ---- */
   const handleCreate = () => {
     setEditingNote(null);
     setShowForm(true);
   };
-
   const handleEdit = (note) => {
     setEditingNote(note);
     setShowForm(true);
   };
   const handleAskDelete = (note) => setConfirmDelete(note);
+
   const handleDelete = async () => {
     const note = confirmDelete;
     if (!note) return;
     try {
-      await deleteDoc(doc(db, `users/${uid}/${notesKey}/${note.id}`));
+      await deleteDoc(doc(db, `notes/${roleDocId}/${subColName}/${note.id}`));
     } catch (e) {
       alert(e.message || "Failed to delete note");
     } finally {
       setConfirmDelete(null);
     }
   };
+
   const handleSave = async (data) => {
     try {
       if (editingNote) {
-        await updateDoc(doc(db, `users/${uid}/${notesKey}/${editingNote.id}`), {
+        await updateDoc(doc(db, `notes/${roleDocId}/${subColName}/${editingNote.id}`), {
           title: data.title,
           content: data.content,
           updatedAt: serverTimestamp(),
         });
       } else {
-        await addDoc(notesCol, {
+        await addDoc(destCol, {
+          uid,
+          role: roleName,
           title: data.title,
           content: data.content,
           createdAt: serverTimestamp(),
@@ -682,7 +661,9 @@ function Notes() {
       alert(e.message || "Failed to save note");
     }
   };
+
   const anyModalOpen = showForm || !!confirmDelete;
+
   return (
     <div className="space-y-4">
       {/* header */}
@@ -691,6 +672,7 @@ function Notes() {
         <h2 className="text-lg font-semibold">Notes</h2>
       </div>
       <div className="h-[2px] w-full bg-[#6A0F14]" />
+
       <button
         className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm text-white shadow hover:shadow-md cursor-pointer ${
           anyModalOpen ? "opacity-60 pointer-events-none" : ""
@@ -702,7 +684,7 @@ function Notes() {
         <Plus className="w-4 h-4" /> Create Note
       </button>
 
-      {/* centered dialogs */}
+      {/* form modal */}
       {showForm && (
         <Modal
           title={editingNote ? "Edit Note" : "Create Note"}
@@ -721,6 +703,8 @@ function Notes() {
           />
         </Modal>
       )}
+
+      {/* confirm delete */}
       {confirmDelete && (
         <ConfirmModal
           title="Delete Note"
@@ -754,5 +738,4 @@ function Notes() {
   );
 }
 
-
-export default Notes
+export default Notes;
