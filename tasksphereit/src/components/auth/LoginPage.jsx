@@ -1,5 +1,5 @@
 // src/components/auth/LoginPage.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import LoginHeader from "../common/LoginHeader.jsx";
 import LoginFooter from "../common/LoginFooter.jsx";
@@ -12,6 +12,7 @@ import {
   signInWithEmailAndPassword,
   signOut,
   updatePassword,
+  onAuthStateChanged, // <-- NEW: auth guard
 } from "firebase/auth";
 import {
   collection,
@@ -40,6 +41,53 @@ const LoginPage = () => {
     if (role === "Project Manager") return "/projectmanager/dashboard";
     return "/instructor/dashboard";
   };
+
+  /* ====================== GUARD: block /login when authed ====================== */
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      try {
+        if (!u) return; // not signed in -> allow login page
+
+        // find profile doc by uid
+        const usersRef = collection(db, "users");
+        const byUid = query(usersRef, where("uid", "==", u.uid), limit(1));
+        const snap = await getDocs(byUid);
+
+        if (snap.empty) {
+          // signed in but no profile, sign out and stay on login
+          await signOut(auth);
+          return;
+        }
+
+        const d = snap.docs[0];
+        const data = d.data() || {};
+        const role = data.role || null;
+
+        // ensure default TOS field exists
+        if (typeof data.isTosAccepted !== "boolean") {
+          await updateDoc(doc(db, "users", d.id), {
+            isTosAccepted: false,
+            updatedAt: new Date(),
+          });
+        }
+
+        // already signed-in users shouldn't see /login
+        if (data.isTosAccepted === true) {
+          navigate(routeForRole(role), { replace: true });
+        } else {
+          navigate("/terms-of-service", {
+            replace: true,
+            state: { from: routeForRole(role) },
+          });
+        }
+      } catch (e) {
+        console.error("Login guard error:", e);
+      }
+    });
+
+    return () => unsub();
+  }, [navigate]);
+  /* =========================================================================== */
 
   const handleSignIn = async (e) => {
     e.preventDefault();
