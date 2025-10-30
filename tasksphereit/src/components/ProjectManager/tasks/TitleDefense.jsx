@@ -2,7 +2,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Search,
-  Trash2,
   SlidersHorizontal,
   CalendarDays,
   Clock,
@@ -12,6 +11,8 @@ import {
   UserCircle2,
   Paperclip,
   X,
+  MoreVertical,
+  Loader2,
 } from "lucide-react";
 
 /* ===== Firebase ===== */
@@ -25,6 +26,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  updateDoc,
   where,
 } from "firebase/firestore";
 
@@ -58,8 +60,8 @@ const DOC_TASKS = [
 ];
 const DISCUSS_TASKS = ["Capstone Meeting"];
 
-/* ---------- Small UI ---------- */
 const StatusBadge = ({ value }) => {
+  if (!value || value === "null") return <span>null</span>;
   const map = {
     "To Do": "bg-[#D9A81E] text-white",
     "To Review": "bg-[#6FA8DC] text-white",
@@ -67,47 +69,69 @@ const StatusBadge = ({ value }) => {
     Completed: "bg-[#6A0F14] text-white",
   };
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[12px] font-medium ${map[value] || "bg-neutral-200"}`}>
+    <span
+      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[12px] font-medium ${
+        map[value] || "bg-neutral-200"
+      }`}
+    >
       {value}
     </span>
   );
 };
 
-const RevisionPill = ({ value }) => (
-  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[12px] font-medium bg-neutral-100 border border-neutral-200">
-    {value}
-  </span>
-);
+const RevisionPill = ({ value }) =>
+  value && value !== "null" ? (
+    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[12px] font-medium bg-neutral-100 border border-neutral-200">
+      {value}
+    </span>
+  ) : (
+    <span>null</span>
+  );
 
-/* ================= Create Task Dialog ================= */
-function CreateTaskDialog({ open, onClose, onCreated, pm, teams = [], members = [] }) {
-  const [phase] = useState("Planning"); // fixed for Title Defense
-  const [type, setType] = useState(""); // Documentation | Discussion & Review
+/* ======= Edit/Create Task Dialog (for Actions→Edit) ======= */
+function EditTaskDialog({
+  open,
+  onClose,
+  onSaved,
+  pm,
+  teams = [],
+  members = [],
+  seedMember,
+  existingTask,
+}) {
+  const [saving, setSaving] = useState(false);
+  const [type, setType] = useState("");
   const [task, setTask] = useState("");
-  const [due, setDue] = useState("");   // YYYY-MM-DD
-  const [time, setTime] = useState(""); // HH:mm (24h)
+  const [due, setDue] = useState("");
+  const [time, setTime] = useState("");
   const [pickedUid, setPickedUid] = useState("");
-  const [assignees, setAssignees] = useState([]); // [{uid,name}]
+  const [assignees, setAssignees] = useState([]);
   const [comment, setComment] = useState("");
-
-  // pick first team (most PMs manage exactly one team; supports multiple)
   const [teamId, setTeamId] = useState("");
-  useEffect(() => {
-    if (open && teams.length && !teamId) setTeamId(teams[0].id);
-  }, [open, teams, teamId]);
 
   useEffect(() => {
-    if (!open) {
+    if (!open) return;
+    setTeamId(existingTask?.team?.id || teams[0]?.id || "");
+    if (existingTask) {
+      setType(existingTask.type || "");
+      setTask(existingTask.task || "");
+      setDue(existingTask.dueDate || "");
+      setTime(existingTask.dueTime || "");
+      setAssignees(
+        (existingTask.assignees || []).map((a) => ({ uid: a.uid, name: a.name }))
+      );
+      setComment(existingTask.comment || "");
+    } else {
       setType("");
       setTask("");
       setDue("");
       setTime("");
-      setPickedUid("");
-      setAssignees([]);
+      setAssignees(
+        seedMember ? [{ uid: seedMember.uid, name: seedMember.name }] : []
+      );
       setComment("");
-      setTeamId(teams[0]?.id || "");
     }
-  }, [open, teams]);
+  }, [open, existingTask, seedMember, teams]);
 
   const availableTasks = useMemo(() => {
     if (type === "Documentation") return DOC_TASKS;
@@ -115,51 +139,40 @@ function CreateTaskDialog({ open, onClose, onCreated, pm, teams = [], members = 
     return [];
   }, [type]);
 
-  const addAssignee = () => {
-    if (!pickedUid) return;
-    const found = members.find((m) => m.uid === pickedUid);
-    if (!found) return;
-    if (!assignees.some((a) => a.uid === pickedUid)) {
-      setAssignees((arr) => [...arr, found]);
+  const canSave = teamId && type && task && assignees.length > 0;
+
+  const save = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    try {
+      const team = teams.find((t) => t.id === teamId) || null;
+      const payload = {
+        phase: "Planning",
+        type,
+        task,
+        dueDate: due || null,
+        dueTime: time || null,
+        dueAtMs: due && time ? new Date(`${due}T${time}:00`).getTime() : null,
+        status: existingTask?.status || "To Do",
+        revision: existingTask?.revision || "No Revision",
+        assignees: assignees.map((a) => ({ uid: a.uid, name: a.name })),
+        team: team ? { id: team.id, name: team.name } : null,
+        comment: comment || "",
+        ...(existingTask ? {} : { createdAt: serverTimestamp() }),
+        createdBy: pm
+          ? { uid: pm.uid, name: pm.name, role: "Project Manager" }
+          : null,
+      };
+      if (existingTask?.id) {
+        await updateDoc(doc(db, TASKS_COLLECTION, existingTask.id), payload);
+      } else {
+        await addDoc(collection(db, TASKS_COLLECTION), payload);
+      }
+      onSaved?.();
+      onClose();
+    } finally {
+      setSaving(false);
     }
-    setPickedUid("");
-  };
-
-  const removeAssignee = (uid) => {
-    setAssignees((arr) => arr.filter((a) => a.uid !== uid));
-  };
-
-  const canSave =
-    teamId &&
-    type &&
-    task &&
-    due &&
-    time &&
-    assignees.length > 0;
-
-  const handleSave = async () => {
-    const dueAt = new Date(`${due}T${time}:00`);
-    const team = teams.find((t) => t.id === teamId);
-
-    const payload = {
-      phase,                 // "Planning"
-      type,                  // "Documentation" | "Discussion & Review"
-      task,                  // string
-      dueDate: due,          // "YYYY-MM-DD"
-      dueTime: time,         // "HH:mm"
-      dueAtMs: dueAt.getTime(),
-      status: "To Do",       // default
-      revision: "No Revision",
-      assignees: assignees.map((a) => ({ uid: a.uid, name: a.name })),
-      team: team ? { id: team.id, name: team.name } : null,
-      comment: comment || "",
-      createdBy: pm ? { uid: pm.uid, name: pm.name, role: "Project Manager" } : null,
-      createdAt: serverTimestamp(),
-    };
-
-    await addDoc(collection(db, TASKS_COLLECTION), payload);
-    onCreated?.();
-    onClose();
   };
 
   if (!open) return null;
@@ -169,142 +182,193 @@ function CreateTaskDialog({ open, onClose, onCreated, pm, teams = [], members = 
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
       <div className="relative z-10 mx-auto mt-10 w-[900px] max-w-[95vw]">
         <div className="bg-white rounded-2xl shadow-2xl border border-neutral-200">
-          {/* header */}
           <div className="flex items-center justify-between px-5 pt-4">
-            <div className="flex items-center gap-2 text-[16px] font-semibold" style={{ color: MAROON }}>
+            <div
+              className="flex items-center gap-2 text-[16px] font-semibold"
+              style={{ color: MAROON }}
+            >
               <PlusCircle className="w-5 h-5" />
-              <span>Create Task</span>
+              <span>{existingTask ? "Edit Task" : "Create Task"}</span>
             </div>
-            <button onClick={onClose} className="p-1 rounded-md hover:bg-neutral-100 text-neutral-500" aria-label="Close">
+            <button
+              onClick={onClose}
+              className="p-1 rounded-md hover:bg-neutral-100 text-neutral-500"
+            >
               <X className="w-5 h-5" />
             </button>
           </div>
-          <div className="mt-3 h-[2px] w-full" style={{ backgroundColor: MAROON }} />
+          <div
+            className="mt-3 h-[2px] w-full"
+            style={{ backgroundColor: MAROON }}
+          />
 
-          {/* body */}
           <div className="p-5 space-y-5">
-            {/* row A: team */}
             <div className="grid grid-cols-12 gap-4">
               <div className="col-span-6">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Team</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Team
+                </label>
                 <select
                   className="w-full rounded-lg border border-neutral-300 px-3 py-2"
                   value={teamId}
                   onChange={(e) => setTeamId(e.target.value)}
                 >
                   {teams.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
                   ))}
                 </select>
               </div>
               <div className="col-span-6">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Project Phase</label>
-                <input className="w-full rounded-lg border border-neutral-300 px-3 py-2 bg-neutral-100" value="Planning" disabled />
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Project Phase
+                </label>
+                <input
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2 bg-neutral-100"
+                  value="Planning"
+                  disabled
+                />
               </div>
             </div>
 
-            {/* row B: cascading selects */}
             <div className="grid grid-cols-12 gap-4">
               <div className="col-span-4">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Task Type</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Task Type
+                </label>
                 <select
                   className="w-full rounded-lg border border-neutral-300 px-3 py-2"
                   value={type}
-                  onChange={(e) => { setType(e.target.value); setTask(""); }}
+                  onChange={(e) => {
+                    setType(e.target.value);
+                    setTask("");
+                  }}
                 >
                   <option value="">Select</option>
                   <option>Documentation</option>
                   <option>Discussion & Review</option>
                 </select>
               </div>
-
               <div className="col-span-8">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Tasks</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Tasks
+                </label>
                 <select
                   className="w-full rounded-lg border border-neutral-300 px-3 py-2"
                   value={task}
                   onChange={(e) => setTask(e.target.value)}
                   disabled={!type}
                 >
-                  <option value="">{type ? "Select task" : "Select Task Type first"}</option>
-                  {availableTasks.map((t) => (
-                    <option key={t} value={t}>{t}</option>
+                  <option value="">
+                    {type ? "Select task" : "Select Task Type first"}
+                  </option>
+                  {(type === "Documentation"
+                    ? DOC_TASKS
+                    : type === "Discussion & Review"
+                    ? DISCUSS_TASKS
+                    : []
+                  ).map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
                   ))}
                 </select>
               </div>
             </div>
 
-            {/* row C: due date/time */}
             <div className="grid grid-cols-12 gap-4">
               <div className="col-span-4">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Due Date</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Due Date
+                </label>
                 <input
                   type="date"
                   className="w-full rounded-lg border border-neutral-300 px-3 py-2"
                   value={due}
                   onChange={(e) => setDue(e.target.value)}
-                  disabled={!task}
                 />
               </div>
               <div className="col-span-4">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Time</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Time
+                </label>
                 <input
                   type="time"
                   className="w-full rounded-lg border border-neutral-300 px-3 py-2"
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
-                  disabled={!due}
                 />
               </div>
             </div>
 
-            {/* row D: assignees */}
-            <div className="grid grid-cols-12 gap-4">
-              <div className="col-span-12">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Assign Members</label>
-                <div className="flex gap-2">
-                  <select
-                    className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-                    value={pickedUid}
-                    onChange={(e) => setPickedUid(e.target.value)}
-                    disabled={!time}
-                  >
-                    <option value="">{time ? "Select member" : "Set date & time first"}</option>
-                    {members.map((m) => (
-                      <option key={m.uid} value={m.uid}>{m.name}</option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={addAssignee}
-                    disabled={!pickedUid}
-                    className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50 disabled:opacity-50"
-                  >
-                    <PlusCircle className="w-4 h-4" /> Add
-                  </button>
-                </div>
-
-                {/* chips */}
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {assignees.map((a) => (
-                    <span key={a.uid} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-neutral-100 border border-neutral-200">
-                      {a.name}
-                      <button className="p-0.5 hover:bg-neutral-200 rounded-full" onClick={() => removeAssignee(a.uid)} aria-label={`Remove ${a.name}`}>
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">
+                Assign Members
+              </label>
+              <div className="flex gap-2">
+                <select
+                  className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                  value={pickedUid}
+                  onChange={(e) => setPickedUid(e.target.value)}
+                >
+                  <option value="">Select member</option>
+                  {members.map((m) => (
+                    <option key={m.uid} value={m.uid}>
+                      {m.name}
+                    </option>
                   ))}
-                </div>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!pickedUid) return;
+                    const found = members.find((m) => m.uid === pickedUid);
+                    if (
+                      found &&
+                      !assignees.some((a) => a.uid === found.uid)
+                    )
+                      setAssignees((a) => [...a, found]);
+                    setPickedUid("");
+                  }}
+                  disabled={!pickedUid}
+                  className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50 disabled:opacity-50"
+                >
+                  <PlusCircle className="w-4 h-4" /> Add
+                </button>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {assignees.map((a) => (
+                  <span
+                    key={a.uid}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-neutral-100 border border-neutral-200"
+                  >
+                    {a.name}
+                    <button
+                      className="p-0.5 hover:bg-neutral-200 rounded-full"
+                      onClick={() =>
+                        setAssignees((arr) =>
+                          arr.filter((x) => x.uid !== a.uid)
+                        )
+                      }
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
               </div>
             </div>
 
-            {/* comment box */}
             <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">Leave Comment:</label>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">
+                Leave Comment:
+              </label>
               <div className="rounded-xl border border-neutral-300 bg-white p-3 shadow-sm">
                 <div className="flex items-center gap-2 mb-2">
                   <UserCircle2 className="w-5 h-5 text-neutral-600" />
-                  <span className="text-sm font-semibold text-neutral-800">{pm?.name || "Project Manager"}</span>
+                  <span className="text-sm font-semibold text-neutral-800">
+                    {pm?.name || "Project Manager"}
+                  </span>
                 </div>
                 <textarea
                   rows={3}
@@ -313,7 +377,11 @@ function CreateTaskDialog({ open, onClose, onCreated, pm, teams = [], members = 
                   onChange={(e) => setComment(e.target.value)}
                 />
                 <div className="mt-2 flex items-center justify-end">
-                  <button type="button" className="inline-flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-800" title="Attach">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-800"
+                    title="Attach"
+                  >
                     <Paperclip className="w-4 h-4" /> Attach
                   </button>
                 </div>
@@ -321,19 +389,24 @@ function CreateTaskDialog({ open, onClose, onCreated, pm, teams = [], members = 
             </div>
           </div>
 
-          {/* footer */}
           <div className="flex items-center justify-end gap-2 px-5 pb-4">
-            <button type="button" onClick={onClose} className="rounded-lg border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
+              disabled={saving}
+            >
               Cancel
             </button>
             <button
               type="button"
-              onClick={handleSave}
-              disabled={!canSave}
-              className="rounded-lg px-4 py-2 text-sm font-semibold text-white shadow disabled:opacity-50"
+              onClick={save}
+              disabled={!canSave || saving}
+              className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow disabled:opacity-50"
               style={{ backgroundColor: MAROON }}
             >
-              Create
+              {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+              {existingTask ? "Save" : "Create"}
             </button>
           </div>
         </div>
@@ -344,91 +417,100 @@ function CreateTaskDialog({ open, onClose, onCreated, pm, teams = [], members = 
 
 /* ================= Main ================= */
 const TitleDefense = ({ onBack }) => {
-  const handleBack = () => (typeof onBack === "function" ? onBack() : window.history.back());
+  const handleBack = () =>
+    typeof onBack === "function" ? onBack() : window.history.back();
 
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState(new Set());
-  const [showCreate, setShowCreate] = useState(false);
-  const pageSize = 8;
+  const pageSize = 10;
+
+  const [menuOpenId, setMenuOpenId] = useState(null); // member uid
+  const [editingModal, setEditingModal] = useState(null); // {seedMember, existingTask}
+  const [deletingId, setDeletingId] = useState(null); // task id
+
+  // which cell is being inline-edited
+  const [editingCell, setEditingCell] = useState(null); // {key, field:'type'|'task'|'due'|'time'}
+
+  // Optimistic overlay (for realtime feel even before snapshot returns)
+  const [optimistic, setOptimistic] = useState({}); // {[memberUid]: {type?, task?, due?, time?}}
 
   // current PM
   const pmUid = auth.currentUser?.uid || localStorage.getItem("uid") || "";
-  const [pmProfile, setPmProfile] = useState(null); // {uid,name}
+  const [pmProfile, setPmProfile] = useState(null);
 
-  // PM teams & members
-  const [teams, setTeams] = useState([]); // [{id,name, memberUids:[], memberNames:[]}]
-  const [members, setMembers] = useState([]); // [{uid,name}]
+  const [teams, setTeams] = useState([]);
+  const [members, setMembers] = useState([]);
 
-  // Tasks from Firestore
-  const [tasks, setTasks] = useState([]); // [{id,...}]
+  // raw task docs created by this PM
+  const [tasks, setTasks] = useState([]);
 
-  /* --- Load PM profile --- */
+  /* PM profile */
   useEffect(() => {
     if (!pmUid) return;
     const unsub = onSnapshot(
       query(collection(db, "users"), where("uid", "==", pmUid)),
       (snap) => {
         const d = snap.docs[0]?.data();
-        if (d) setPmProfile({ uid: pmUid, name: [d.firstName, d.middleName, d.lastName].filter(Boolean).join(" ") });
+        if (!d) return;
+        const name = [d.firstName, d.middleName, d.lastName]
+          .filter(Boolean)
+          .join(" ")
+          .replace(/\s+/g, " ")
+          .trim();
+        setPmProfile({ uid: pmUid, name: name || "Project Manager" });
       }
     );
     return () => unsub && unsub();
   }, [pmUid]);
 
-  /* --- Load PM team(s) and members --- */
+  /* Teams + members of this PM */
   useEffect(() => {
     if (!pmUid) return;
-
-    // teams where manager.uid == pmUid
     const unsubTeams = onSnapshot(
       query(collection(db, "teams"), where("manager.uid", "==", pmUid)),
       (snap) => {
         const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         setTeams(rows);
 
-        // gather member uids
         const memberUids = Array.from(
           new Set(rows.flatMap((t) => t.memberUids || []))
         );
-        if (memberUids.length === 0) {
-          setMembers([]);
-          return;
-        }
+        if (memberUids.length === 0) return setMembers([]);
 
-        // Firestore "in" supports up to 10; chunk if needed
         const chunks = [];
-        for (let i = 0; i < memberUids.length; i += 10) chunks.push(memberUids.slice(i, i + 10));
-
+        for (let i = 0; i < memberUids.length; i += 10)
+          chunks.push(memberUids.slice(i, i + 10));
         const unsubs = chunks.map((uids) =>
           onSnapshot(
             query(collection(db, "users"), where("uid", "in", uids)),
             (s) => {
-              // Merge chunks
               const list = s.docs.map((x) => {
                 const d = x.data();
-                const name = [d.firstName, d.middleName, d.lastName].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+                const name = [d.firstName, d.middleName, d.lastName]
+                  .filter(Boolean)
+                  .join(" ")
+                  .replace(/\s+/g, " ")
+                  .trim();
                 return { uid: d.uid || x.id, name };
               });
-              // NOTE: We’ll rebuild after all chunks fire—simplest is to refetch on any chunk:
               setMembers((prev) => {
                 const map = new Map(prev.map((m) => [m.uid, m]));
                 list.forEach((m) => map.set(m.uid, m));
-                // Keep only those in memberUids (remove stale)
-                return Array.from(map.values()).filter((m) => memberUids.includes(m.uid));
+                return Array.from(map.values()).filter((m) =>
+                  memberUids.includes(m.uid)
+                );
               });
             }
           )
         );
-
         return () => unsubs.forEach((u) => u && u());
       }
     );
-
     return () => unsubTeams && unsubTeams();
   }, [pmUid]);
 
-  /* --- Load tasks created by this PM (live) --- */
+  /* Tasks created by this PM (live) */
   useEffect(() => {
     if (!pmUid) return;
     const unsub = onSnapshot(
@@ -438,89 +520,209 @@ const TitleDefense = ({ onBack }) => {
         orderBy("createdAt", "desc")
       ),
       (snap) => {
-        const rows = snap.docs.map((d, idx) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            no: idx + 1,
-            assigned: (data.assignees || []).map((a) => a.name).join(", "),
-            type: data.type || "",
-            phase: data.phase || "Planning",
-            task: data.task || "",
-            created: data.createdAt?.toDate
-              ? data.createdAt.toDate().toLocaleDateString()
-              : "",
-            due: data.dueDate || "",
-            time: data.dueTime || "",
-            revision: data.revision || "No Revision",
-            status: data.status || "To Do",
-          };
-        });
-        setTasks(rows);
-        setPage(1);
+        setTasks(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
         setSelected(new Set());
+        setPage(1);
+
+        // clear optimistic overlays for members with a task now
+        setOptimistic((prev) => {
+          const next = { ...prev };
+          const memberWithTask = new Set();
+          for (const t of snap.docs) {
+            const data = t.data();
+            (data.assignees || []).forEach((a) => {
+              if (a?.uid) memberWithTask.add(a.uid);
+            });
+          }
+          for (const k of Object.keys(next)) {
+            if (memberWithTask.has(k)) delete next[k];
+          }
+          return next;
+        });
       }
     );
     return () => unsub && unsub();
   }, [pmUid]);
 
-  /* --- Search & paging --- */
+  /* Build table rows: per member, latest task (if any) + optimistic overlay */
+  const rows = useMemo(() => {
+    const latestByMember = new Map(); // uid -> task
+    for (const t of tasks) {
+      for (const a of t.assignees || []) {
+        if (!a?.uid) continue;
+        const prev = latestByMember.get(a.uid);
+        const prevTs = prev?.createdAt?.toDate?.() ?? null;
+        const curTs = t?.createdAt?.toDate?.() ?? null;
+        if (!prev || (curTs && prevTs && curTs > prevTs))
+          latestByMember.set(a.uid, t);
+      }
+    }
+
+    return members.map((m) => {
+      const t = latestByMember.get(m.uid) || null;
+      const base = {
+        key: m.uid,
+        memberUid: m.uid,
+        memberName: m.name,
+        taskId: t?.id || null,
+        type: t?.type || "null",
+        task: t?.task || "null",
+        created:
+          t?.createdAt?.toDate?.()?.toLocaleDateString?.() || "null",
+        due: t?.dueDate || "null",
+        time: t?.dueTime || "null",
+        revision: t ? t.revision || "No Revision" : "null",
+        status: t ? t.status || "To Do" : "null",
+        phase: t?.phase || "Planning",
+        existingTask: t || null,
+      };
+
+      const opt = optimistic[m.uid];
+      if (opt) {
+        if (opt.type !== undefined) base.type = opt.type || "null";
+        if (opt.task !== undefined) base.task = opt.task || "null";
+        if (opt.due !== undefined) base.due = opt.due || "null";
+        if (opt.time !== undefined) base.time = opt.time || "null";
+      }
+
+      return base;
+    });
+  }, [members, tasks, optimistic]);
+
+  /* Search + paging */
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
-    if (!s) return tasks;
-    return tasks.filter(
+    if (!s) return rows;
+    return rows.filter(
       (r) =>
-        String(r.no).includes(s) ||
-        r.assigned.toLowerCase().includes(s) ||
+        r.memberName.toLowerCase().includes(s) ||
         r.type.toLowerCase().includes(s) ||
         r.task.toLowerCase().includes(s) ||
         r.created.toLowerCase().includes(s) ||
         r.due.toLowerCase().includes(s) ||
         r.time.toLowerCase().includes(s) ||
-        r.status.toLowerCase().includes(s) ||
+        String(r.revision).toLowerCase().includes(s) ||
+        String(r.status).toLowerCase().includes(s) ||
         r.phase.toLowerCase().includes(s)
     );
-  }, [q, tasks]);
+  }, [q, rows]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize);
 
-  /* --- Selection & deletion --- */
-  const toggleSelect = (id) => {
-    const s = new Set(selected);
-    s.has(id) ? s.delete(id) : s.add(id);
-    setSelected(s);
+  /* Helpers */
+  const currentVal = (row, field) => {
+    const opt = optimistic[row.memberUid];
+    const v = (opt && opt[field]) !== undefined ? opt[field] : row[field];
+    return v && v !== "null" ? v : "";
   };
 
-  const deleteSelected = async () => {
-    if (selected.size === 0) return;
-    const ids = Array.from(selected);
-    // delete one-by-one
-    await Promise.all(ids.map((id) => deleteDoc(doc(db, TASKS_COLLECTION, id))));
-    setSelected(new Set());
-    setPage(1);
+  const upsertForMember = async (row, patch, optimisticPatch) => {
+    setOptimistic((prev) => ({
+      ...prev,
+      [row.memberUid]: { ...(prev[row.memberUid] || {}), ...optimisticPatch },
+    }));
+
+    const base = {
+      phase: "Planning",
+      status: "To Do",
+      revision: "No Revision",
+      createdBy: pmProfile
+        ? { uid: pmProfile.uid, name: pmProfile.name, role: "Project Manager" }
+        : null,
+      assignees: [{ uid: row.memberUid, name: row.memberName }],
+      team: teams[0] ? { id: teams[0].id, name: teams[0].name } : null,
+    };
+
+    if (row.taskId) {
+      await updateDoc(doc(db, TASKS_COLLECTION, row.taskId), { ...patch });
+    } else {
+      await addDoc(collection(db, TASKS_COLLECTION), {
+        ...base,
+        ...patch,
+        createdAt: serverTimestamp(),
+      });
+    }
+  };
+
+  /* Inline editors */
+  const startEdit = (row, field) => {
+    // cascade rules
+    if (field === "task" && (!row.type || row.type === "null")) return;
+    if (field === "due" && (!row.task || row.task === "null")) return;
+    if (field === "time" && (!row.due || row.due === "null")) return;
+    setEditingCell({ key: row.key, field });
+  };
+  const stopEdit = () => setEditingCell(null);
+
+  const saveType = async (row, newType) => {
+    await upsertForMember(
+      row,
+      { type: newType || null, task: null },
+      { type: newType || "null", task: "null" }
+    );
+    stopEdit();
+  };
+
+  const saveTask = async (row, newTask) => {
+    await upsertForMember(
+      row,
+      { task: newTask || null },
+      { task: newTask || "null" }
+    );
+    stopEdit();
+  };
+
+  const saveDue = async (row, newDate) => {
+    const time = currentVal(row, "time"); // HH:mm or ""
+    const dueAtMs = newDate && time ? new Date(`${newDate}T${time}:00`).getTime() : null;
+    await upsertForMember(
+      row,
+      { dueDate: newDate || null, dueAtMs },
+      { due: newDate || "null", ...(newDate ? {} : { time: "null" }) } // if due cleared, clear time visually
+    );
+    stopEdit();
+  };
+
+  const saveTime = async (row, newTime) => {
+    const due = currentVal(row, "due"); // YYYY-MM-DD or ""
+    const dueAtMs = due && newTime ? new Date(`${due}T${newTime}:00`).getTime() : null;
+    await upsertForMember(
+      row,
+      { dueTime: newTime || null, dueAtMs },
+      { time: newTime || "null" }
+    );
+    stopEdit();
+  };
+
+  const deleteTask = async (taskId) => {
+    setDeletingId(taskId);
+    try {
+      await deleteDoc(doc(db, TASKS_COLLECTION, taskId));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const openModalEditor = (row) => {
+    setEditingModal({
+      seedMember: { uid: row.memberUid, name: row.memberName },
+      existingTask: row.taskId ? { ...row.existingTask, id: row.taskId } : null,
+    });
   };
 
   return (
     <div className="space-y-4">
-      {/* toolbar */}
+      {/* toolbar (no Create button) */}
       <div className="flex items-center justify-between gap-3 flex-nowrap">
         <div className="flex items-center gap-3">
           <button
             onClick={handleBack}
-            className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100 cursor-pointer"
+            className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100"
             title="Back to Tasks"
           >
             <ChevronLeft className="w-4 h-4" />
             Back to Tasks
-          </button>
-
-          <button
-            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow"
-            style={{ background: MAROON }}
-            onClick={() => setShowCreate(true)}
-          >
-            + Create Task
           </button>
 
           <div className="w-[360px]">
@@ -532,32 +734,21 @@ const TitleDefense = ({ onBack }) => {
                   setQ(e.target.value);
                   setPage(1);
                 }}
-                placeholder="Search"
+                placeholder="Search members or tasks"
                 className="w-full pl-9 pr-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-neutral-300"
               />
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={deleteSelected}
-            className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50"
-            title="Delete"
-            disabled={selected.size === 0}
-          >
-            <Trash2 className="w-4 h-4" />
-            Delete
-          </button>
-          <button
-            className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50"
-            title="Filter"
-            onClick={() => alert("Open Filter panel")}
-          >
-            <SlidersHorizontal className="w-4 h-4" />
-            Filter
-          </button>
-        </div>
+        <button
+          className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50"
+          title="Filter"
+          onClick={() => alert("Open Filter panel")}
+        >
+          <SlidersHorizontal className="w-4 h-4" />
+          Filter
+        </button>
       </div>
 
       {/* table */}
@@ -570,15 +761,18 @@ const TitleDefense = ({ onBack }) => {
                   <input
                     type="checkbox"
                     onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelected(new Set(pageRows.map((r) => r.id)));
-                      } else setSelected(new Set());
+                      if (e.target.checked)
+                        setSelected(new Set(pageRows.map((r) => r.key)));
+                      else setSelected(new Set());
                     }}
-                    checked={pageRows.length > 0 && pageRows.every((r) => selected.has(r.id))}
+                    checked={
+                      pageRows.length > 0 &&
+                      pageRows.every((r) => selected.has(r.key))
+                    }
                   />
                 </th>
                 <th className="py-2 pr-3 w-16">NO</th>
-                <th className="py-2 pr-3">Assigned</th>
+                <th className="py-2 pr-3">Member</th>
                 <th className="py-2 pr-3">Task Type</th>
                 <th className="py-2 pr-3">Task</th>
                 <th className="py-2 pr-3">
@@ -599,35 +793,235 @@ const TitleDefense = ({ onBack }) => {
                 <th className="py-2 pr-3">Revision NO</th>
                 <th className="py-2 pr-6">Status</th>
                 <th className="py-2 pr-6">Project Phase</th>
+                <th className="py-2 pr-6 w-12 text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {pageRows.map((r, idx) => (
-                <tr key={r.id} className="border-t border-neutral-200">
-                  <td className="py-2 pl-6 pr-3">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(r.id)}
-                      onChange={() => toggleSelect(r.id)}
-                    />
-                  </td>
-                  <td className="py-2 pr-3">{(page - 1) * pageSize + idx + 1}.</td>
-                  <td className="py-2 pr-3">{r.assigned}</td>
-                  <td className="py-2 pr-3">{r.type}</td>
-                  <td className="py-2 pr-3">{r.task}</td>
-                  <td className="py-2 pr-3">{r.created}</td>
-                  <td className="py-2 pr-3">{r.due}</td>
-                  <td className="py-2 pr-3">{r.time}</td>
-                  <td className="py-2 pr-3"><RevisionPill value={r.revision} /></td>
-                  <td className="py-2 pr-6"><StatusBadge value={r.status} /></td>
-                  <td className="py-2 pr-6">{r.phase}</td>
-                </tr>
-              ))}
+              {pageRows.map((r, idx) => {
+                const isEditingType =
+                  editingCell?.key === r.key && editingCell?.field === "type";
+                const isEditingTask =
+                  editingCell?.key === r.key && editingCell?.field === "task";
+                const isEditingDue =
+                  editingCell?.key === r.key && editingCell?.field === "due";
+                const isEditingTime =
+                  editingCell?.key === r.key && editingCell?.field === "time";
+
+                const taskOptions =
+                  r.type === "Documentation"
+                    ? DOC_TASKS
+                    : r.type === "Discussion & Review"
+                    ? DISCUSS_TASKS
+                    : [];
+
+                const canEditDue = r.task !== "null";
+                const canEditTime = r.due !== "null";
+
+                return (
+                  <tr key={r.key} className="border-t border-neutral-200">
+                    <td className="py-2 pl-6 pr-3">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(r.key)}
+                        onChange={() => {
+                          const s = new Set(selected);
+                          s.has(r.key) ? s.delete(r.key) : s.add(r.key);
+                          setSelected(s);
+                        }}
+                      />
+                    </td>
+                    <td className="py-2 pr-3">
+                      {(page - 1) * pageSize + idx + 1}.
+                    </td>
+                    <td className="py-2 pr-3">{r.memberName}</td>
+
+                    {/* Task Type */}
+                    <td
+                      className="py-2 pr-3"
+                      onDoubleClick={() => startEdit(r, "type")}
+                    >
+                      {isEditingType ? (
+                        <select
+                          autoFocus
+                          className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+                          defaultValue={r.type === "null" ? "" : r.type}
+                          onBlur={(e) => saveType(r, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") e.currentTarget.blur();
+                            if (e.key === "Escape") stopEdit();
+                          }}
+                        >
+                          <option value="">null</option>
+                          <option>Documentation</option>
+                          <option>Discussion & Review</option>
+                        </select>
+                      ) : (
+                        <span>{r.type}</span>
+                      )}
+                    </td>
+
+                    {/* Task */}
+                    <td
+                      className={`py-2 pr-3 ${
+                        r.type === "null"
+                          ? "text-neutral-400 cursor-not-allowed"
+                          : ""
+                      }`}
+                      onDoubleClick={() => startEdit(r, "task")}
+                      title={r.type === "null" ? "Set Task Type first" : ""}
+                    >
+                      {isEditingTask ? (
+                        <select
+                          autoFocus
+                          className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+                          defaultValue={r.task === "null" ? "" : r.task}
+                          onBlur={(e) => saveTask(r, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") e.currentTarget.blur();
+                            if (e.key === "Escape") stopEdit();
+                          }}
+                        >
+                          <option value="">null</option>
+                          {taskOptions.map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span>{r.task}</span>
+                      )}
+                    </td>
+
+                    {/* Date Created */}
+                    <td className="py-2 pr-3">{r.created}</td>
+
+                    {/* Due Date */}
+                    <td
+                      className={`py-2 pr-3 ${
+                        !canEditDue ? "text-neutral-400 cursor-not-allowed" : ""
+                      }`}
+                      onDoubleClick={() => canEditDue && startEdit(r, "due")}
+                      title={!canEditDue ? "Set Task first" : ""}
+                    >
+                      {isEditingDue ? (
+                        <input
+                          type="date"
+                          autoFocus
+                          className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+                          defaultValue={r.due === "null" ? "" : r.due}
+                          onBlur={(e) => saveDue(r, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") e.currentTarget.blur();
+                            if (e.key === "Escape") stopEdit();
+                          }}
+                        />
+                      ) : (
+                        <span>{r.due}</span>
+                      )}
+                    </td>
+
+                    {/* Time */}
+                    <td
+                      className={`py-2 pr-3 ${
+                        !canEditTime ? "text-neutral-400 cursor-not-allowed" : ""
+                      }`}
+                      onDoubleClick={() => canEditTime && startEdit(r, "time")}
+                      title={!canEditTime ? "Set Due Date first" : ""}
+                    >
+                      {isEditingTime ? (
+                        <input
+                          type="time"
+                          autoFocus
+                          className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+                          defaultValue={r.time === "null" ? "" : r.time}
+                          onBlur={(e) => saveTime(r, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") e.currentTarget.blur();
+                            if (e.key === "Escape") stopEdit();
+                          }}
+                        />
+                      ) : (
+                        <span>{r.time}</span>
+                      )}
+                    </td>
+
+                    <td className="py-2 pr-3">
+                      <RevisionPill value={r.revision} />
+                    </td>
+                    <td className="py-2 pr-6">
+                      <StatusBadge value={r.status} />
+                    </td>
+                    <td className="py-2 pr-6">{r.phase || "Planning"}</td>
+
+                    <td className="py-2 pr-6">
+                      <div className="relative flex justify-center">
+                        <button
+                          className="p-1.5 rounded-md hover:bg-neutral-100"
+                          onClick={() =>
+                            setMenuOpenId(menuOpenId === r.key ? null : r.key)
+                          }
+                          aria-label="Row actions"
+                        >
+                          <MoreVertical className="w-4 h-4 text-neutral-600" />
+                        </button>
+
+                        {menuOpenId === r.key && (
+                          <div className="absolute right-0 top-6 z-10 w-44 bg-white border border-neutral-200 rounded-lg shadow-lg p-1">
+                            <div className="flex flex-col">
+                              <button
+                                className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50"
+                                onClick={() => {
+                                  setMenuOpenId(null);
+                                  openModalEditor(r);
+                                }}
+                              >
+                                Edit {r.taskId ? "" : "(create)"}
+                              </button>
+                              <button
+                                className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50"
+                                onClick={() => {
+                                  setMenuOpenId(null);
+                                  alert(
+                                    r.taskId
+                                      ? `Open detail: ${r.taskId}`
+                                      : "No task yet"
+                                  );
+                                }}
+                              >
+                                View
+                              </button>
+                              <button
+                                className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50 disabled:opacity-50"
+                                disabled={!r.taskId || deletingId === r.taskId}
+                                onClick={async () => {
+                                  setMenuOpenId(null);
+                                  if (!r.taskId) return;
+                                  await deleteTask(r.taskId);
+                                }}
+                              >
+                                {deletingId === r.taskId ? (
+                                  <span className="inline-flex items-center gap-2">
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    Deleting…
+                                  </span>
+                                ) : (
+                                  "Delete"
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
 
               {pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="py-10 text-center text-neutral-500">
-                    No tasks yet.
+                  <td colSpan={12} className="py-10 text-center text-neutral-500">
+                    No members found.
                   </td>
                 </tr>
               )}
@@ -656,14 +1050,16 @@ const TitleDefense = ({ onBack }) => {
         </div>
       </div>
 
-      {/* modal */}
-      <CreateTaskDialog
-        open={showCreate}
-        onClose={() => setShowCreate(false)}
-        onCreated={() => {}}
+      {/* Modal editor (from Actions → Edit) */}
+      <EditTaskDialog
+        open={!!editingModal}
+        onClose={() => setEditingModal(null)}
+        onSaved={() => setEditingModal(null)}
         pm={pmProfile || { uid: pmUid, name: "Project Manager" }}
         teams={teams}
         members={members}
+        seedMember={editingModal?.seedMember || null}
+        existingTask={editingModal?.existingTask || null}
       />
     </div>
   );
