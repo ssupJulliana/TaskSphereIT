@@ -600,7 +600,7 @@ function NoteForm({ existing, onSave, onCancel }) {
 }
 
 /* ---------------- MAIN ---------------- */
-export default function Notes() {
+function Notes() {
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -753,3 +753,6 @@ export default function Notes() {
     </div>
   );
 }
+
+
+export default Notes
