@@ -1,54 +1,44 @@
-// src/components/CapstoneInstructor/InstructorEnroll.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   ChevronRight,
   Download,
   Upload,
   Search,
   Filter,
-  MoreVertical,
   PlusCircle,
-  X,
-  Trash2,
   Undo2,
-  KeyRound,
+  Trash2,
 } from "lucide-react";
-
-import ExcelJS from "exceljs"; // read Excel + images in browser
-
-import { auth, db } from "../../config/firebase";
+import { db } from "../../config/firebase";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { parseExcelFile, validateExcelFile } from "../../assets/scripts/excel";
 import {
-  createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
-} from "firebase/auth";
-import {
-  addDoc,
-  collection,
-  serverTimestamp,
-  onSnapshot,
-  query,
-  where,
-  doc,
-  deleteDoc,
-  setDoc,
-  updateDoc,
-  getDoc,
-} from "firebase/firestore";
+  createUser,
+  saveImportedUsers,
+  deleteAndBlockUser,
+  resetPasswordToDefault,
+  sendPasswordResetEmailToUser,
+  bulkDeleteUsers,
+  bulkResetPasswords,
+  getMiddleInitial,
+} from "../../assets/scripts/enroll";
+
+// Import the modals
+import ExcelModal from "../../assets/modals/excelModal.js";
+import AddUserModal from "../../assets/modals/addUserModal.jsx";
 
 const DEFAULT_PASSWORD = "UserUser321";
 const ROLES = ["Adviser", "Project Manager", "Member"];
-const DEFAULT_IMAGE_URL = "None";
-
-const MAROON = "#6A0F14";
 
 const InstructorEnroll = () => {
-  // role filter
+  // Role filter
   const [selectedRole, setSelectedRole] = useState("Adviser");
 
-  // dialog
-  const [openAddUser, setOpenAddUser] = useState(false);
+  // Dialog state
+  const [openAddUserModal, setOpenAddUserModal] = useState(false);
+  const [openExcelModal, setOpenExcelModal] = useState(false);
 
-  // add-user form
+  // Add user form state
   const [form, setForm] = useState({
     email: "",
     lastName: "",
@@ -60,177 +50,57 @@ const InstructorEnroll = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  // list + search
+  // User list state
   const [users, setUsers] = useState([]);
   const [loadingList, setLoadingList] = useState(true);
   const [qText, setQText] = useState("");
 
-  // per-row menu + password modal
-  const [openMenuId, setOpenMenuId] = useState(null);
-  const [pwdModal, setPwdModal] = useState({ open: false, user: null });
-
-  // bulk selection
-  const [selectedIds, setSelectedIds] = useState([]);
-  const allSelected =
-    selectedIds.length > 0 && selectedIds.length === users.length;
-  const someSelected =
-    selectedIds.length > 0 && selectedIds.length < users.length;
-
-  const onChange = (key) => (e) =>
-    setForm((f) => ({ ...f, [key]: e.target.value }));
-
-  // ---------- IMPORT (Excel) ----------
-  const fileRef = useRef(null);
+  // Excel import state
   const [importState, setImportState] = useState({
     open: false,
-    rows: [], // [{idNumber, lastName, firstName, middleName, email, role, imageDataUrl, _select}]
+    rows: [],
     parsing: false,
     saving: false,
     err: "",
   });
 
-  const triggerImport = () => fileRef.current?.click();
+  const fileRef = useRef(null);
 
-  const parseExcel = async (file) => {
-    try {
-      setImportState((p) => ({ ...p, parsing: true, err: "" }));
-      const buf = await file.arrayBuffer();
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(buf);
-      const ws = wb.worksheets[0];
-      if (!ws) throw new Error("No worksheet found in file.");
+  // Handle search and filter
+  const filteredUsers = useMemo(() => {
+    if (!qText.trim()) return users;
+    const needle = qText.toLowerCase();
+    return users.filter((u) => {
+      const mid = u.middleName || "";
+      return (
+        (u.idNumber || "").toLowerCase().includes(needle) ||
+        (u.firstName || "").toLowerCase().includes(needle) ||
+        (u.lastName || "").toLowerCase().includes(needle) ||
+        mid.toLowerCase().includes(needle)
+      );
+    });
+  }, [users, qText]);
 
-      // Map images to approximate row (top-left of image)
-      const imageByRow = {};
-      const imgs = ws.getImages();
-      imgs.forEach(({ imageId, range }) => {
-        const meta = wb.getImage(imageId);
-        if (!meta?.base64) return;
-        const tlRow = Math.ceil(range.tl.row || 1);
-        const ext = meta.extension || "png";
-        const dataUrl = `data:image/${ext};base64,${meta.base64}`;
-        if (!imageByRow[tlRow]) imageByRow[tlRow] = dataUrl;
-      });
+  // Open and close modal functions
+  const closeAddUserModal = () => setOpenAddUserModal(false);
+  const closeExcelModal = () => setOpenExcelModal(false);
 
-      // Find header row (first non-empty row)
-      let headerRowIdx = 1;
-      for (let r = 1; r <= ws.actualRowCount; r++) {
-        const row = ws.getRow(r);
-        const hasAny = row.values.some((v) => (typeof v === "string" ? v.trim() : v));
-        if (hasAny) {
-          headerRowIdx = r;
-          break;
-        }
-      }
-
-      const headerRow = ws.getRow(headerRowIdx);
-      const headers = {};
-      headerRow.eachCell((cell, colNumber) => {
-        const key = String(cell.value || "").toLowerCase().trim();
-        headers[colNumber] = key;
-      });
-
-      // helper to get by header name softly
-      const colIndexOf = (names) => {
-        const want = names.map((n) => n.toLowerCase());
-        const pair = Object.entries(headers).find(([, v]) =>
-          want.includes(v)
-        );
-        return pair ? Number(pair[0]) : null;
-      };
-
-      const colId = colIndexOf(["id number", "student id", "id"]);
-      const colLast = colIndexOf(["last name", "lastname", "surname"]);
-      const colFirst = colIndexOf(["first name", "firstname", "given name"]);
-      const colMid = colIndexOf([
-        "middle initial",
-        "middle name",
-        "middlename",
-        "mi",
-      ]);
-      const colEmail = colIndexOf(["email", "email address"]);
-      const colRole = colIndexOf(["role"]);
-
-      if (!colId || !colLast || !colFirst) {
-        throw new Error(
-          "Missing required headers. Need at least: ID Number, Last Name, First Name."
-        );
-      }
-
-      const out = [];
-      for (let r = headerRowIdx + 1; r <= ws.actualRowCount; r++) {
-        const row = ws.getRow(r);
-        const idNumber = String(row.getCell(colId).value || "").trim();
-        const lastName = String(row.getCell(colLast).value || "").trim();
-        const firstName = String(row.getCell(colFirst).value || "").trim();
-        const middleName = colMid
-          ? String(row.getCell(colMid).value || "").trim()
-          : "";
-        const email = colEmail
-          ? String(row.getCell(colEmail).value || "").trim()
-          : "";
-        const role = colRole
-          ? String(row.getCell(colRole).value || "").trim()
-          : selectedRole;
-
-        if (!idNumber && !lastName && !firstName && !email) continue;
-
-        const imageDataUrl = imageByRow[r] || null;
-
-        out.push({
-          idNumber,
-          lastName,
-          firstName,
-          middleName,
-          email,
-          role: role || selectedRole,
-          imageDataUrl,
-          _select: true,
-          _row: r,
-        });
-      }
-
-      if (out.length === 0) throw new Error("No data rows found.");
-
-      // de-dup within file by (idNumber + email)
-      const seen = new Set();
-      const deduped = out.filter((x) => {
-        const key = `${x.idNumber}::${x.email}`.toLowerCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-
-      setImportState({
-        open: true,
-        rows: deduped,
-        parsing: false,
-        saving: false,
-        err: "",
-      });
-    } catch (e) {
-      setImportState({
-        open: true,
-        rows: [],
-        parsing: false,
-        saving: false,
-        err:
-          e?.message ||
-          "Failed to read the Excel file. Ensure it's .xlsx and has headers.",
-      });
-    } finally {
-      if (fileRef.current) fileRef.current.value = "";
+  // Trigger Excel file import
+  //const triggerExcelModal = () => setOpenExcelModal(true);
+  const triggerExcelModal = () => {
+    // Open file picker immediately
+    if (fileRef.current) {
+      fileRef.current.click();
     }
   };
+  const triggerAddUserModal = () => setOpenAddUserModal(true);
 
-  const handleImportChange = (e) => {
+  // Handle Excel file import change
+  /*const handleImportChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const ok =
-      file.type ===
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-      file.name.toLowerCase().endsWith(".xlsx");
-    if (!ok) {
+
+    if (!validateExcelFile(file)) {
       setImportState({
         open: true,
         rows: [],
@@ -241,49 +111,137 @@ const InstructorEnroll = () => {
       if (fileRef.current) fileRef.current.value = "";
       return;
     }
-    parseExcel(file);
+
+    try {
+      setImportState((p) => ({ ...p, parsing: true, err: "" }));
+      const rows = await parseExcelFile(file, selectedRole);
+      setImportState({
+        open: true,
+        rows,
+        parsing: false,
+        saving: false,
+        err: "",
+      });
+    } catch (error) {
+      setImportState({
+        open: true,
+        rows: [],
+        parsing: false,
+        saving: false,
+        err: error.message,
+      });
+    } finally {
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };*/
+
+  const handleImportChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!validateExcelFile(file)) {
+      ExcelModal.show({
+        rows: [],
+        parsing: false,
+        saving: false,
+        err: "Please select a .xlsx Excel file.",
+        onFileChange: handleImportChange,
+        onSave: saveImportedRows,
+        onClose: () => {},
+      });
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+
+    try {
+      setImportState((p) => ({ ...p, parsing: true, err: "" }));
+      const rows = await parseExcelFile(file, selectedRole);
+
+      // Show the SweetAlert2 modal with parsed rows
+      ExcelModal.show({
+        rows: rows,
+        parsing: false,
+        saving: false,
+        err: "",
+        onFileChange: handleImportChange,
+        onSave: saveImportedRows,
+        onClose: () => {
+          setImportState({
+            open: false,
+            rows: [],
+            parsing: false,
+            saving: false,
+            err: "",
+          });
+        },
+      });
+    } catch (error) {
+      ExcelModal.show({
+        rows: [],
+        parsing: false,
+        saving: false,
+        err: error.message,
+        onFileChange: handleImportChange,
+        onSave: saveImportedRows,
+        onClose: () => {},
+      });
+    } finally {
+      if (fileRef.current) fileRef.current.value = "";
+    }
   };
 
+  // Save imported users to Firestore
   const saveImportedRows = async () => {
     const rows = importState.rows.filter((r) => r._select);
     if (rows.length === 0) {
       setImportState((p) => ({ ...p, err: "Nothing selected to save." }));
       return;
     }
+
     setImportState((p) => ({ ...p, saving: true, err: "" }));
     try {
-      // Save to Firestore (Auth creation intentionally skipped here)
-      for (const r of rows) {
-        await addDoc(collection(db, "users"), {
-          uid: null,
-          email: r.email || null,
-          idNumber: r.idNumber || "",
-          firstName: r.firstName || "",
-          lastName: r.lastName || "",
-          middleName: r.middleName || "",
-          role: selectedRole, // stick to current tab/role
-          imageUrl: DEFAULT_IMAGE_URL, // photo not required
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          mustChangePassword: false,
-          forceDefaultPassword: false,
-        });
-      }
-      setImportState({ open: false, rows: [], parsing: false, saving: false, err: "" });
-      // live query will auto refresh the table
-    } catch (e) {
+      await saveImportedUsers(rows, selectedRole);
+      setImportState({
+        open: false,
+        rows: [],
+        parsing: false,
+        saving: false,
+        err: "",
+      });
+    } catch (error) {
       setImportState((p) => ({
         ...p,
         saving: false,
-        err: e?.message || "Failed to save imported records.",
+        err: error.message,
       }));
     }
   };
 
-  // ---------- live query by role ----------
+  // Create user function
+  const handleSaveUser = async () => {
+    setError("");
+    setSaving(true);
+    try {
+      await createUser(form);
+      setForm({
+        email: "",
+        lastName: "",
+        firstName: "",
+        middleName: "",
+        idNumber: "",
+        role: selectedRole,
+      });
+      setOpenAddUserModal(false);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Fetch users from Firestore based on selected role
   useEffect(() => {
     setLoadingList(true);
-    setSelectedIds([]); // clear selections on role switch
     const usersRef = collection(db, "users");
     const q = query(usersRef, where("role", "==", selectedRole));
     const unsub = onSnapshot(
@@ -301,142 +259,22 @@ const InstructorEnroll = () => {
     return () => unsub();
   }, [selectedRole]);
 
-  // client search
-  const filteredUsers = useMemo(() => {
-    if (!qText.trim()) return users;
-    const needle = qText.toLowerCase();
-    return users.filter((u) => {
-      const mid = u.middleName || "";
-      return (
-        (u.idNumber || "").toLowerCase().includes(needle) ||
-        (u.firstName || "").toLowerCase().includes(needle) ||
-        (u.lastName || "").toLowerCase().includes(needle) ||
-        mid.toLowerCase().includes(needle)
-      );
-    });
-  }, [users, qText]);
-
-  const middleInitial = (name) => (name ? `${name[0].toUpperCase()}.` : "");
-
-  const handleSaveUser = async () => {
-    setError("");
-    setSaving(true);
-    try {
-      const cred = await createUserWithEmailAndPassword(
-        auth,
-        form.email.trim(),
-        DEFAULT_PASSWORD
-      );
-
-      await addDoc(collection(db, "users"), {
-        uid: cred.user.uid,
-        email: form.email.trim(),
-        idNumber: form.idNumber.trim(),
-        firstName: form.firstName.trim(),
-        lastName: form.lastName.trim(),
-        middleName: form.middleName.trim(),
-        role: form.role,
-        imageUrl: DEFAULT_IMAGE_URL,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        mustChangePassword: true,
-      });
-
-      setForm({
-        email: "",
-        lastName: "",
-        firstName: "",
-        middleName: "",
-        idNumber: "",
-        role: selectedRole,
-      });
-      setOpenAddUser(false);
-    } catch (e) {
-      console.error(e);
-      const msg =
-        e?.code === "auth/email-already-in-use"
-          ? "Email is already in use."
-          : e?.code === "auth/invalid-email"
-          ? "Please enter a valid email."
-          : e?.message || "Failed to add user.";
-      setError(msg);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // ===== row actions =====
-
-  const deleteAndBlock = async (u) => {
-    try {
-      const fromRef = doc(db, "users", u.id);
-      const snap = await getDoc(fromRef);
-      if (!snap.exists()) return;
-
-      const data = snap.data();
-      await setDoc(doc(db, "blockedUsers", u.id), {
-        ...data,
-        blockedAt: serverTimestamp(),
-        uid: data.uid || null,
-        email: data.email || null,
-      });
-
-      await deleteDoc(fromRef);
-    } catch (e) {
-      console.error("Block failed:", e);
-      alert("Failed to delete/block this account.");
-    }
-  };
-
-  const resetToDefault = async (u) => {
-    try {
-      await updateDoc(doc(db, "users", u.id), {
-        forceDefaultPassword: true,
-        updatedAt: serverTimestamp(),
-      });
-      alert(
-        "Password will be reset to default on the user's next successful login."
-      );
-    } catch (e) {
-      console.error(e);
-      alert("Failed to set reset flag.");
-    }
-  };
-
-  const sendResetEmail = async (u) => {
-    try {
-      if (!u?.email) throw new Error("No email on record.");
-      await sendPasswordResetEmail(auth, u.email);
-      alert(`Password reset email sent to ${u.email}.`);
-    } catch (e) {
-      console.error(e);
-      alert(e?.message || "Failed to send reset email.");
-    }
-  };
-
-  // ===== bulk actions =====
+  // Bulk delete users
+  const [selectedIds, setSelectedIds] = useState([]);
   const toggleOne = (id) =>
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
 
-  const toggleAll = () => {
-    if (selectedIds.length === users.length) setSelectedIds([]);
-    else setSelectedIds(users.map((u) => u.id));
-  };
-
-  const bulkDelete = async () => {
+  const handleBulkDelete = async () => {
     if (selectedIds.length === 0) return;
     if (!confirm(`Delete/Block ${selectedIds.length} account(s)?`)) return;
 
-    for (const id of selectedIds) {
-      const u = users.find((x) => x.id === id);
-      if (u) await deleteAndBlock(u);
-    }
+    await bulkDeleteUsers(selectedIds, users);
     setSelectedIds([]);
   };
 
-  const bulkResetDefault = async () => {
+  const handleBulkResetDefault = async () => {
     if (selectedIds.length === 0) return;
     if (
       !confirm(
@@ -445,19 +283,14 @@ const InstructorEnroll = () => {
     )
       return;
 
-    for (const id of selectedIds) {
-      await updateDoc(doc(db, "users", id), {
-        forceDefaultPassword: true,
-        updatedAt: serverTimestamp(),
-      });
-    }
+    await bulkResetPasswords(selectedIds);
     alert("Selected users will get default password on next successful login.");
     setSelectedIds([]);
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-neutral-50">
-      {/* hidden file input for Excel */}
+      {/* Hidden file input for Excel */}
       <input
         ref={fileRef}
         type="file"
@@ -467,7 +300,7 @@ const InstructorEnroll = () => {
       />
 
       <main className="flex-1 flex flex-col px-6 md:px-10 py-6">
-        {/* Breadcrumb & top actions */}
+        {/* Top actions */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <nav className="flex items-center text-sm text-neutral-600 space-x-2">
             <span className="font-medium text-[#6A0F14]">Enroll</span>
@@ -478,7 +311,7 @@ const InstructorEnroll = () => {
             {selectedIds.length > 0 ? (
               <>
                 <button
-                  onClick={bulkResetDefault}
+                  onClick={handleBulkResetDefault}
                   className="flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
                   title="Reset selected to default"
                 >
@@ -486,7 +319,7 @@ const InstructorEnroll = () => {
                   Reset Selected
                 </button>
                 <button
-                  onClick={bulkDelete}
+                  onClick={handleBulkDelete}
                   className="flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50"
                   title="Delete/Block selected"
                 >
@@ -498,23 +331,22 @@ const InstructorEnroll = () => {
               <>
                 <button className="flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100">
                   <Download className="w-4 h-4" />
-                  Download
+                  Download Template
                 </button>
                 <button
-                  onClick={triggerImport}
+                  onClick={triggerExcelModal}
                   className="flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
                 >
                   <Upload className="w-4 h-4" />
-                  Import
+                  Import File
                 </button>
               </>
             )}
           </div>
         </div>
 
-        {/* Filters & search */}
+        {/* Filter, search, and user list */}
         <div className="mt-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          {/* Role filter pills */}
           <div className="flex flex-wrap gap-2">
             {ROLES.map((role) => (
               <button
@@ -530,7 +362,6 @@ const InstructorEnroll = () => {
               </button>
             ))}
           </div>
-          {/* Search bar & filter icon */}
           <div className="flex items-center w-full md:max-w-xs">
             <div className="relative flex-1">
               <span className="absolute inset-y-0 left-0 flex items-center pl-3">
@@ -550,9 +381,9 @@ const InstructorEnroll = () => {
           </div>
         </div>
 
-        {/* Table & add-user column */}
+        {/* User list */}
         <div className="mt-6 flex flex-col md:flex-row gap-6">
-          {/* Table card */}
+          {/* User Table */}
           <div className="flex-1">
             <div className="border border-neutral-200 rounded-2xl shadow-lg overflow-visible bg-white">
               <table className="min-w-full divide-y divide-neutral-200">
@@ -561,13 +392,15 @@ const InstructorEnroll = () => {
                     <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">
                       <input
                         type="checkbox"
-                        checked={allSelected}
-                        ref={(el) => el && (el.indeterminate = someSelected)}
-                        onChange={toggleAll}
+                        checked={selectedIds.length === users.length}
+                        onChange={() =>
+                          setSelectedIds(
+                            selectedIds.length === users.length
+                              ? []
+                              : users.map((u) => u.id)
+                          )
+                        }
                       />
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">
-                      No.
                     </th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">
                       ID Number
@@ -581,9 +414,6 @@ const InstructorEnroll = () => {
                     <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">
                       Middle Initial
                     </th>
-                    <th className="px-4 py-3 text-center text-sm font-medium text-neutral-700">
-                      Action
-                    </th>
                   </tr>
                 </thead>
 
@@ -591,20 +421,19 @@ const InstructorEnroll = () => {
                   {loadingList ? (
                     <tr>
                       <td
-                        colSpan={7}
+                        colSpan={5}
                         className="px-4 py-6 text-center text-sm text-neutral-500"
                       >
-                        Loading…
+                        Loading...
                       </td>
                     </tr>
                   ) : filteredUsers.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={7}
+                        colSpan={5}
                         className="px-4 py-6 text-center text-sm text-neutral-500"
                       >
-                        No users found for{" "}
-                        <span className="font-medium">{selectedRole}</span>.
+                        No users found.
                       </td>
                     </tr>
                   ) : (
@@ -618,55 +447,16 @@ const InstructorEnroll = () => {
                           />
                         </td>
                         <td className="px-4 py-3 text-sm text-neutral-700">
-                          {idx + 1}
+                          {u.idNumber}
                         </td>
                         <td className="px-4 py-3 text-sm text-neutral-700">
-                          {u.idNumber || "—"}
+                          {u.lastName}
                         </td>
                         <td className="px-4 py-3 text-sm text-neutral-700">
-                          {u.lastName || "—"}
+                          {u.firstName}
                         </td>
                         <td className="px-4 py-3 text-sm text-neutral-700">
-                          {u.firstName || "—"}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-neutral-700">
-                          {middleInitial(u.middleName)}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-neutral-700 text-center relative">
-                          <button
-                            className="p-2 rounded-full hover:bg-neutral-100"
-                            onClick={() =>
-                              setOpenMenuId(openMenuId === u.id ? null : u.id)
-                            }
-                          >
-                            <MoreVertical className="w-4 h-4 text-neutral-500" />
-                          </button>
-
-                          {openMenuId === u.id && (
-                            <div className="absolute right-0 top-full mt-2 z-50 w-52 bg-white border border-neutral-200 rounded-xl shadow-xl">
-                              <button
-                                className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-neutral-50"
-                                onClick={() => {
-                                  setPwdModal({ open: true, user: u });
-                                  setOpenMenuId(null);
-                                }}
-                              >
-                                <KeyRound className="w-4 h-4 text-[#6A0F14]" />
-                                Manage Password
-                              </button>
-                              <button
-                                className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-neutral-50 text-red-700"
-                                onClick={() => {
-                                  if (confirm("Delete/Block this account?"))
-                                    deleteAndBlock(u);
-                                  setOpenMenuId(null);
-                                }}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                                Delete Account
-                              </button>
-                            </div>
-                          )}
+                          {getMiddleInitial(u.middleName)}
                         </td>
                       </tr>
                     ))
@@ -676,17 +466,14 @@ const InstructorEnroll = () => {
             </div>
           </div>
 
-          {/* Add-User trigger card */}
+          {/* Add User Button */}
           <div className="w-full md:w-64">
             <button
               type="button"
-              onClick={() => {
-                setForm((f) => ({ ...f, role: selectedRole }));
-                setOpenAddUser(true);
-              }}
+              onClick={triggerAddUserModal}
               className="w-full h-full focus:outline-none"
               aria-haspopup="dialog"
-              aria-expanded={openAddUser}
+              aria-expanded={openAddUserModal}
             >
               <div className="flex flex-col items-center justify-center border border-neutral-200 rounded-2xl shadow-lg p-6 h-full hover:bg-neutral-50">
                 <div className="flex items-center justify-center h-16 w-16 rounded-full border border-neutral-300">
@@ -701,363 +488,17 @@ const InstructorEnroll = () => {
         </div>
       </main>
 
-      {/* Add User Dialog */}
-      {openAddUser && (
-        <div
-          className="fixed inset-0 z-50"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setOpenAddUser(false)}
-        >
-          <div className="absolute inset-0 bg-black/40" />
-          <div
-            className="relative z-10 flex items-center justify-center min-h-full p-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl border border-neutral-200">
-              <div className="flex items-center justify-between px-6 py-4 border-b">
-                <div className="flex items-center gap-2 text-[#6A0F14]">
-                  <PlusCircle className="w-5 h-5" />
-                  <h3 className="text-lg font-semibold">Add User</h3>
-                </div>
-                <button
-                  className="p-2 rounded-full hover:bg-neutral-100"
-                  onClick={() => setOpenAddUser(false)}
-                  aria-label="Close"
-                >
-                  <X className="w-5 h-5 text-neutral-600" />
-                </button>
-              </div>
-
-              <div className="px-6 py-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-700">
-                      Email Address
-                    </label>
-                    <input
-                      type="email"
-                      placeholder="Email Address"
-                      value={form.email}
-                      onChange={onChange("email")}
-                      className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-700">
-                      Last Name
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Last Name"
-                      value={form.lastName}
-                      onChange={onChange("lastName")}
-                      className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-700">
-                      Student ID number
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="ID Number"
-                      value={form.idNumber}
-                      onChange={onChange("idNumber")}
-                      className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-700">
-                      Password
-                    </label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={DEFAULT_PASSWORD}
-                      className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-neutral-100 text-neutral-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-700">
-                      First Name
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="First Name"
-                      value={form.firstName}
-                      onChange={onChange("firstName")}
-                      className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-700">
-                      Select Role
-                    </label>
-                    <select
-                      value={form.role}
-                      onChange={onChange("role")}
-                      className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
-                    >
-                      {ROLES.map((role) => (
-                        <option key={role} value={role}>
-                          {role}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-neutral-700">
-                      Middle Name
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Middle Name"
-                      value={form.middleName}
-                      onChange={onChange("middleName")}
-                      className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
-                    />
-                  </div>
-                  {error && (
-                    <div className="md:col-span-2 text-sm text-red-600">
-                      {error}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="px-6 pb-6 flex justify-end gap-3">
-                <button
-                  className="px-4 py-2 rounded-full border border-[#6A0F14] text-sm font-medium text-[#6A0F14] hover:bg-[#6A0F14]/10"
-                  onClick={() => setOpenAddUser(false)}
-                  disabled={saving}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="px-6 py-2 rounded-full bg-[#6A0F14] text-sm font-medium text-white hover:bg-[#5c0d12] disabled:opacity-60"
-                  onClick={handleSaveUser}
-                  disabled={
-                    saving ||
-                    !form.email.trim() ||
-                    !form.firstName.trim() ||
-                    !form.lastName.trim()
-                  }
-                >
-                  {saving ? "Saving..." : "Save"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Manage password dialog */}
-      {pwdModal.open && pwdModal.user && (
-        <div
-          className="fixed inset-0 z-50"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setPwdModal({ open: false, user: null })}
-        >
-          <div className="absolute inset-0 bg-black/40" />
-          <div
-            className="relative z-10 flex items-center justify-center min-h-full p-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-neutral-200">
-              <div className="flex items-center justify-between px-6 py-4 border-b">
-                <div className="flex items-center gap-2 text-[#6A0F14]">
-                  <KeyRound className="w-5 h-5" />
-                  <h3 className="text-lg font-semibold">Manage Password</h3>
-                </div>
-                <button
-                  className="p-2 rounded-full hover:bg-neutral-100"
-                  onClick={() => setPwdModal({ open: false, user: null })}
-                >
-                  <X className="w-5 h-5 text-neutral-600" />
-                </button>
-              </div>
-              <div className="px-6 pb-6 flex justify-end gap-3 pt-5">
-                <button
-                  className="px-4 py-2 rounded-full border border-neutral-300 text-sm text-neutral-700 hover:bg-neutral-100"
-                  onClick={() => sendResetEmail(pwdModal.user)}
-                >
-                  Send Reset Email
-                </button>
-                <button
-                  className="px-4 py-2 rounded-full border border-[#6A0F14] text-sm text-[#6A0F14] hover:bg-[#6A0F14]/10"
-                  onClick={() => {
-                    resetToDefault(pwdModal.user);
-                    setPwdModal({ open: false, user: null });
-                  }}
-                >
-                  Reset to Default
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* === Import Preview Modal (only the 4 columns) === */}
-      {importState.open && (
-        <div
-          className="fixed inset-0 z-50"
-          role="dialog"
-          aria-modal="true"
-          onClick={() =>
-            !importState.saving &&
-            setImportState((p) => ({ ...p, open: false, rows: [], err: "" }))
-          }
-        >
-          <div className="absolute inset-0 bg-black/40" />
-          <div
-            className="relative z-10 flex items-center justify-center min-h-full p-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-neutral-200">
-              <div className="flex items-center justify-between px-6 py-4 border-b">
-                <div className="flex items-center gap-2 text-[#6A0F14]">
-                  <Upload className="w-5 h-5" />
-                  <h3 className="text-lg font-semibold">
-                    Import Preview ({importState.rows.length})
-                  </h3>
-                </div>
-                <button
-                  className="p-2 rounded-full hover:bg-neutral-100"
-                  onClick={() =>
-                    !importState.saving &&
-                    setImportState((p) => ({
-                      ...p,
-                      open: false,
-                      rows: [],
-                      err: "",
-                    }))
-                  }
-                >
-                  <X className="w-5 h-5 text-neutral-600" />
-                </button>
-              </div>
-
-              <div className="px-6 py-5">
-                {importState.err && (
-                  <div className="mb-4 text-sm text-red-600">
-                    {importState.err}
-                  </div>
-                )}
-
-                {importState.parsing ? (
-                  <div className="py-10 text-center text-sm text-neutral-600">
-                    Reading file…
-                  </div>
-                ) : importState.rows.length === 0 ? (
-                  <div className="py-10 text-center text-sm text-neutral-600">
-                    No rows found.
-                  </div>
-                ) : (
-                  <div className="border border-neutral-200 rounded-xl overflow-hidden">
-                    <table className="min-w-full divide-y divide-neutral-200">
-                      <thead className="bg-neutral-100">
-                        <tr>
-                          <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-700">
-                            <input
-                              type="checkbox"
-                              onChange={(e) => {
-                                const checked = e.target.checked;
-                                setImportState((p) => ({
-                                  ...p,
-                                  rows: p.rows.map((r) => ({
-                                    ...r,
-                                    _select: checked,
-                                  })),
-                                }));
-                              }}
-                              checked={
-                                importState.rows.every((r) => r._select) &&
-                                importState.rows.length > 0
-                              }
-                              ref={(el) =>
-                                el &&
-                                (el.indeterminate =
-                                  importState.rows.some((r) => r._select) &&
-                                  !importState.rows.every((r) => r._select))
-                              }
-                            />
-                          </th>
-                          <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-700">
-                            ID Number
-                          </th>
-                          <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-700">
-                            Last Name
-                          </th>
-                          <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-700">
-                            First Name
-                          </th>
-                          <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-700">
-                            Middle Initial
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-neutral-200">
-                        {importState.rows.map((r, i) => (
-                          <tr key={i}>
-                            <td className="px-3 py-2">
-                              <input
-                                type="checkbox"
-                                checked={!!r._select}
-                                onChange={() =>
-                                  setImportState((p) => {
-                                    const rows = [...p.rows];
-                                    rows[i] = { ...rows[i], _select: !r._select };
-                                    return { ...p, rows };
-                                  })
-                                }
-                              />
-                            </td>
-                            <td className="px-3 py-2 text-sm">{r.idNumber}</td>
-                            <td className="px-3 py-2 text-sm">{r.lastName}</td>
-                            <td className="px-3 py-2 text-sm">{r.firstName}</td>
-                            <td className="px-3 py-2 text-sm">
-                              {r.middleName
-                                ? `${r.middleName[0].toUpperCase()}.`
-                                : ""}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              <div className="px-6 pb-6 flex justify-end gap-3">
-                <button
-                  className="px-4 py-2 rounded-full border border-[#6A0F14] text-sm font-medium text-[#6A0F14] hover:bg-[#6A0F14]/10 disabled:opacity-60"
-                  onClick={() =>
-                    setImportState((p) => ({
-                      ...p,
-                      open: false,
-                      rows: [],
-                      err: "",
-                    }))
-                  }
-                  disabled={importState.saving}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="px-6 py-2 rounded-full bg-[#6A0F14] text-sm font-medium text-white hover:bg-[#5c0d12] disabled:opacity-60"
-                  onClick={saveImportedRows}
-                  disabled={importState.saving || importState.parsing}
-                >
-                  {importState.saving ? "Saving…" : "Save and Enroll"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Add User Modal */}
+      <AddUserModal
+        open={openAddUserModal}
+        form={form}
+        onChange={(key) => (e) =>
+          setForm((f) => ({ ...f, [key]: e.target.value }))}
+        handleSaveUser={handleSaveUser}
+        saving={saving}
+        closeModal={closeAddUserModal}
+        error={error}
+      />
     </div>
   );
 };
