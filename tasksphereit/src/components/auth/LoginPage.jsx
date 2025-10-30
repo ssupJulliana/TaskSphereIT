@@ -43,26 +43,13 @@ const LoginPage = () => {
     return "/instructor/dashboard";
   };
 
-  const handleSignIn = async (e) => {
+  /*const handleSignIn = async (e) => {
     e.preventDefault();
     setErr("");
     setLoading(true);
 
     try {
       const emailTrim = email.trim();
-
-      // 0) PRE-CHECK: is this email blocked?
-      const blockedQ = query(
-        collection(db, "blockedUsers"),
-        where("email", "==", emailTrim),
-        limit(1)
-      );
-      const blockedSnap = await getDocs(blockedQ);
-      if (!blockedSnap.empty) {
-        setErr("Your account is blocked. Please contact the administrator.");
-        setLoading(false);
-        return;
-      }
 
       // 1) Auth
       const cred = await signInWithEmailAndPassword(auth, emailTrim, pwd);
@@ -71,7 +58,11 @@ const LoginPage = () => {
       const usersRef = collection(db, "users");
       let profileDoc = null;
 
-      const byUid = query(usersRef, where("uid", "==", cred.user.uid), limit(1));
+      const byUid = query(
+        usersRef,
+        where("uid", "==", cred.user.uid),
+        limit(1)
+      );
       const uidSnap = await getDocs(byUid);
       if (!uidSnap.empty) {
         profileDoc = uidSnap.docs[0];
@@ -88,55 +79,27 @@ const LoginPage = () => {
         }
       }
 
-      // If no profile in users, check if it's actually blocked now (by uid)
       if (!profileDoc) {
-        const blockedByUid = query(
-          collection(db, "blockedUsers"),
-          where("uid", "==", cred.user.uid),
-          limit(1)
-        );
-        const bsnap = await getDocs(blockedByUid);
-
         await signOut(auth);
-        setErr(
-          bsnap.empty
-            ? "Account profile not found. Please contact the administrator."
-            : "Your account is blocked."
-        );
+        setErr("Account profile not found. Please contact the administrator.");
         setLoading(false);
         return;
       }
 
-    const profileDoc = uidSnap.docs[0];
-    const profile = profileDoc.data();
-    const role = profile.role || null;
+      const profile = profileDoc.data();
+      const role = profile.role || null;
 
-    // 3) Recommended: keep a flag on user doc instead of a separate collection
-    if (profile.isBlocked === true) {
-      await signOut(auth);
-      setErr("Your account is blocked. Please contact the administrator.");
-      setLoading(false);
-      return;
-    }
-
-    // 4) Persist small bits in localStorage (fine)
-    localStorage.setItem("uid", cred.user.uid);
-    if (role) localStorage.setItem("role", role);
+      // 3) Store to localStorage
+      localStorage.setItem("uid", cred.user.uid);
+      if (role) localStorage.setItem("role", role);
 
       // 4) Optional: Force default password if flagged
       if (profile.forceDefaultPassword) {
-        try {
-          await updatePassword(cred.user, DEFAULT_PASSWORD);
-          await updateDoc(doc(db, "users", profileDoc.id), {
-            forceDefaultPassword: false,
-            updatedAt: new Date(),
-          });
-          // Optional toast
-          // alert("Your password has been reset to the default.");
-        } catch (pwErr) {
-          // If this fails, we still continue to route — user is signed in.
-          console.error("Auto-reset to default failed:", pwErr);
-        }
+        await updatePassword(cred.user, DEFAULT_PASSWORD);
+        await updateDoc(doc(db, "users", profileDoc.id), {
+          forceDefaultPassword: false,
+          updatedAt: new Date(),
+        });
       }
 
       // 5) Navigate based on role
@@ -152,6 +115,138 @@ const LoginPage = () => {
         msg = "Incorrect email or password.";
       else if (e2.code === "auth/too-many-requests")
         msg = "Too many attempts. Try again later.";
+      setErr(msg);
+    } finally {
+      setLoading(false);
+    }
+  };*/
+
+  const handleSignIn = async (e) => {
+    e.preventDefault();
+    setErr("");
+    setLoading(true);
+
+    try {
+      const emailTrim = email.trim();
+
+      // 1) Auth
+      const cred = await signInWithEmailAndPassword(auth, emailTrim, pwd);
+
+      // 2) Find the role/profile in Firestore (users collection)
+      const usersRef = collection(db, "users");
+      const byUid = query(
+        usersRef,
+        where("uid", "==", cred.user.uid),
+        limit(1)
+      );
+      const uidSnap = await getDocs(byUid);
+      let profileDoc = null;
+
+      if (!uidSnap.empty) {
+        profileDoc = uidSnap.docs[0];
+      } else {
+        // Fallback to email search
+        const byEmail = query(
+          usersRef,
+          where("email", "==", emailTrim),
+          limit(1)
+        );
+        const emailSnap = await getDocs(byEmail);
+        if (!emailSnap.empty) {
+          profileDoc = emailSnap.docs[0];
+        }
+      }
+
+      if (!profileDoc) {
+        await signOut(auth);
+        setErr("Account profile not found.");
+        setLoading(false);
+        return;
+      }
+
+      const profile = profileDoc.data();
+      const role = profile.role || null;
+      const currentActivateStatus = profile.activate;
+
+      console.log("Logging in user:", profile.email);
+      console.log("Current activate status:", currentActivateStatus);
+      console.log("Role:", role);
+
+      // Check if the instructor is retired - prevent login
+      if (role === "Instructor" && currentActivateStatus === "retired") {
+        await signOut(auth);
+        setErr("Invalid credentials. This account is no longer active.");
+        setLoading(false);
+        return;
+      }
+
+      if (role === "Instructor" && currentActivateStatus === "inactive") {
+        try {
+          // Find the currently active instructor
+          const activeInstructorQuery = query(
+            usersRef,
+            where("activate", "==", "active"),
+            where("role", "==", "Instructor"),
+            limit(1)
+          );
+          const activeInstructorSnap = await getDocs(activeInstructorQuery);
+
+          if (!activeInstructorSnap.empty) {
+            const activeInstructorDoc = activeInstructorSnap.docs[0];
+            const activeInstructorData = activeInstructorDoc.data();
+
+            console.log(
+              "Found active instructor to retire:",
+              activeInstructorData.email
+            );
+            console.log(
+              "Active instructor document ID:",
+              activeInstructorDoc.id
+            );
+
+            // Set the currently active instructor to "retired"
+            await updateDoc(doc(db, "users", activeInstructorDoc.id), {
+              activate: "retired",
+              updatedAt: new Date(),
+            });
+
+            console.log(
+              `Successfully set ${activeInstructorData.email} to retired`
+            );
+          } else {
+            console.log("No active instructor found to retire");
+          }
+        } catch (retireError) {
+          console.error("Error retiring active instructor:", retireError);
+        }
+      }
+
+      // Set the current user's 'activate' status to "active"
+      await updateDoc(doc(db, "users", profileDoc.id), {
+        activate: "active",
+        updatedAt: new Date(),
+      });
+
+      console.log("Current user set to active");
+
+      // Store the user details in localStorage
+      localStorage.setItem("uid", cred.user.uid);
+      if (role) localStorage.setItem("role", role);
+
+      // Navigate based on the role
+      navigate(routeForRole(role), { replace: true });
+    } catch (e2) {
+      console.error("Login error:", e2);
+      let msg = "Sign-in failed. Please check your credentials.";
+      if (e2.code === "auth/invalid-email") msg = "Invalid email address.";
+      else if (
+        e2.code === "auth/user-not-found" ||
+        e2.code === "auth/wrong-password"
+      ) {
+        msg = "Incorrect email or password.";
+      } else if (e2.code === "auth/too-many-requests") {
+        msg = "Too many attempts. Try again later.";
+      }
       setErr(msg);
     } finally {
       setLoading(false);
