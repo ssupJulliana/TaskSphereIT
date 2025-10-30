@@ -79,11 +79,16 @@ export default function RoleTransferDialog({
         firstName,
         middleName,
         lastName,
-        idNo,
+        idNumber: idNo,
         role: "Instructor",
         activate: "inactive",
         imageUrl: "None",
-        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        mustChangePassword: true,
+        forceDefaultPassword: true,
+        isTosAccepted: false,
+        tosAcceptedAt: serverTimestamp(),
+        tosVersion: "2025-05-09",
       });
 
       // Display success message
