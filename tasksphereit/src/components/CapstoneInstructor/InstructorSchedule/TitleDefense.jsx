@@ -310,7 +310,7 @@ export default function TitleDefense() {
           <Btn icon={Download} variant="outline">Export</Btn>
         </div>
 
-        {/* Row 2: Search (left) + Delete (right) */}
+        {/* Row 2: Search (left) + Action (right) */}
         <div className="flex items-center justify-between">
           <div className="relative">
             <input
@@ -332,18 +332,6 @@ export default function TitleDefense() {
                 Cancel
               </button>
             )}
-
-            <button
-              onClick={handleBulkDeleteClick}
-              className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium border
-                ${bulkMode
-                  ? "border-red-600 text-white bg-red-600 hover:bg-red-700"
-                  : "border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50"}`}
-              aria-label={bulkMode ? "Delete Selected" : "Delete"}
-              title={bulkMode ? "Delete Selected" : "Delete"}
-            >
-              {bulkMode ? `Delete Selected (${selected.size})` : "Delete"}
-            </button>
           </div>
         </div>
       </div>
@@ -457,19 +445,13 @@ export default function TitleDefense() {
                           className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
                           onClick={() => { setViewSchedule(s); setMenuOpenId(null); }}
                         >
-                          View
+                          View Team
                         </button>
                         <button
                           className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
                           onClick={() => { setEditSchedule(s); setMenuOpenId(null); }}
                         >
                           Edit
-                        </button>
-                        <button
-                          className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-neutral-50"
-                          onClick={() => handleDelete(s.id)}
-                        >
-                          Delete
                         </button>
                       </div>
                     )}
