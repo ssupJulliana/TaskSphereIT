@@ -48,13 +48,36 @@ import TASKSPHERELOGO from "../../assets/imgs/pdf imgs/TASKSPHERELOGO.png";
 import ExcelModal from "../../assets/modals/excelModal.js";
 import AddUserModal from "../../assets/modals/addUserModal.jsx";
 
+import { supabase } from "../../config/supabase.js";
+
 /* ---------- tabs & role mapping ---------- */
 const TABS = ["Adviser", "Student"];
 const STUDENT_ROLES = ["Project Manager", "Member"];
 const displayPlural = (tab) => (tab === "Student" ? "Students" : "Advisers");
 
+export const downloadTemplate = async () => {
+  // For a PUBLIC bucket
+  const { data } = supabase.storage
+    .from("template")
+    .getPublicUrl("List-Template.xlsx");
+  const url = data.publicUrl;
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Failed to fetch template from Supabase");
+
+  const blob = await res.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "List-Template.xlsx";
+  document.body.appendChild(a);
+  a.click();
+  URL.revokeObjectURL(a.href);
+  a.remove();
+};
+
 /* ---------- tiny helpers ---------- */
-const isTs = (v) => v && typeof v === "object" && typeof v.toDate === "function";
+const isTs = (v) =>
+  v && typeof v === "object" && typeof v.toDate === "function";
 const toDateValue = (v) => (isTs(v) ? v.toDate() : v ? new Date(v) : null);
 
 const fullNameOf = (u) => {
@@ -338,11 +361,11 @@ const InstructorEnroll = () => {
     arr.sort((a, b) => {
       const va =
         field === "createdAt"
-          ? (toDateValue(a.createdAt)?.getTime?.() ?? 0)
+          ? toDateValue(a.createdAt)?.getTime?.() ?? 0
           : (a[field] || "").toString().toLowerCase();
       const vb =
         field === "createdAt"
-          ? (toDateValue(b.createdAt)?.getTime?.() ?? 0)
+          ? toDateValue(b.createdAt)?.getTime?.() ?? 0
           : (b[field] || "").toString().toLowerCase();
 
       if (va < vb) return -1 * dir;
@@ -351,12 +374,23 @@ const InstructorEnroll = () => {
     });
 
     return arr;
-  }, [users, qText, fTos, fMustChange, fCreatedFrom, fCreatedTo, sortBy, sortDir]);
+  }, [
+    users,
+    qText,
+    fTos,
+    fMustChange,
+    fCreatedFrom,
+    fCreatedTo,
+    sortBy,
+    sortDir,
+  ]);
 
   /* ---------------- Bulk actions ---------------- */
   const [selectedIds, setSelectedIds] = useState([]);
   const toggleOne = (id) =>
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
   const toggleAll = () =>
     setSelectedIds((prev) =>
       prev.length === filteredUsers.length ? [] : filteredUsers.map((u) => u.id)
@@ -371,7 +405,12 @@ const InstructorEnroll = () => {
 
   const handleBulkResetDefault = async () => {
     if (selectedIds.length === 0) return;
-    if (!confirm(`Reset password to default for ${selectedIds.length} account(s)?`)) return;
+    if (
+      !confirm(
+        `Reset password to default for ${selectedIds.length} account(s)?`
+      )
+    )
+      return;
     await bulkResetPasswords(selectedIds);
     alert("Selected users will get default password on next successful login.");
     setSelectedIds([]);
@@ -447,7 +486,10 @@ const InstructorEnroll = () => {
                 Import File
               </button>
               {/* Static button only (no functionality yet) */}
-              <button className="cursor-pointer flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100">
+              <button
+                onClick={downloadTemplate}
+                className="cursor-pointer flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
+              >
                 <Download className="w-4 h-4" />
                 Download Template
               </button>
@@ -670,13 +712,19 @@ const InstructorEnroll = () => {
                 <tbody className="divide-y divide-neutral-200">
                   {loadingList ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-6 text-center text-sm text-neutral-500">
+                      <td
+                        colSpan={6}
+                        className="px-4 py-6 text-center text-sm text-neutral-500"
+                      >
                         Loading...
                       </td>
                     </tr>
                   ) : filteredUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-6 text-center text-sm text-neutral-500">
+                      <td
+                        colSpan={6}
+                        className="px-4 py-6 text-center text-sm text-neutral-500"
+                      >
                         No users found.
                       </td>
                     </tr>
@@ -709,7 +757,9 @@ const InstructorEnroll = () => {
                           >
                             <button
                               onClick={() =>
-                                setOpenRowMenu((cur) => (cur === u.id ? null : u.id))
+                                setOpenRowMenu((cur) =>
+                                  cur === u.id ? null : u.id
+                                )
                               }
                               className="p-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100"
                               title="More"
@@ -796,7 +846,8 @@ const InstructorEnroll = () => {
       <AddUserModal
         open={openAddUserModal}
         form={form}
-        onChange={(key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+        onChange={(key) => (e) =>
+          setForm((f) => ({ ...f, [key]: e.target.value }))}
         handleSaveUser={handleSaveUser}
         saving={saving}
         closeModal={() => {
@@ -806,12 +857,16 @@ const InstructorEnroll = () => {
         }}
         error={error}
         roleOptions={selectedTab === "Student" ? STUDENT_ROLES : ["Adviser"]}
-        lockRole={(selectedTab === "Student" ? STUDENT_ROLES : ["Adviser"]).length === 1}
+        lockRole={
+          (selectedTab === "Student" ? STUDENT_ROLES : ["Adviser"]).length === 1
+        }
         isEditing={!!editingId}
       />
 
       {/* Export Credentials Modal */}
-      {exportOpen && <ExportCredentialsModal onClose={() => setExportOpen(false)} />}
+      {exportOpen && (
+        <ExportCredentialsModal onClose={() => setExportOpen(false)} />
+      )}
     </div>
   );
 };
@@ -863,7 +918,10 @@ function ExportCredentialsModal({ onClose }) {
         }
       }
       if (userDoc?.uid) {
-        const qUid = query(collection(db, "invites"), where("uid", "==", userDoc.uid));
+        const qUid = query(
+          collection(db, "invites"),
+          where("uid", "==", userDoc.uid)
+        );
         const s2 = await getDocs(qUid);
         if (!s2.empty) {
           const pwd = readPwdFromObject(s2.docs[0].data());
@@ -881,7 +939,10 @@ function ExportCredentialsModal({ onClose }) {
     const usersRef = collection(db, "users");
     let base;
     if (audience === "Student") {
-      base = query(usersRef, where("role", "in", ["Project Manager", "Member"]));
+      base = query(
+        usersRef,
+        where("role", "in", ["Project Manager", "Member"])
+      );
     } else {
       base = query(usersRef, where("role", "==", "Adviser"));
     }
@@ -955,7 +1016,14 @@ function ExportCredentialsModal({ onClose }) {
       if (ccsImg) {
         const sideW = 64;
         const sideH = (ccsImg.height / ccsImg.width) * sideW;
-        doc.addImage(ccsImg, "PNG", pageWidth - marginX - sideW, topY, sideW, sideH);
+        doc.addImage(
+          ccsImg,
+          "PNG",
+          pageWidth - marginX - sideW,
+          topY,
+          sideW,
+          sideH
+        );
       }
 
       const headerY = 92;
@@ -1068,7 +1136,9 @@ function ExportCredentialsModal({ onClose }) {
     const fnameSafe =
       (audience === "Student"
         ? "capstone_student_credentials"
-        : "capstone_adviser_credentials") + "_" + new Date().toISOString().slice(0, 10);
+        : "capstone_adviser_credentials") +
+      "_" +
+      new Date().toISOString().slice(0, 10);
     doc.save(`${fnameSafe}.pdf`);
   };
 
@@ -1099,7 +1169,10 @@ function ExportCredentialsModal({ onClose }) {
               Export Credentials
             </div>
             <div className="mt-3 h-[2px] w-full bg-neutral-200">
-              <div className="h-[2px]" style={{ backgroundColor: "#6A0F14", width: 190 }} />
+              <div
+                className="h-[2px]"
+                style={{ backgroundColor: "#6A0F14", width: 190 }}
+              />
             </div>
           </div>
 
