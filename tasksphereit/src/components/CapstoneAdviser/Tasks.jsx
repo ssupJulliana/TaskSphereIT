@@ -223,26 +223,6 @@ export default function AdviserTasks() {
       // Re-number after sort
       rows = rows.map((r, i) => ({ ...r, no: i + 1 }));
 
-      // Move "Completed" Oral tasks into Final using ORIGINAL doc shape
-      if (collectionName === "oralDefenseTasks") {
-        rows.forEach(async (r) => {
-          if (r.status === "Completed") {
-            try {
-              const payload = { ...(r.__raw || {}), status: "To Do" };
-              if (!payload.team || !payload.team.id) {
-                payload.team = payload.team || {};
-                payload.team.id = r.teamId;
-                payload.team.name = r.teamName;
-              }
-              await addDoc(collection(db, "finalDefenseTasks"), payload);
-              await deleteDoc(doc(db, "oralDefenseTasks", r.id));
-            } catch (moveErr) {
-              console.error("Move to final failed:", moveErr);
-            }
-          }
-        });
-      }
-
       setTasks(rows);
       setSelected(new Set());
       setPage(1);
@@ -253,7 +233,9 @@ export default function AdviserTasks() {
     const handleSnap = (snap) => {
       snap.docs.forEach((d) => {
         const x = d.data();
-        merged.set(d.id, { __id: d.id, ...x });
+        if (x.taskManager === "Adviser") { // Filter by taskManager: "Adviser"
+          merged.set(d.id, { __id: d.id, ...x });
+        }
       });
       rebuildRows();
     };
@@ -271,10 +253,10 @@ export default function AdviserTasks() {
     // Attach listeners for both shapes using batched IN queries
     idChunks.forEach((ids) => {
       unsubs.push(
-        onSnapshot(query(colRef, where("team.id", "in", ids)), handleSnap, handleErr)
+        onSnapshot(query(colRef, where("team.id", "in", ids), where("taskManager", "==", "Adviser")), handleSnap, handleErr)
       );
       unsubs.push(
-        onSnapshot(query(colRef, where("teamId", "in", ids)), handleSnap, handleErr)
+        onSnapshot(query(colRef, where("teamId", "in", ids), where("taskManager", "==", "Adviser")), handleSnap, handleErr)
       );
     });
 
