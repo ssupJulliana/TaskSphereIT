@@ -31,6 +31,8 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 
+import * as XLSX from 'xlsx';
+
 const MAROON = "#6A0F14";
 const COLLECTION = "manuscriptSubmissions";
 
@@ -214,17 +216,33 @@ export default function ManuscriptSubmission() {
     }
   };
 
-  // single delete
-  const handleDelete = async (id) => {
-    if (!window.confirm("Delete this manuscript submission?")) return;
-    try {
-      await deleteDoc(doc(db, COLLECTION, id));
-      setMenuOpenId(null);
-      await loadRows();
-    } catch (e) {
-      console.error("[Manuscripts] Delete failed:", e);
-      alert("Failed to delete.");
-    }
+  // Export function to generate Excel
+  const handleExportToExcel = () => {
+    // Prepare the data (match the table columns)
+    const rows = [
+      ["No", "Team", "Title", "Due Date", "Time", "Plagiarism", "AI", "File Uploaded", "Verdict"],
+      ...filtered.map((s, idx) => [
+        idx + 1,                           // No
+        s.team || "—",                     // Team
+        s.title || "—",                    // Title
+        fmtDateHuman(s.date) || "—",       // Due Date
+        to12h(s.time) || "—",              // Time
+        s.plag || "0",                     // Plagiarism %
+        s.ai || "0",                       // AI %
+        s.file || "—",                     // File Uploaded
+        s.verdict || "Pending",            // Verdict
+      ]),
+    ];
+
+    // Create a worksheet from the data
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+
+    // Create a workbook and add the worksheet
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Manuscript Submissions');
+
+    // Download the file as Excel
+    XLSX.writeFile(wb, `manuscript_submissions_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   // search filter (client)
@@ -315,32 +333,7 @@ export default function ManuscriptSubmission() {
           >
             Back to Schedule
           </Btn>
-
-          <Btn icon={Plus} onClick={() => setShowCreate(true)}>
-            Create Schedule
-          </Btn>
-        </div>
-        <div className="flex items-center">
-          {bulkMode && (
-            <button
-              onClick={exitBulk}
-              className="mr-3 inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 border border-neutral-300 bg-white"
-            >
-              Cancel
-            </button>
-          )}
-          <button
-            onClick={handleBulkDeleteClick}
-            className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium border
-              ${bulkMode
-                ? "border-red-600 text-white bg-red-600 hover:bg-red-700"
-                : "border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50"}`}
-            aria-label={bulkMode ? "Delete Selected" : "Delete"}
-            title={bulkMode ? "Delete Selected" : "Delete"}
-          >
-            <Trash2 size={16} />
-            {bulkMode ? `Delete Selected (${selected.size})` : "Delete"}
-          </button>
+          <Btn icon={Download} variant="outline" onClick={handleExportToExcel}>Export</Btn>
         </div>
       </div>
 
@@ -361,7 +354,6 @@ export default function ManuscriptSubmission() {
 
           <div className="flex items-center gap-2 pb-2">
             <Btn icon={Filter} variant="outline" className="!px-2">Filters</Btn>
-            <Btn icon={Download} variant="outline">Export</Btn>
           </div>
         </div>
 
@@ -427,9 +419,9 @@ export default function ManuscriptSubmission() {
                       )}
 
                       <td className="px-4 py-3 font-medium text-neutral-800">{r.team}</td>
-                      <td className="px-4 py-3 text-neutral-800">{r.title}</td>
-                      <td className="px-4 py-3 text-neutral-700">{fmtDateHuman(r.date)}</td>
-                      <td className="px-4 py-3 text-neutral-700">{to12h(r.time)}</td>
+                      <td className="px-4 py-3 text-neutral-800">{r.title || "—"}</td>
+                      <td className="px-4 py-3 text-neutral-700">{fmtDateHuman(r.date) || "—"}</td>
+                      <td className="px-4 py-3 text-neutral-700">{to12h(r.time) || "—"}</td>
                       <td className={`px-4 py-3 font-semibold ${pctClass(r.plag)}`}>{r.plag}%</td>
                       <td className={`px-4 py-3 font-semibold ${pctClass(r.ai)}`}>{r.ai}%</td>
                       <td className="px-4 py-3 text-neutral-700">{r.file || "—"}</td>
@@ -475,12 +467,6 @@ export default function ManuscriptSubmission() {
                               onClick={() => { setEditRow(r); setMenuOpenId(null); }}
                             >
                               Edit
-                            </button>
-                            <button
-                              className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-neutral-50"
-                              onClick={() => handleDelete(r.id)}
-                            >
-                              Delete
                             </button>
                           </div>
                         )}
@@ -537,10 +523,16 @@ function CreateOrEditDialog({
 }) {
   const isEdit = mode === "edit";
 
+  // Get the current date and time
+  const currentDate = new Date();
+  const currentDateString = currentDate.toISOString().split('T')[0]; // Current date in YYYY-MM-DD format
+  const currentTimeString = currentDate.toTimeString().split(' ')[0].slice(0, 5); // Current time in HH:MM format
+
+  // Set default values to current date and time if initial values are empty
   const [teamName, setTeamName] = useState(initial?.team || "");
   const [title, setTitle] = useState(initial?.title || "");
-  const [date, setDate] = useState(initial?.date || "2025-03-25");
-  const [time, setTime] = useState(initial?.time || "08:00");
+  const [date, setDate] = useState(initial?.date || currentDateString);  // Use current date if not provided
+  const [time, setTime] = useState(initial?.time || currentTimeString);  // Use current time if not provided
   const [plag, setPlag] = useState(String(initial?.plag ?? 0));
   const [ai, setAi] = useState(String(initial?.ai ?? 0));
 

@@ -29,6 +29,8 @@ import {
   where,
 } from "firebase/firestore";
 
+import * as XLSX from 'xlsx';
+
 const MAROON = "#6A0F14";
 
 /* ===== helpers ===== */
@@ -239,23 +241,37 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
     }
   };
 
-  // single delete (row menu)
-  const handleDelete = async (scheduleId) => {
-    if (!window.confirm("Delete this schedule?")) return;
-    try {
-      await deleteDoc(doc(db, "titleDefenseSchedules", scheduleId));
-      setMenuOpenId(null);
-      await loadSchedules();
-    } catch (e) {
-      console.error("Failed to delete:", e);
-      alert("Failed to delete schedule.");
-    }
+  // Export function to generate Excel
+  const handleExportToExcel = () => {
+    // Prepare the data
+    const rows = [
+      ["No", "Team", "Date", "Time", "Panelists", "Verdict"],
+      ...filtered.map((s, idx) => [
+        idx + 1,
+        s.teamName || "",
+        s.date || "",
+        fmtTimeRange(s.timeStart, s.timeEnd) || "",
+        (s.panelists || []).join("; "),
+        s.verdict || "",
+      ]),
+    ];
+
+    // Create a worksheet from the data
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+
+    // Create a workbook and add the worksheet
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Title Defense');
+
+    // Download the file as Excel
+    XLSX.writeFile(wb, `title_defense_schedules_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   // search filter (client-side)
+  // In the useMemo hook, make sure it's using queryText, not query
   const filtered = useMemo(() => {
     const q = queryText.trim().toLowerCase();
-    if (!q) return schedules;
+    if (!q) return schedules; // Return all schedules if there's no query
     return schedules.filter((t) =>
       [
         t.teamName,
@@ -268,7 +284,7 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
         .toLowerCase()
         .includes(q)
     );
-  }, [queryText, schedules]);
+  }, [queryText, schedules]); // Watch for queryText changes here
 
   // Select-all works on the filtered (visible) list
   const allVisibleIds = useMemo(() => filtered.map((s) => s.id), [filtered]);
@@ -354,7 +370,7 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
           >
             Back to Schedule
           </Btn>
-          <Btn icon={Download} variant="outline">Export</Btn>
+          <Btn icon={Download} variant="outline" onClick={handleExportToExcel}>Export</Btn>
         </div>
 
         {/* Row 2: Search (left) + Delete (right) */}
@@ -363,8 +379,8 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
             <input
               type="text"
               placeholder="Search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              value={queryText} // Update here to bind with queryText
+              onChange={(e) => setQueryText(e.target.value)} // Set queryText here
               className="pl-10 pr-3 py-2 w-72 rounded-md border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-300"
             />
             <Search size={16} className="absolute left-3 top-2.5 text-neutral-400" />
@@ -379,18 +395,6 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
                 Cancel
               </button>
             )}
-
-            <button
-              onClick={handleBulkDeleteClick}
-              className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium border
-                ${bulkMode
-                  ? "border-red-600 text-white bg-red-600 hover:bg-red-700"
-                  : "border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50"}`}
-              aria-label={bulkMode ? "Delete Selected" : "Delete"}
-              title={bulkMode ? "Delete Selected" : "Delete"}
-            >
-              {bulkMode ? `Delete Selected (${selected.size})` : "Delete"}
-            </button>
           </div>
         </div>
       </div>

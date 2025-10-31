@@ -3,8 +3,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Search,
-  Plus,
-  PlusCircle,
   Download,
   MoreVertical,
   Calendar as CalIcon,
@@ -13,9 +11,9 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronLeft,
-  GraduationCap,
   User2,
   X,
+  PlusCircle,
 } from "lucide-react";
 
 /* ===== Firestore ===== */
@@ -23,16 +21,17 @@ import { db } from "../../../config/firebase";
 import {
   collection,
   getDocs,
-  addDoc,
-  serverTimestamp,
   doc,
   getDoc,
   updateDoc,
   deleteDoc,
+  query,
+  where,
 } from "firebase/firestore";
 
+import * as XLSX from 'xlsx';
+
 const MAROON = "#6A0F14";
-const COLLECTION = "finalDefenseSchedules";
 
 /* ===== helpers ===== */
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -41,18 +40,133 @@ const fmtDate = (yyyy_mm_dd) => {
   const [y,m,d] = yyyy_mm_dd.split("-");
   return `${MONTHS[Number(m) - 1]} ${Number(d)}, ${y}`;
 };
+
 const fmtTimeRange = (start, end) => {
+  const isBlankish = (v) => v == null || ["", "-", "—", "——"].includes(String(v).trim());
   const to12h = (t) => {
-    if (!t) return "";
-    const [H, M] = t.split(":").map(Number);
+    if (isBlankish(t)) return "";
+    const [H, M] = String(t).split(":").map(Number);
+    if (Number.isNaN(H) || Number.isNaN(M)) return "";
     const ampm = H >= 12 ? "PM" : "AM";
     const hh = ((H + 11) % 12) + 1;
-    return `${hh}:${String(M).padStart(2,"0")} ${ampm}`;
+    return `${hh}:${String(M).padStart(2, "0")} ${ampm}`;
   };
-  return `${to12h(start)} - ${to12h(end)}`;
+  const a = to12h(start);
+  const b = to12h(end);
+  if (!a && !b) return "";
+  if (a && !b) return `${a} —`;
+  if (!a && b) return `— ${b}`;
+  return `${a} - ${b}`;
 };
 
-/* ------------------------- small button ------------------------- */
+const Breadcrumbs = () => {
+  const navigate = useNavigate();
+  return (
+    <div className="flex items-center gap-2 text-neutral-700">
+      <button
+        onClick={() => navigate("/instructor/schedule")}
+        className="text-[15px] font-medium text-neutral-600 hover:underline"
+      >
+        Schedule
+      </button>
+      <ChevronRight size={16} className="text-neutral-400" />
+      <span className="text-[15px] font-semibold">Final Defense</span>
+      <ChevronRight size={16} className="text-neutral-400" />
+      <span className="text-[15px]">Scheduled Teams</span>
+    </div>
+  );
+};
+
+export default function FinalDefense() {
+  const navigate = useNavigate();
+  const [queryText, setQueryText] = useState("");
+
+  const [editSchedule, setEditSchedule] = useState(null);
+  const [viewSchedule, setViewSchedule] = useState(null);
+
+  /* ===== Firestore-backed options ===== */
+  const [teamOptions, setTeamOptions] = useState([]);       // [{id, name}]
+  const [loadingTeams, setLoadingTeams] = useState(true);
+
+  const [adviserOptions, setAdviserOptions] = useState([]); // ["Full Name", ...]
+  const [loadingAdvisers, setLoadingAdvisers] = useState(true);
+
+  /* ===== Schedules list ===== */
+  const [schedules, setSchedules] = useState([]);           // [{id, ...}]
+  const [loadingSchedules, setLoadingSchedules] = useState(true);
+
+  // Row menu
+  const [menuOpenId, setMenuOpenId] = useState(null);
+
+  /* ===== Bulk delete state ===== */
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+
+  const exitBulk = () => {
+    setBulkMode(false);
+    setSelected(new Set());
+  };
+  const toggleSelect = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  // Load Teams
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, "teams"));
+        const teamsRows = [];
+        snap.forEach((docX) => {
+          const data = docX.data();
+          if (data?.name) teamsRows.push({ id: docX.id, name: data.name });
+        });
+        teamsRows.sort((a, b) => a.name.localeCompare(b.name));
+        if (!alive) return;
+        setTeamOptions(teamsRows);
+      } catch (e) {
+        console.error("Failed to load teams:", e);
+      } finally {
+        if (alive) setLoadingTeams(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // Load Advisers from users where role == "Adviser"
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const qUsers = query(collection(db, "users"), where("role", "==", "Adviser"));
+        const snap = await getDocs(qUsers);
+        const names = [];
+        snap.forEach((docX) => {
+          const d = docX.data() || {};
+          const full = [d.firstName, d.middleName, d.lastName]
+            .filter(Boolean)
+            .join(" ")
+            .replace(/\s+/g, " ")
+            .trim();
+          if (full) names.push(full);
+        });
+        names.sort((a, b) => a.localeCompare(b));
+        if (!alive) return;
+        setAdviserOptions(names);
+      } catch (e) {
+        console.error("Failed to load advisers from users:", e);
+      } finally {
+        if (alive) setLoadingAdvisers(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+// Button Component (ensure it's either imported or defined here)
 const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props }) => {
   const base =
     "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium cursor-pointer " +
@@ -72,94 +186,12 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
   );
 };
 
-const Breadcrumbs = () => {
-  const navigate = useNavigate();
-  return (
-    <div className="flex items-center gap-2 text-neutral-700">
-      <button
-        onClick={() => navigate("/instructor/schedule")}
-        className="inline-flex items-center gap-2 text-[15px] font-medium text-neutral-600 hover:underline"
-      >
-        <GraduationCap size={16} className="text-neutral-500" />
-        Schedule
-      </button>
-      <ChevronRight size={16} className="text-neutral-400" />
-      <span className="text-[15px] font-semibold">Final Defense</span>
-      <ChevronRight size={16} className="text-neutral-400" />
-      <span className="text-[15px]">Scheduled Teams</span>
-    </div>
-  );
-};
 
-export default function FinalDefense() {
-  const navigate = useNavigate();
-
-  const [showCreate, setShowCreate] = useState(false);
-  const [query, setQuery] = useState("");
-
-  const [teamOptions, setTeamOptions] = useState([]);       // [{id, name}]
-  const [loadingTeams, setLoadingTeams] = useState(true);
-
-  const [adviserOptions, setAdviserOptions] = useState([]); // ["Full Name", ...]
-  const [loadingAdvisers, setLoadingAdvisers] = useState(true);
-
-  const [schedules, setSchedules] = useState([]);           // list of finalDefenseSchedules
-  const [loadingSchedules, setLoadingSchedules] = useState(true);
-
-  const [menuOpenId, setMenuOpenId] = useState(null);
-  const [editSchedule, setEditSchedule] = useState(null);
-  const [viewSchedule, setViewSchedule] = useState(null);
-
-  /* ===== Bulk delete state ===== */
-  const [bulkMode, setBulkMode] = useState(false);
-  const [selected, setSelected] = useState(new Set());
-  const exitBulk = () => { setBulkMode(false); setSelected(new Set()); };
-  const toggleSelect = (id) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
-
-  // Load Teams + Advisers
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const snap = await getDocs(collection(db, "teams"));
-        const teamsRows = [];
-        const adviserSet = new Set();
-        snap.forEach((docX) => {
-          const data = docX.data();
-          if (data?.name) teamsRows.push({ id: docX.id, name: data.name });
-          const adviserName = data?.adviser?.fullName;
-          if (adviserName && typeof adviserName === "string") {
-            adviserSet.add(adviserName.trim());
-          }
-        });
-        teamsRows.sort((a, b) => a.name.localeCompare(b.name));
-        const advisersArr = Array.from(adviserSet).sort((a, b) => a.localeCompare(b));
-        if (!alive) return;
-        setTeamOptions(teamsRows);
-        setAdviserOptions(advisersArr);
-      } catch (e) {
-        console.error("Failed to load teams/advisers:", e);
-      } finally {
-        if (alive) {
-          setLoadingTeams(false);
-          setLoadingAdvisers(false);
-        }
-      }
-    })();
-    return () => { alive = false; };
-  }, []);
-
-  // Load Final Defense Schedules
+  // Load Schedules
   const loadSchedules = async () => {
     setLoadingSchedules(true);
     try {
-      const snap = await getDocs(collection(db, COLLECTION));
+      const snap = await getDocs(collection(db, "finalDefenseSchedules"));
       const rows = [];
       snap.forEach((docX) => {
         const data = docX.data();
@@ -183,7 +215,7 @@ export default function FinalDefense() {
       });
       setSchedules(rows);
     } catch (e) {
-      console.error("Failed to load finalDefenseSchedules:", e);
+      console.error("Failed to load schedules:", e);
     } finally {
       setLoadingSchedules(false);
     }
@@ -199,7 +231,9 @@ export default function FinalDefense() {
       setSchedules((prev) =>
         prev.map((s) => (s.id === scheduleId ? { ...s, verdict: newVerdict } : s))
       );
-      await updateDoc(doc(db, COLLECTION, scheduleId), { verdict: newVerdict });
+      await updateDoc(doc(db, "finalDefenseSchedules", scheduleId), {
+        verdict: newVerdict,
+      });
     } catch (e) {
       console.error("Failed to update verdict:", e);
       await loadSchedules();
@@ -207,39 +241,59 @@ export default function FinalDefense() {
     }
   };
 
-  // per-row delete
-  const handleDelete = async (scheduleId) => {
-    if (!window.confirm("Delete this schedule?")) return;
-    try {
-      await deleteDoc(doc(db, COLLECTION, scheduleId));
-      setMenuOpenId(null);
-      await loadSchedules();
-    } catch (e) {
-      console.error("Failed to delete:", e);
-      alert("Failed to delete schedule.");
-    }
+  // Export function to generate Excel
+  const handleExportToExcel = () => {
+    // Prepare the data
+    const rows = [
+      ["No", "Team", "Date", "Time", "Panelists", "Verdict"],
+      ...filtered.map((s, idx) => [
+        idx + 1,
+        s.teamName || "",
+        s.date || "",
+        fmtTimeRange(s.timeStart, s.timeEnd) || "",
+        (s.panelists || []).join("; "),
+        s.verdict || "",
+      ]),
+    ];
+
+    // Create a worksheet from the data
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+
+    // Create a workbook and add the worksheet
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Final Defense');
+
+    // Download the file as Excel
+    XLSX.writeFile(wb, `final_defense_schedules_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   // search filter (client-side)
+  // In the useMemo hook, make sure it's using queryText, not query
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return schedules;
+    const q = queryText.trim().toLowerCase();
+    if (!q) return schedules; // Return all schedules if there's no query
     return schedules.filter((t) =>
-      [t.teamName, fmtDate(t.date), fmtTimeRange(t.timeStart, t.timeEnd), (t.panelists || []).join(", "), t.verdict]
+      [
+        t.teamName,
+        fmtDate(t.date),
+        fmtTimeRange(t.timeStart, t.timeEnd),
+        (t.panelists || []).join(", "),
+        t.verdict,
+      ]
         .join(" ")
         .toLowerCase()
         .includes(q)
     );
-  }, [query, schedules]);
+  }, [queryText, schedules]); // Watch for queryText changes here
 
-  // Select-all based on filtered
+  // Select-all works on the filtered (visible) list
   const allVisibleIds = useMemo(() => filtered.map((s) => s.id), [filtered]);
   const allSelected = selected.size > 0 && allVisibleIds.every((id) => selected.has(id));
   const toggleSelectAll = () => {
     setSelected((prev) => (allSelected ? new Set() : new Set(allVisibleIds)));
   };
 
-  // Delete button behavior (bulk)
+  // Delete button behavior
   const handleBulkDeleteClick = async () => {
     if (!bulkMode) {
       setBulkMode(true);
@@ -254,7 +308,7 @@ export default function FinalDefense() {
 
     try {
       await Promise.all(
-        Array.from(selected).map((id) => deleteDoc(doc(db, COLLECTION, id)))
+        Array.from(selected).map((id) => deleteDoc(doc(db, "finalDefenseSchedules", id)))
       );
       exitBulk();
       await loadSchedules();
@@ -265,13 +319,42 @@ export default function FinalDefense() {
     }
   };
 
+  // Export CSV of the *filtered* list
+  const handleExport = () => {
+    const rows = [
+      ["Team", "Date", "Time", "Panelists", "Verdict"],
+      ...filtered.map((s) => [
+        s.teamName || "",
+        s.date || "",
+        fmtTimeRange(s.timeStart, s.timeEnd) || "",
+        (s.panelists || []).join("; "),
+        s.verdict || "",
+      ]),
+    ];
+    const csv = rows.map(r =>
+      r.map((cell) => {
+        const v = String(cell ?? "");
+        return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+      }).join(",")
+    ).join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `final_defense_schedules_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="">
       <Breadcrumbs />
       <div className="mt-2 h-[2px] w-full bg-neutral-200">
-        <div className="h-[2px]" style={{ backgroundColor: MAROON, width: 240 }} />
+        <div className="h-[2px]" style={{ backgroundColor: MAROON, width: 260 }} />
       </div>
 
+        
       {/* actions */}
       <div className="mt-6 space-y-4">
         {/* Row 1: Back + Create + Export (aligned) */}
@@ -287,8 +370,7 @@ export default function FinalDefense() {
           >
             Back to Schedule
           </Btn>
-          <Btn icon={Plus} onClick={() => setShowCreate(true)}>Create Schedule</Btn>
-          <Btn icon={Download} variant="outline">Export</Btn>
+          <Btn icon={Download} variant="outline" onClick={handleExportToExcel}>Export</Btn>
         </div>
 
         {/* Row 2: Search (left) + Delete (right) */}
@@ -297,8 +379,8 @@ export default function FinalDefense() {
             <input
               type="text"
               placeholder="Search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              value={queryText} // Update here to bind with queryText
+              onChange={(e) => setQueryText(e.target.value)} // Set queryText here
               className="pl-10 pr-3 py-2 w-72 rounded-md border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-300"
             />
             <Search size={16} className="absolute left-3 top-2.5 text-neutral-400" />
@@ -313,18 +395,6 @@ export default function FinalDefense() {
                 Cancel
               </button>
             )}
-
-            <button
-              onClick={handleBulkDeleteClick}
-              className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium border
-                ${bulkMode
-                  ? "border-red-600 text-white bg-red-600 hover:bg-red-700"
-                  : "border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50"}`}
-              aria-label={bulkMode ? "Delete Selected" : "Delete"}
-              title={bulkMode ? "Delete Selected" : "Delete"}
-            >
-              {bulkMode ? `Delete Selected (${selected.size})` : "Delete"}
-            </button>
           </div>
         </div>
       </div>
@@ -364,111 +434,101 @@ export default function FinalDefense() {
               <tr>
                 <td className="px-4 py-6 text-neutral-500" colSpan={7}>Loading schedules…</td>
               </tr>
+            ) : schedules.length === 0 ? (
+              <tr>
+                <td className="px-4 py-6 text-neutral-500" colSpan={7}>No schedules yet.</td>
+              </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td className="px-4 py-6 text-neutral-500" colSpan={7}>No matches for “{query}”.</td>
+                <td className="px-4 py-6 text-neutral-500" colSpan={7}>No matches for “{queryText}”.</td>
               </tr>
             ) : (
-              filtered.map((s, idx) => {
-                const isChecked = selected.has(s.id);
-                return (
-                  <tr key={s.id} className={idx % 2 ? "bg-neutral-50/60" : "bg-white"}>
-                    {bulkMode ? (
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          aria-label={`Select ${s.teamName}`}
-                          checked={isChecked}
-                          onChange={() => toggleSelect(s.id)}
-                          className="h-4 w-4"
-                        />
-                      </td>
-                    ) : (
-                      <td className="px-4 py-3 text-neutral-600">{idx + 1}.</td>
-                    )}
-
-                    <td className="px-4 py-3 font-medium text-neutral-800">{s.teamName}</td>
-                    <td className="px-4 py-3 text-neutral-700">{fmtDate(s.date)}</td>
-                    <td className="px-4 py-3 text-neutral-700">{fmtTimeRange(s.timeStart, s.timeEnd)}</td>
-                    <td className="px-4 py-3 text-neutral-700">{s.panelists.join(", ")}</td>
-
-                    {/* Verdict disabled during bulk mode */}
+            filtered.map((s, idx) => {
+              const isChecked = selected.has(s.id);
+              return (
+                <tr key={s.id} className={idx % 2 ? "bg-neutral-50/60" : "bg-white"}>
+                  {/* first column: checkbox or row number */}
+                  {bulkMode ? (
                     <td className="px-4 py-3">
-                      <div className="relative inline-flex items-center">
-                        <select
-                          value={s.verdict || "Pending"}
-                          onChange={(e) => handleChangeVerdict(s.id, e.target.value)}
-                          disabled={bulkMode}
-                          className={`appearance-none pr-8 pl-3 py-1.5 rounded-md border text-sm ${bulkMode ? "opacity-60 cursor-not-allowed" : ""}`}
-                          style={{ borderColor: MAROON, color: "#111827" }}
-                        >
-                          <option>Pending</option>
-                          <option>Passed</option>
-                          <option>Re-Defense</option>
-                          <option>Failed</option>
-                        </select>
-                        <ChevronDown size={16} className="absolute right-2 pointer-events-none text-neutral-500" />
-                      </div>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${s.teamName}`}
+                        checked={isChecked}
+                        onChange={() => toggleSelect(s.id)}
+                        className="h-4 w-4"
+                      />
                     </td>
+                  ) : (
+                    <td className="px-4 py-3 text-neutral-600">{idx + 1}.</td>
+                  )}
 
-                    {/* Row actions hidden in bulk mode */}
-                    <td className="px-2 py-3 relative">
-                      <button
+                  <td className="px-4 py-3 font-medium text-neutral-800">{s.teamName}</td>
+
+                  {/* Date */}
+                  <td className="px-4 py-3 text-neutral-700">{s.date || "—"}</td>
+
+                  {/* Time */}
+                  <td className="px-4 py-3 text-neutral-700">{fmtTimeRange(s.timeStart, s.timeEnd) || "—"}</td>
+
+                  {/* Panelists */}
+                  <td className="px-4 py-3 text-neutral-700">{s.panelists.length > 0 ? s.panelists.join(", ") : "—"}</td>
+
+                  {/* Verdict */}
+                  <td className="px-4 py-3">
+                    <div className="relative inline-flex items-center">
+                      <select
+                        value={s.verdict || "Pending"}
+                        onChange={(e) => handleChangeVerdict(s.id, e.target.value)}
                         disabled={bulkMode}
-                        className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${bulkMode ? "opacity-40 cursor-not-allowed" : "hover:bg-neutral-100"}`}
-                        onClick={() => setMenuOpenId(menuOpenId === s.id ? null : s.id)}
+                        className={`appearance-none pr-8 pl-3 py-1.5 rounded-md border text-sm ${bulkMode ? "opacity-60 cursor-not-allowed" : ""}`}
+                        style={{ borderColor: MAROON, color: "#111827" }}
                       >
-                        <MoreVertical size={18} />
-                      </button>
+                        <option>Pending</option>
+                        <option>Passed</option>
+                        <option>Re-Defense</option>
+                        <option>Failed</option>
+                      </select>
+                      <ChevronDown size={16} className="absolute right-2 pointer-events-none text-neutral-500" />
+                    </div>
+                  </td>
 
-                      {!bulkMode && menuOpenId === s.id && (
-                        <div className="absolute right-2 mt-1 z-20 w-40 rounded-md border bg-white shadow">
-                          <button
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
-                            onClick={() => { setViewSchedule(s); setMenuOpenId(null); }}
-                          >
-                            View
-                          </button>
-                          <button
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
-                            onClick={() => { setEditSchedule(s); setMenuOpenId(null); }}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-neutral-50"
-                            onClick={() => handleDelete(s.id)}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
+                  {/* Row actions */}
+                  <td className="px-2 py-3 relative">
+                    <button
+                      disabled={bulkMode}
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${bulkMode ? "opacity-40 cursor-not-allowed" : "hover:bg-neutral-100"}`}
+                      onClick={() => setMenuOpenId(menuOpenId === s.id ? null : s.id)}
+                    >
+                      <MoreVertical size={18} />
+                    </button>
+
+                    {!bulkMode && menuOpenId === s.id && (
+                      <div className="absolute right-2 mt-1 z-20 w-40 rounded-md border bg-white shadow">
+                        <button
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+                          onClick={() => { setViewSchedule(s); setMenuOpenId(null); }}
+                        >
+                          View Team
+                        </button>
+                        <button
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+                          onClick={() => { setEditSchedule(s); setMenuOpenId(null); }}
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            }))}
           </tbody>
         </table>
       </div>
 
-      {/* Create Schedule Dialog */}
-      {showCreate && (
-        <ScheduleDialog
-          mode="create"
-          onClose={() => setShowCreate(false)}
-          onSaved={loadSchedules}
-          teamOptions={teamOptions}
-          loadingTeams={loadingTeams}
-          adviserOptions={adviserOptions}
-          loadingAdvisers={loadingAdvisers}
-        />
-      )}
-
       {/* Edit Schedule Dialog */}
       {editSchedule && (
         <ScheduleDialog
-          mode="edit"
           initial={editSchedule}
           onClose={() => setEditSchedule(null)}
           onSaved={loadSchedules}
@@ -490,9 +550,8 @@ export default function FinalDefense() {
   );
 }
 
-/* ------- Unified Create/Edit Dialog ------- */
+/* ------- Edit Dialog (Create flow removed) ------- */
 function ScheduleDialog({
-  mode = "create",
   initial = null,
   onClose,
   onSaved,
@@ -501,12 +560,10 @@ function ScheduleDialog({
   adviserOptions = [],
   loadingAdvisers = false,
 }) {
-  const isEdit = mode === "edit";
-
   const [team, setTeam] = useState(initial?.teamName || "");
-  const [date, setDate] = useState(initial?.date || "2025-01-25");
-  const [time, setTime] = useState(initial?.timeStart || "08:00");
-  const [timeEnd, setTimeEnd] = useState(initial?.timeEnd || "09:00");
+  const [date, setDate] = useState(initial?.date || "");
+  const [time, setTime] = useState(initial?.timeStart || "");
+  const [timeEnd, setTimeEnd] = useState(initial?.timeEnd || "");
 
   const [panelistPick, setPanelistPick] = useState("");
   const [panelists, setPanelists] = useState(Array.isArray(initial?.panelists) ? initial.panelists : []);
@@ -516,11 +573,9 @@ function ScheduleDialog({
     if (!panelists.includes(name)) setPanelists((p) => [...p, name]);
     setPanelistPick("");
   };
-  const removePanelist = (name) =>
-    setPanelists((p) => p.filter((n) => n !== name));
+  const removePanelist = (name) => setPanelists((p) => p.filter((n) => n !== name));
 
   const timeIsValid = time && timeEnd && time < timeEnd;
-  const disabledSubmit = !team || panelists.length === 0 || !timeIsValid;
 
   const handleSubmit = async () => {
     try {
@@ -533,40 +588,34 @@ function ScheduleDialog({
         date,
         timeStart: time,
         timeEnd,
-        panelists: [...panelists],
+        panelists: Array.isArray(panelists) ? panelists : [],
       };
 
-      if (isEdit) {
-        await updateDoc(doc(db, COLLECTION, initial.id), payload);
-      } else {
-        await addDoc(collection(db, COLLECTION), {
-          ...payload,
-          verdict: "Pending",
-          createdAt: serverTimestamp(),
-        });
-      }
+      await updateDoc(doc(db, "finalDefenseSchedules", initial.id), payload);
 
       if (typeof onSaved === "function") onSaved();
       onClose();
     } catch (err) {
-      console.error(isEdit ? "Failed to update schedule:" : "Failed to create schedule:", err);
+      console.error("Failed to update schedule:", err);
       alert("Operation failed. See console for details.");
     }
   };
 
   return (
     <div className="fixed inset-0 z-50">
+      {/* backdrop */}
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      {/* panel */}
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[760px] max-w-[92vw]">
         <div className="rounded-2xl bg-white border border-neutral-200 shadow-2xl focus:outline-none p-0">
           {/* header */}
           <div className="px-6 pt-5 pb-3">
             <div className="flex items-center gap-2 text-[16px] font-semibold" style={{ color: MAROON }}>
               <PlusCircle size={18} />
-              {isEdit ? "Edit Schedule" : "Create Schedule"}
+              Edit Schedule
             </div>
             <div className="mt-3 h-[2px] w-full bg-neutral-200">
-              <div className="h-[2px]" style={{ backgroundColor: MAROON, width: isEdit ? 130 : 160 }} />
+              <div className="h-[2px]" style={{ backgroundColor: MAROON, width: 130 }} />
             </div>
           </div>
 
@@ -596,7 +645,7 @@ function ScheduleDialog({
                 </div>
               </div>
 
-              {/* Assign Panelists */}
+              {/* Assign Panelists (from users/Adviser) */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">Assign Panelists</label>
                 <div className="relative">
@@ -646,13 +695,16 @@ function ScheduleDialog({
                       {p}
                       <button
                         className="ml-1 rounded hover:bg-neutral-100 p-0.5"
-                        onClick={() => setPanelists((prev) => prev.filter((n) => n !== p))}
+                        onClick={() => removePanelist(p)}
                         title="Remove"
                       >
                         <X size={14} className="text-neutral-500" />
                       </button>
                     </span>
                   ))}
+                  {panelists.length === 0 && (
+                    <span className="text-xs text-neutral-400 px-1 py-1">No panelists selected.</span>
+                  )}
                 </div>
               </div>
 
@@ -680,7 +732,7 @@ function ScheduleDialog({
                     <Clock size={16} className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none" />
                   </div>
                 </div>
-                {!timeIsValid && (
+                {!time || !timeEnd || time < timeEnd ? null : (
                   <p className="mt-1 text-xs text-red-600">End time must be after start time.</p>
                 )}
               </div>
@@ -696,11 +748,11 @@ function ScheduleDialog({
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={disabledSubmit}
-                className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white ${disabledSubmit ? "opacity-60 cursor-not-allowed" : ""}`}
+                disabled={(!team || !(time && timeEnd && time < timeEnd))}
+                className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white ${(!team || !(time && timeEnd && time < timeEnd)) ? "opacity-60 cursor-not-allowed" : ""}`}
                 style={{ backgroundColor: MAROON }}
               >
-                {isEdit ? "Save" : "Create"}
+                Save
               </button>
             </div>
           </div>
@@ -749,6 +801,7 @@ function ViewTeamDialog({ schedule, onClose }) {
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[760px] max-w-[92vw]">
         <div className="rounded-2xl bg-white border border-neutral-200 shadow-2xl focus:outline-none p-0">
+          {/* header */}
           <div className="px-6 pt-5 pb-3">
             <div className="flex items-center gap-2 text-[16px] font-semibold" style={{ color: MAROON }}>
               <PlusCircle size={18} />
@@ -759,8 +812,10 @@ function ViewTeamDialog({ schedule, onClose }) {
             </div>
           </div>
 
+          {/* body */}
           <div className="px-6 pb-6">
             <div className="grid grid-cols-2 gap-x-10 gap-y-6">
+              {/* Team Name */}
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-neutral-700 mb-2">Team</label>
                 <div className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm">
@@ -768,6 +823,7 @@ function ViewTeamDialog({ schedule, onClose }) {
                 </div>
               </div>
 
+              {/* Adviser */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">Adviser</label>
                 <div className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm">
@@ -775,6 +831,7 @@ function ViewTeamDialog({ schedule, onClose }) {
                 </div>
               </div>
 
+              {/* Project Manager */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">Project Manager</label>
                 <div className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm">
@@ -782,6 +839,7 @@ function ViewTeamDialog({ schedule, onClose }) {
                 </div>
               </div>
 
+              {/* Members */}
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-neutral-700 mb-2">Members</label>
                 <div className="w-full rounded-md border border-neutral-300 bg-white px-3 py-3 text-sm">
@@ -798,6 +856,7 @@ function ViewTeamDialog({ schedule, onClose }) {
               </div>
             </div>
 
+            {/* footer */}
             <div className="mt-8 flex items-center justify-end">
               <button
                 onClick={onClose}
