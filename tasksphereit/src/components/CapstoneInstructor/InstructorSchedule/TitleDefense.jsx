@@ -33,10 +33,17 @@ import {
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
+/* ---- logos for PDF (DCT left, CCS right, TaskSphere footer-left) ---- */
+import DCTLOGO from "../../../assets/imgs/pdf imgs/DCTLOGO.png";
+import CCSLOGO from "../../../assets/imgs/pdf imgs/CCSLOGO.png";
+import TASKSPHERELOGO from "../../../assets/imgs/pdf imgs/TASKSPHERELOGO.png";
+
 const MAROON = "#6A0F14";
 
 /* ===== helpers ===== */
-const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const MONTHS = [
+  "Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"
+];
 const fmtDate = (yyyy_mm_dd) => {
   if (!yyyy_mm_dd) return "";
   const [y,m,d] = yyyy_mm_dd.split("-");
@@ -168,25 +175,25 @@ export default function TitleDefense() {
     return () => { alive = false; };
   }, []);
 
-// Button Component
-const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props }) => {
-  const base =
-    "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium cursor-pointer " +
-    "focus:outline-none focus:ring-2 focus:ring-neutral-200 " + className;
+  // Button Component
+  const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props }) => {
+    const base =
+      "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium cursor-pointer " +
+      "focus:outline-none focus:ring-2 focus:ring-neutral-200 " + className;
 
-  const cls =
-    variant === "solid"
-      ? base + " text-white"
-      : base + " border border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50";
+    const cls =
+      variant === "solid"
+        ? base + " text-white"
+        : base + " border border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50";
 
-  const style = variant === "solid" ? { backgroundColor: MAROON } : undefined;
-  return (
-    <button {...props} className={cls} style={style}>
-      {Icon && <Icon size={16} />}
-      {children}
-    </button>
-  );
-};
+    const style = variant === "solid" ? { backgroundColor: MAROON } : undefined;
+    return (
+      <button {...props} className={cls} style={style}>
+        {Icon && <Icon size={16} />}
+        {children}
+      </button>
+    );
+  };
 
   // Load Schedules
   const loadSchedules = async () => {
@@ -242,113 +249,6 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
     }
   };
 
-  /* ===== PDF export (same header format as credentials) ===== */
-const handleExportPDF = () => {
-  const title = "Title Defense Schedule";
-  const doc = new jsPDF({ unit: "pt", format: "a4" });
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const marginX = 40;
-  const headerY = 46;
-  const contentWidth = pageWidth - marginX * 2;
-
-  const drawHeader = () => {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text("DOMINICAN COLLEGE OF TARLAC, INC.", pageWidth / 2, headerY, { align: "center" });
-    doc.setFont("helvetica", "normal");
-    doc.text("COLLEGE OF COMPUTER STUDIES", pageWidth / 2, headerY + 16, { align: "center" });
-    doc.setFontSize(10);
-    doc.text("McArthur Highway, Poblacion (Sto. Rosario), Capas, 2315 Tarlac, Philippines",
-      pageWidth / 2, headerY + 32, { align: "center" });
-    doc.text("Institutional Contact Nos.: +63938-918-4093    Website: dct.edu.ph",
-      pageWidth / 2, headerY + 48, { align: "center" });
-    doc.text("E-mail: domct_2315@yahoo.com.ph / domct_2315@dct.edu.ph",
-      pageWidth / 2, headerY + 64, { align: "center" });
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.text(title, pageWidth / 2, headerY + 96, { align: "center" });
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.text(`As of ${new Date().toLocaleDateString()}`, pageWidth / 2, headerY + 112, { align: "center" });
-
-    doc.setDrawColor(180);
-    doc.line(marginX, headerY + 122, pageWidth - marginX, headerY + 122);
-  };
-
-  // Proportional widths that add up to 100% of printable width.
-  const W = {
-    no: 0.07 * contentWidth,      // ~7%
-    team: 0.23 * contentWidth,    // ~23%
-    date: 0.14 * contentWidth,    // ~14%
-    time: 0.14 * contentWidth,    // ~14%
-    pan: 0.30 * contentWidth,     // ~30%
-    ver: 0.12 * contentWidth,     // ~12%
-  };
-
-  const verdictColor = (v) => {
-    const s = String(v || "").toLowerCase();
-    if (s === "passed") return [34, 139, 34];
-    if (s === "re-defense" || s === "redefense") return [217, 168, 30];
-    if (s === "failed") return [180, 35, 24];
-    return [106, 15, 20]; // Pending/others
-  };
-
-  autoTable(doc, {
-    startY: headerY + 134,
-    head: [["NO", "Team", "Date", "Time", "Panelists", "Verdict"]],
-    body: filtered.map((s, i) => [
-      `${i + 1}.`,
-      s.teamName || "",
-      fmtDate(s.date) || "",
-      fmtTimeRange(s.timeStart, s.timeEnd) || "",
-      (s.panelists || []).join(", "),
-      s.verdict || "",
-    ]),
-    styles: {
-      fontSize: 9,
-      cellPadding: 6,
-      overflow: "linebreak",  // wrap long text instead of overflowing
-      valign: "middle",
-    },
-    headStyles: {
-      fillColor: [245, 245, 245],
-      textColor: 60,
-      lineWidth: 0.4,
-      lineColor: [220, 220, 220],
-      fontStyle: "bold",
-    },
-    bodyStyles: { lineWidth: 0.3, lineColor: [235, 235, 235] },
-    columnStyles: {
-      0: { cellWidth: W.no, halign: "left" },
-      1: { cellWidth: W.team },
-      2: { cellWidth: W.date },
-      3: { cellWidth: W.time },
-      4: { cellWidth: W.pan },
-      5: { cellWidth: W.ver, halign: "center" },
-    },
-    margin: { left: marginX, right: marginX },
-    tableWidth: contentWidth, // force table to exactly fit printable width
-    didParseCell: (data) => {
-      if (data.section === "body" && data.column.index === 5) {
-        data.cell.styles.textColor = verdictColor(data.cell.text?.[0]);
-        data.cell.styles.fontStyle = "bold";
-      }
-    },
-    didDrawPage: () => {
-      drawHeader();
-      const str = `Page ${doc.internal.getNumberOfPages()}`;
-      doc.setFontSize(9);
-      doc.setTextColor(120);
-      doc.text(str, pageWidth - marginX, pageHeight - 24, { align: "right" });
-    },
-  });
-
-  doc.save(`title_defense_schedule_${new Date().toISOString().slice(0, 10)}.pdf`);
-};
-
   // search filter (client-side)
   const filtered = useMemo(() => {
     const q = queryText.trim().toLowerCase();
@@ -398,6 +298,171 @@ const handleExportPDF = () => {
       alert("Failed to delete some schedules. See console for details.");
       await loadSchedules();
     }
+  };
+
+  /* ===== PDF export — SAME header/footer + IMAGES as credentials export ===== */
+  const loadImage = (src) =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+
+  const handleExportPDF = async () => {
+    const title = "Title Defense Schedule";
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const marginX = 40;
+
+    // preload images
+    let dctImg, ccsImg, tsImg;
+    try {
+      [dctImg, ccsImg, tsImg] = await Promise.all([
+        loadImage(DCTLOGO),
+        loadImage(CCSLOGO),
+        loadImage(TASKSPHERELOGO),
+      ]);
+    } catch {
+      // continue even if images fail to load
+    }
+
+    const drawHeader = () => {
+      const topY = 24;
+
+      if (dctImg) {
+        const sideW = 64;
+        const sideH = (dctImg.height / dctImg.width) * sideW;
+        doc.addImage(dctImg, "PNG", marginX, topY, sideW, sideH);
+      }
+      if (ccsImg) {
+        const sideW = 64;
+        const sideH = (ccsImg.height / ccsImg.width) * sideW;
+        doc.addImage(ccsImg, "PNG", pageWidth - marginX - sideW, topY, sideW, sideH);
+      }
+
+      const headerY = 92;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text("DOMINICAN COLLEGE OF TARLAC, INC.", pageWidth / 2, headerY, { align: "center" });
+      doc.setFont("helvetica", "normal");
+      doc.text("COLLEGE OF COMPUTER STUDIES", pageWidth / 2, headerY + 16, { align: "center" });
+      doc.setFontSize(10);
+      doc.text(
+        "McArthur Highway, Poblacion (Sto. Rosario), Capas, 2315 Tarlac, Philippines",
+        pageWidth / 2,
+        headerY + 32,
+        { align: "center" }
+      );
+      doc.text(
+        "Institutional Contact Nos.: +63938-918-4093    Website: dct.edu.ph",
+        pageWidth / 2,
+        headerY + 48,
+        { align: "center" }
+      );
+      doc.text(
+        "E-mail: domct_2315@yahoo.com.ph / domct_2315@dct.edu.ph",
+        pageWidth / 2,
+        headerY + 64,
+        { align: "center" }
+      );
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      const titleY = headerY + 96;
+      doc.text(title, pageWidth / 2, titleY, { align: "center" });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text(`As of ${new Date().toLocaleDateString()}`, pageWidth / 2, titleY + 16, {
+        align: "center",
+      });
+
+      doc.setDrawColor(180);
+      doc.line(marginX, titleY + 26, pageWidth - marginX, titleY + 26);
+
+      return titleY + 38; // table start Y
+    };
+
+    const drawFooter = () => {
+      if (tsImg) {
+        const logoW = 72;
+        const logoH = (tsImg.height / tsImg.width) * logoW;
+        const x = marginX;
+        const y = pageHeight - 20 - logoH;
+        doc.addImage(tsImg, "PNG", x, y, logoW, logoH);
+      }
+
+      const str = `Page ${doc.internal.getNumberOfPages()}`;
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text(str, pageWidth - marginX, pageHeight - 14, { align: "right" });
+    };
+
+    const tableYStart = drawHeader();
+
+    const contentWidth = pageWidth - marginX * 2;
+    const W = {
+      no: 0.07 * contentWidth,
+      team: 0.23 * contentWidth,
+      date: 0.14 * contentWidth,
+      time: 0.14 * contentWidth,
+      pan: 0.30 * contentWidth,
+      ver: 0.12 * contentWidth,
+    };
+
+    const verdictColor = (v) => {
+      const s = String(v || "").toLowerCase();
+      if (s === "passed") return [34, 139, 34];
+      if (s === "re-defense" || s === "redefense") return [217, 168, 30];
+      if (s === "failed") return [180, 35, 24];
+      return [106, 15, 20]; // Pending/others
+    };
+
+    autoTable(doc, {
+      startY: tableYStart,
+      head: [["NO", "Team", "Date", "Time", "Panelists", "Verdict"]],
+      body: filtered.map((s, i) => [
+        `${i + 1}.`,
+        s.teamName || "",
+        fmtDate(s.date) || "",
+        fmtTimeRange(s.timeStart, s.timeEnd) || "",
+        (s.panelists || []).join(", "),
+        s.verdict || "",
+      ]),
+      styles: { fontSize: 9, cellPadding: 6, overflow: "linebreak", valign: "middle" },
+      headStyles: {
+        fillColor: [245, 245, 245],
+        textColor: 60,
+        lineWidth: 0.4,
+        lineColor: [220, 220, 220],
+        fontStyle: "bold",
+      },
+      bodyStyles: { lineWidth: 0.3, lineColor: [235, 235, 235] },
+      columnStyles: {
+        0: { cellWidth: W.no, halign: "left" },
+        1: { cellWidth: W.team },
+        2: { cellWidth: W.date },
+        3: { cellWidth: W.time },
+        4: { cellWidth: W.pan },
+        5: { cellWidth: W.ver, halign: "center" },
+      },
+      margin: { left: marginX, right: marginX, bottom: 64 },
+      tableWidth: contentWidth,
+      didParseCell: (data) => {
+        if (data.section === "body" && data.column.index === 5) {
+          data.cell.styles.textColor = verdictColor(data.cell.text?.[0]);
+          data.cell.styles.fontStyle = "bold";
+        }
+      },
+      didDrawPage: () => {
+        drawHeader();
+        drawFooter();
+      },
+    });
+
+    doc.save(`title_defense_schedule_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
   return (
