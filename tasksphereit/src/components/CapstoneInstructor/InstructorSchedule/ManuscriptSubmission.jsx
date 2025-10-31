@@ -11,6 +11,7 @@ import {
   Clock,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   FileText,
   Trash2,
   X,
@@ -99,6 +100,7 @@ const Breadcrumbs = () => {
 };
 
 export default function ManuscriptSubmission() {
+  const navigate = useNavigate();
   const [showCreate, setShowCreate] = useState(false);
 
   /* ===== Teams (for pickers) ===== */
@@ -292,7 +294,7 @@ export default function ManuscriptSubmission() {
   const pctClass = (n) => (Number(n) <= 10 ? "text-[#6BA34D]" : "text-[#E45454]");
 
   return (
-    <div className="p-6">
+    <div className="">
       {/* breadcrumb + maroon divider */}
       <Breadcrumbs />
       <div className="mt-2 h-[2px] w-full bg-neutral-200">
@@ -302,9 +304,22 @@ export default function ManuscriptSubmission() {
       {/* actions row */}
       <div className="mt-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Btn icon={Plus} onClick={() => setShowCreate(true)}>Create Schedule</Btn>
-        </div>
+          <Btn
+            icon={ChevronLeft}
+            variant="outline"
+            onClick={() =>
+              window.history.length
+                ? window.history.back()
+                : navigate("/instructor/schedule")
+            }
+          >
+            Back to Schedule
+          </Btn>
 
+          <Btn icon={Plus} onClick={() => setShowCreate(true)}>
+            Create Schedule
+          </Btn>
+        </div>
         <div className="flex items-center">
           {bulkMode && (
             <button
@@ -638,6 +653,7 @@ function CreateOrEditDialog({
                     onChange={(e) => setDate(e.target.value)}
                     className="w-full pr-10 pl-3 py-2 rounded-md border border-neutral-300 text-sm"
                   />
+                  <Clock size={0} className="hidden" />
                   <Calendar size={16} className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none" />
                 </div>
               </div>
@@ -746,7 +762,7 @@ function ViewTeamDialog({ row, onClose }) {
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[760px] max-w-[92vw]">
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w=[760px] max-w-[92vw]">
         <div className="rounded-2xl bg-white border border-neutral-200 shadow-2xl focus:outline-none p-0">
           <div className="flex items-center justify-between px-5 pt-4">
             <div className="text-[16px] font-semibold" style={{ color: MAROON }}>

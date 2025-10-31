@@ -14,14 +14,14 @@ const InstructorHeader = ({ onProfileClick }) => {
 
         {/* Right: notification & user icons */}
         <div className="flex items-center gap-4">
-          <button className="relative p-2 rounded-full hover:bg-neutral-100" aria-label="Notifications">
+          <button className="relative p-2 rounded-full hover:bg-neutral-100 cursor-pointer" aria-label="Notifications">
             <Bell className="w-6 h-6 text-[#6A0F14]" />
           </button>
 
           <button
             type="button"
             onClick={onProfileClick}
-            className="p-2 rounded-full hover:bg-neutral-100"
+            className="p-2 rounded-full hover:bg-neutral-100 cursor-pointer"
             aria-label="Open profile"
           >
             <User className="w-6 h-6 text-[#6A0F14]" />

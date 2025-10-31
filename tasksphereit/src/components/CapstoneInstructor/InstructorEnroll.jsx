@@ -328,7 +328,7 @@ const InstructorEnroll = () => {
         onChange={handleImportChange}
       />
 
-      <main className="flex-1 flex flex-col px-6 md:px-10 py-6">
+      <main className="min-h-full flex flex-col">
         {/* ===== Header + underline ===== */}
         <div>
           <div className="flex items-center gap-2">
