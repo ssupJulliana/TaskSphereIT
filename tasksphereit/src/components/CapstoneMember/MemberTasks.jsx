@@ -96,7 +96,7 @@ export default function MemberTasks() {
   };
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="space-y-4">
       {/* ===== Title + underline (matches PM Tasks design) ===== */}
       <div className="space-y-2">
         <div

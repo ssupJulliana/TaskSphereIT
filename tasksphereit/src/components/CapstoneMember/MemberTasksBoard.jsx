@@ -107,7 +107,7 @@ function TaskCard({ task, color, onOpenAttachment }) {
   };
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <div className=" space-y-4">
       {/* ===== Title + underline (matches PM Tasks design) ===== */}
       <div className="space-y-2">
         <div
