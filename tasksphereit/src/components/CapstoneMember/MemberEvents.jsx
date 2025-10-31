@@ -1,6 +1,12 @@
 // src/components/CapstoneMember/MemberEvents.jsx
 import React from "react";
-import { CalendarCheck2, FileText, Mic2, GraduationCap } from "lucide-react";
+import {
+  CalendarCheck2,
+  FileText,
+  Mic2,
+  GraduationCap,
+  ClipboardList,
+} from "lucide-react";
 
 const MAROON = "#6A0F14";
 
@@ -31,9 +37,7 @@ const Pill = ({ children, tone = "soft" }) => {
   };
   const cls = map[tone] || map.soft;
   return (
-    <span
-      className={`inline-flex items-center px-3 py-[6px] rounded-md text-xs font-semibold ${cls}`}
-    >
+    <span className={`inline-flex items-center px-3 py-[6px] rounded-md text-xs font-semibold ${cls}`}>
       {children}
     </span>
   );
@@ -92,16 +96,21 @@ const finalDefense = [
 /* ---------- page ---------- */
 function MemberEvents() {
   return (
-    <div className="p-6">
-      <h2
-        className="text-[18px] font-semibold tracking-wide mb-3"
-        style={{ color: MAROON }}
-      >
-        Events
-      </h2>
+    <div className="space-y-4">
+      {/* ===== Header (match ProjectManagerTasks header) ===== */}
+      <div className="space-y-2">
+        <div
+          className="flex items-center gap-2 text-[18px] font-semibold"
+          style={{ color: MAROON }}
+        >
+          <ClipboardList className="w-5 h-5" />
+          <span>Events</span>
+        </div>
+        <div className="h-[3px] w-full" style={{ backgroundColor: MAROON }} />
+      </div>
 
       {/* Title Defense */}
-      <div className="mt-4">
+      <div>
         <SectionTitle icon={CalendarCheck2}>Title Defense</SectionTitle>
         <Card className="mt-2">
           <table className="w-full text-sm">
@@ -117,10 +126,7 @@ function MemberEvents() {
             </thead>
             <tbody>
               {titleDefense.map((r, i) => (
-                <tr
-                  key={r.id}
-                  className={i % 2 ? "bg-neutral-50/60" : "bg-white"}
-                >
+                <tr key={r.id} className={i % 2 ? "bg-neutral-50/60" : "bg-white"}>
                   <td className="px-4 py-3 text-neutral-700">{i + 1}.</td>
                   <td className="px-4 py-3 text-neutral-800">{r.team}</td>
                   <td className="px-4 py-3 text-neutral-800">{r.date}</td>
@@ -137,7 +143,7 @@ function MemberEvents() {
       </div>
 
       {/* Manuscript Results */}
-      <div className="mt-8">
+      <div className="mt-2">
         <SectionTitle icon={FileText}>Manuscript Results</SectionTitle>
         <Card className="mt-2">
           <table className="w-full text-sm">
@@ -156,10 +162,7 @@ function MemberEvents() {
             </thead>
             <tbody>
               {manuscriptResults.map((r, i) => (
-                <tr
-                  key={r.id}
-                  className={i % 2 ? "bg-neutral-50/60" : "bg-white"}
-                >
+                <tr key={r.id} className={i % 2 ? "bg-neutral-50/60" : "bg-white"}>
                   <td className="px-4 py-3 text-neutral-700">{i + 1}.</td>
                   <td className="px-4 py-3 text-neutral-800">{r.team}</td>
                   <td className="px-4 py-3 text-neutral-800">{r.title}</td>
@@ -179,7 +182,7 @@ function MemberEvents() {
       </div>
 
       {/* Oral Defense */}
-      <div className="mt-8">
+      <div className="mt-2">
         <SectionTitle icon={Mic2}>Oral Defense</SectionTitle>
         <Card className="mt-2">
           <table className="w-full text-sm">
@@ -196,10 +199,7 @@ function MemberEvents() {
             </thead>
             <tbody>
               {oralDefense.map((r, i) => (
-                <tr
-                  key={r.id}
-                  className={i % 2 ? "bg-neutral-50/60" : "bg-white"}
-                >
+                <tr key={r.id} className={i % 2 ? "bg-neutral-50/60" : "bg-white"}>
                   <td className="px-4 py-3 text-neutral-700">{i + 1}.</td>
                   <td className="px-4 py-3 text-neutral-800">{r.team}</td>
                   <td className="px-4 py-3 text-neutral-800">{r.title}</td>
@@ -217,7 +217,7 @@ function MemberEvents() {
       </div>
 
       {/* Final Defense */}
-      <div className="mt-8">
+      <div className="mt-2">
         <SectionTitle icon={GraduationCap}>Final Defense</SectionTitle>
         <Card className="mt-2">
           <table className="w-full text-sm">
@@ -234,10 +234,7 @@ function MemberEvents() {
             </thead>
             <tbody>
               {finalDefense.map((r, i) => (
-                <tr
-                  key={r.id}
-                  className={i % 2 ? "bg-neutral-50/60" : "bg-white"}
-                >
+                <tr key={r.id} className={i % 2 ? "bg-neutral-50/60" : "bg-white"}>
                   <td className="px-4 py-3 text-neutral-700">{i + 1}.</td>
                   <td className="px-4 py-3 text-neutral-800">{r.team}</td>
                   <td className="px-4 py-3 text-neutral-800">{r.title}</td>
@@ -257,4 +254,4 @@ function MemberEvents() {
   );
 }
 
-export default MemberEvents
+export default MemberEvents;
