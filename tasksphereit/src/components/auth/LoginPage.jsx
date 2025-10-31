@@ -12,7 +12,11 @@ import {
   signInWithEmailAndPassword,
   signOut,
   updatePassword,
+
+  onAuthStateChanged, // auth guard
+
   onAuthStateChanged,
+
 } from "firebase/auth";
 import {
   collection,
@@ -42,7 +46,31 @@ const LoginPage = () => {
     return "/instructor/dashboard";
   };
 
-  /* ====================== GUARD: block /login when authed ====================== */
+  /* ====================== LOCK BACK NAV WHILE ON /login ====================== */
+  useEffect(() => {
+    // Push a state and trap back navigation to keep user on /login until they authenticate
+    const trap = (ev) => {
+      ev?.preventDefault?.();
+      navigate("/login", { replace: true });
+    };
+    // Push a dummy entry to history so Back triggers popstate we can trap
+    window.history.pushState(null, "", window.location.href);
+    window.addEventListener("popstate", trap);
+
+    // If a protected page is restored from bfcache, force a reload so auth guards run
+    const onShow = (e) => {
+      if (e.persisted) window.location.reload();
+    };
+    window.addEventListener("pageshow", onShow);
+
+    return () => {
+      window.removeEventListener("popstate", trap);
+      window.removeEventListener("pageshow", onShow);
+    };
+  }, [navigate]);
+  /* ========================================================================== */
+
+  /* =================== GUARD: block /login when already authed ============== */
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       try {
@@ -86,7 +114,7 @@ const LoginPage = () => {
 
     return () => unsub();
   }, [navigate]);
-  /* =========================================================================== */
+  /* ========================================================================== */
 
   const findUserByEmailOrIdNumber = async (identifier) => {
     const usersRef = collection(db, "users");

@@ -31,7 +31,9 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 
-import * as XLSX from 'xlsx';
+/* ===== PDF ===== */
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const MAROON = "#6A0F14";
 const COLLECTION = "manuscriptSubmissions";
@@ -216,33 +218,132 @@ export default function ManuscriptSubmission() {
     }
   };
 
-  // Export function to generate Excel
-  const handleExportToExcel = () => {
-    // Prepare the data (match the table columns)
-    const rows = [
-      ["No", "Team", "Title", "Due Date", "Time", "Plagiarism", "AI", "File Uploaded", "Verdict"],
-      ...filtered.map((s, idx) => [
-        idx + 1,                           // No
-        s.team || "—",                     // Team
-        s.title || "—",                    // Title
-        fmtDateHuman(s.date) || "—",       // Due Date
-        to12h(s.time) || "—",              // Time
-        s.plag || "0",                     // Plagiarism %
-        s.ai || "0",                       // AI %
-        s.file || "—",                     // File Uploaded
-        s.verdict || "Pending",            // Verdict
+  /* ===== PDF export (fits all columns, wraps long text, colors %) ===== */
+  const handleExportPDF = () => {
+    const title = "Manuscript Submissions";
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const marginX = 40;
+    const headerY = 46;
+    const contentWidth = pageWidth - marginX * 2;
+
+    const drawHeader = () => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text("DOMINICAN COLLEGE OF TARLAC, INC.", pageWidth / 2, headerY, { align: "center" });
+      doc.setFont("helvetica", "normal");
+      doc.text("COLLEGE OF COMPUTER STUDIES", pageWidth / 2, headerY + 16, { align: "center" });
+      doc.setFontSize(10);
+      doc.text("McArthur Highway, Poblacion (Sto. Rosario), Capas, 2315 Tarlac, Philippines",
+        pageWidth / 2, headerY + 32, { align: "center" });
+      doc.text("Institutional Contact Nos.: +63938-918-4093    Website: dct.edu.ph",
+        pageWidth / 2, headerY + 48, { align: "center" });
+      doc.text("E-mail: domct_2315@yahoo.com.ph / domct_2315@dct.edu.ph",
+        pageWidth / 2, headerY + 64, { align: "center" });
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text(title, pageWidth / 2, headerY + 96, { align: "center" });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text(`As of ${new Date().toLocaleDateString()}`, pageWidth / 2, headerY + 112, { align: "center" });
+
+      doc.setDrawColor(180);
+      doc.line(marginX, headerY + 122, pageWidth - marginX, headerY + 122);
+    };
+
+    // proportional column widths (sum = 100% of content width)
+    const W = {
+      no: 0.06 * contentWidth,
+      team: 0.18 * contentWidth,
+      title: 0.24 * contentWidth,
+      date: 0.10 * contentWidth,
+      time: 0.10 * contentWidth,
+      plag: 0.07 * contentWidth,
+      ai: 0.06 * contentWidth,
+      file: 0.11 * contentWidth,
+      ver: 0.08 * contentWidth,
+    };
+
+    const verdictColor = (v) => {
+      const s = String(v || "").toLowerCase();
+      if (s === "passed") return [34, 139, 34];
+      if (s === "recheck") return [217, 168, 30];
+      return [106, 15, 20]; // Pending/others
+    };
+    const pctColor = (n) => (Number(n) <= 10 ? [34,139,34] : [180,35,24]);
+
+    autoTable(doc, {
+      startY: headerY + 134,
+      head: [["NO", "Team", "Title", "Due Date", "Time", "Plag.", "AI", "File Uploaded", "Verdict"]],
+      body: filtered.map((r, i) => [
+        `${i + 1}.`,
+        r.team || "—",
+        r.title || "—",
+        fmtDateHuman(r.date) || "—",
+        to12h(r.time) || "—",
+        `${Number(r.plag || 0)}%`,
+        `${Number(r.ai || 0)}%`,
+        r.file || "—",
+        r.verdict || "Pending",
       ]),
-    ];
+      styles: {
+        fontSize: 9,
+        cellPadding: 6,
+        overflow: "linebreak",
+        valign: "middle",
+      },
+      headStyles: {
+        fillColor: [245, 245, 245],
+        textColor: 60,
+        lineWidth: 0.4,
+        lineColor: [220, 220, 220],
+        fontStyle: "bold",
+      },
+      bodyStyles: { lineWidth: 0.3, lineColor: [235, 235, 235] },
+      columnStyles: {
+        0: { cellWidth: W.no },
+        1: { cellWidth: W.team },
+        2: { cellWidth: W.title },
+        3: { cellWidth: W.date },
+        4: { cellWidth: W.time },
+        5: { cellWidth: W.plag, halign: "right" },
+        6: { cellWidth: W.ai, halign: "right" },
+        7: { cellWidth: W.file },
+        8: { cellWidth: W.ver, halign: "center" },
+      },
+      margin: { left: marginX, right: marginX },
+      tableWidth: contentWidth,
+      didParseCell: (data) => {
+        if (data.section === "body") {
+          if (data.column.index === 8) { // verdict
+            data.cell.styles.textColor = verdictColor(data.cell.text?.[0]);
+            data.cell.styles.fontStyle = "bold";
+          }
+          if (data.column.index === 5) { // plag
+            const val = (data.cell.text?.[0] || "").replace("%","").trim();
+            data.cell.styles.textColor = pctColor(val);
+            data.cell.styles.fontStyle = "bold";
+          }
+          if (data.column.index === 6) { // ai
+            const val = (data.cell.text?.[0] || "").replace("%","").trim();
+            data.cell.styles.textColor = pctColor(val);
+            data.cell.styles.fontStyle = "bold";
+          }
+        }
+      },
+      didDrawPage: () => {
+        drawHeader();
+        const str = `Page ${doc.internal.getNumberOfPages()}`;
+        doc.setFontSize(9);
+        doc.setTextColor(120);
+        doc.text(str, pageWidth - marginX, pageHeight - 24, { align: "right" });
+      },
+    });
 
-    // Create a worksheet from the data
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-
-    // Create a workbook and add the worksheet
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Manuscript Submissions');
-
-    // Download the file as Excel
-    XLSX.writeFile(wb, `manuscript_submissions_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    doc.save(`manuscript_submissions_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
   // search filter (client)
@@ -333,7 +434,7 @@ export default function ManuscriptSubmission() {
           >
             Back to Schedule
           </Btn>
-          <Btn icon={Download} variant="outline" onClick={handleExportToExcel}>Export</Btn>
+          <Btn icon={Download} variant="outline" onClick={handleExportPDF}>Export PDF</Btn>
         </div>
       </div>
 
@@ -674,7 +775,7 @@ function CreateOrEditDialog({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">AI %</label>
+                <label className="block text sm font-medium text-neutral-700 mb-2">AI %</label>
                 <input
                   type="number"
                   min="0"

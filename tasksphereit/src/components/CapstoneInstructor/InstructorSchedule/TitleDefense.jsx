@@ -29,7 +29,9 @@ import {
   where,
 } from "firebase/firestore";
 
-import * as XLSX from 'xlsx';
+/* ===== PDF ===== */
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const MAROON = "#6A0F14";
 
@@ -166,7 +168,7 @@ export default function TitleDefense() {
     return () => { alive = false; };
   }, []);
 
-// Button Component (ensure it's either imported or defined here)
+// Button Component
 const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props }) => {
   const base =
     "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium cursor-pointer " +
@@ -185,7 +187,6 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
     </button>
   );
 };
-
 
   // Load Schedules
   const loadSchedules = async () => {
@@ -241,37 +242,117 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
     }
   };
 
-  // Export function to generate Excel
-  const handleExportToExcel = () => {
-    // Prepare the data
-    const rows = [
-      ["No", "Team", "Date", "Time", "Panelists", "Verdict"],
-      ...filtered.map((s, idx) => [
-        idx + 1,
-        s.teamName || "",
-        s.date || "",
-        fmtTimeRange(s.timeStart, s.timeEnd) || "",
-        (s.panelists || []).join("; "),
-        s.verdict || "",
-      ]),
-    ];
+  /* ===== PDF export (same header format as credentials) ===== */
+const handleExportPDF = () => {
+  const title = "Title Defense Schedule";
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginX = 40;
+  const headerY = 46;
+  const contentWidth = pageWidth - marginX * 2;
 
-    // Create a worksheet from the data
-    const ws = XLSX.utils.aoa_to_sheet(rows);
+  const drawHeader = () => {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("DOMINICAN COLLEGE OF TARLAC, INC.", pageWidth / 2, headerY, { align: "center" });
+    doc.setFont("helvetica", "normal");
+    doc.text("COLLEGE OF COMPUTER STUDIES", pageWidth / 2, headerY + 16, { align: "center" });
+    doc.setFontSize(10);
+    doc.text("McArthur Highway, Poblacion (Sto. Rosario), Capas, 2315 Tarlac, Philippines",
+      pageWidth / 2, headerY + 32, { align: "center" });
+    doc.text("Institutional Contact Nos.: +63938-918-4093    Website: dct.edu.ph",
+      pageWidth / 2, headerY + 48, { align: "center" });
+    doc.text("E-mail: domct_2315@yahoo.com.ph / domct_2315@dct.edu.ph",
+      pageWidth / 2, headerY + 64, { align: "center" });
 
-    // Create a workbook and add the worksheet
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Title Defense');
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text(title, pageWidth / 2, headerY + 96, { align: "center" });
 
-    // Download the file as Excel
-    XLSX.writeFile(wb, `title_defense_schedules_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text(`As of ${new Date().toLocaleDateString()}`, pageWidth / 2, headerY + 112, { align: "center" });
+
+    doc.setDrawColor(180);
+    doc.line(marginX, headerY + 122, pageWidth - marginX, headerY + 122);
   };
 
+  // Proportional widths that add up to 100% of printable width.
+  const W = {
+    no: 0.07 * contentWidth,      // ~7%
+    team: 0.23 * contentWidth,    // ~23%
+    date: 0.14 * contentWidth,    // ~14%
+    time: 0.14 * contentWidth,    // ~14%
+    pan: 0.30 * contentWidth,     // ~30%
+    ver: 0.12 * contentWidth,     // ~12%
+  };
+
+  const verdictColor = (v) => {
+    const s = String(v || "").toLowerCase();
+    if (s === "passed") return [34, 139, 34];
+    if (s === "re-defense" || s === "redefense") return [217, 168, 30];
+    if (s === "failed") return [180, 35, 24];
+    return [106, 15, 20]; // Pending/others
+  };
+
+  autoTable(doc, {
+    startY: headerY + 134,
+    head: [["NO", "Team", "Date", "Time", "Panelists", "Verdict"]],
+    body: filtered.map((s, i) => [
+      `${i + 1}.`,
+      s.teamName || "",
+      fmtDate(s.date) || "",
+      fmtTimeRange(s.timeStart, s.timeEnd) || "",
+      (s.panelists || []).join(", "),
+      s.verdict || "",
+    ]),
+    styles: {
+      fontSize: 9,
+      cellPadding: 6,
+      overflow: "linebreak",  // wrap long text instead of overflowing
+      valign: "middle",
+    },
+    headStyles: {
+      fillColor: [245, 245, 245],
+      textColor: 60,
+      lineWidth: 0.4,
+      lineColor: [220, 220, 220],
+      fontStyle: "bold",
+    },
+    bodyStyles: { lineWidth: 0.3, lineColor: [235, 235, 235] },
+    columnStyles: {
+      0: { cellWidth: W.no, halign: "left" },
+      1: { cellWidth: W.team },
+      2: { cellWidth: W.date },
+      3: { cellWidth: W.time },
+      4: { cellWidth: W.pan },
+      5: { cellWidth: W.ver, halign: "center" },
+    },
+    margin: { left: marginX, right: marginX },
+    tableWidth: contentWidth, // force table to exactly fit printable width
+    didParseCell: (data) => {
+      if (data.section === "body" && data.column.index === 5) {
+        data.cell.styles.textColor = verdictColor(data.cell.text?.[0]);
+        data.cell.styles.fontStyle = "bold";
+      }
+    },
+    didDrawPage: () => {
+      drawHeader();
+      const str = `Page ${doc.internal.getNumberOfPages()}`;
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text(str, pageWidth - marginX, pageHeight - 24, { align: "right" });
+    },
+  });
+
+  doc.save(`title_defense_schedule_${new Date().toISOString().slice(0, 10)}.pdf`);
+};
+
   // search filter (client-side)
-  // In the useMemo hook, make sure it's using queryText, not query
   const filtered = useMemo(() => {
     const q = queryText.trim().toLowerCase();
-    if (!q) return schedules; // Return all schedules if there's no query
+    if (!q) return schedules;
     return schedules.filter((t) =>
       [
         t.teamName,
@@ -284,7 +365,7 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
         .toLowerCase()
         .includes(q)
     );
-  }, [queryText, schedules]); // Watch for queryText changes here
+  }, [queryText, schedules]);
 
   // Select-all works on the filtered (visible) list
   const allVisibleIds = useMemo(() => filtered.map((s) => s.id), [filtered]);
@@ -319,34 +400,6 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
     }
   };
 
-  // Export CSV of the *filtered* list
-  const handleExport = () => {
-    const rows = [
-      ["Team", "Date", "Time", "Panelists", "Verdict"],
-      ...filtered.map((s) => [
-        s.teamName || "",
-        s.date || "",
-        fmtTimeRange(s.timeStart, s.timeEnd) || "",
-        (s.panelists || []).join("; "),
-        s.verdict || "",
-      ]),
-    ];
-    const csv = rows.map(r =>
-      r.map((cell) => {
-        const v = String(cell ?? "");
-        return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
-      }).join(",")
-    ).join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `title_defense_schedules_${new Date().toISOString().slice(0,10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   return (
     <div className="">
       <Breadcrumbs />
@@ -354,10 +407,9 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
         <div className="h-[2px]" style={{ backgroundColor: MAROON, width: 260 }} />
       </div>
 
-        
       {/* actions */}
       <div className="mt-6 space-y-4">
-        {/* Row 1: Back + Create + Export (aligned) */}
+        {/* Row 1: Back + Export (aligned) */}
         <div className="flex items-center gap-3">
           <Btn
             icon={ChevronLeft}
@@ -370,7 +422,9 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
           >
             Back to Schedule
           </Btn>
-          <Btn icon={Download} variant="outline" onClick={handleExportToExcel}>Export</Btn>
+          <Btn icon={Download} variant="outline" onClick={handleExportPDF}>
+            Export PDF
+          </Btn>
         </div>
 
         {/* Row 2: Search (left) + Delete (right) */}
@@ -379,8 +433,8 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
             <input
               type="text"
               placeholder="Search"
-              value={queryText} // Update here to bind with queryText
-              onChange={(e) => setQueryText(e.target.value)} // Set queryText here
+              value={queryText}
+              onChange={(e) => setQueryText(e.target.value)}
               className="pl-10 pr-3 py-2 w-72 rounded-md border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-300"
             />
             <Search size={16} className="absolute left-3 top-2.5 text-neutral-400" />
@@ -465,7 +519,7 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
                   <td className="px-4 py-3 font-medium text-neutral-800">{s.teamName}</td>
 
                   {/* Date */}
-                  <td className="px-4 py-3 text-neutral-700">{s.date || "—"}</td>
+                  <td className="px-4 py-3 text-neutral-700">{fmtDate(s.date) || "—"}</td>
 
                   {/* Time */}
                   <td className="px-4 py-3 text-neutral-700">{fmtTimeRange(s.timeStart, s.timeEnd) || "—"}</td>
@@ -575,8 +629,6 @@ function ScheduleDialog({
   };
   const removePanelist = (name) => setPanelists((p) => p.filter((n) => n !== name));
 
-  const timeIsValid = time && timeEnd && time < timeEnd;
-
   const handleSubmit = async () => {
     try {
       const selected = teamOptions.find((t) => t.name === team);
@@ -645,7 +697,7 @@ function ScheduleDialog({
                 </div>
               </div>
 
-              {/* Assign Panelists (from users/Adviser) */}
+              {/* Assign Panelists */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">Assign Panelists</label>
                 <div className="relative">
@@ -732,9 +784,6 @@ function ScheduleDialog({
                     <Clock size={16} className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none" />
                   </div>
                 </div>
-                {!time || !timeEnd || time < timeEnd ? null : (
-                  <p className="mt-1 text-xs text-red-600">End time must be after start time.</p>
-                )}
               </div>
             </div>
 
@@ -748,8 +797,8 @@ function ScheduleDialog({
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={(!team || !(time && timeEnd && time < timeEnd))}
-                className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white ${(!team || !(time && timeEnd && time < timeEnd)) ? "opacity-60 cursor-not-allowed" : ""}`}
+                disabled={!team || !date}
+                className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white ${(!team || !date) ? "opacity-60 cursor-not-allowed" : ""}`}
                 style={{ backgroundColor: MAROON }}
               >
                 Save
