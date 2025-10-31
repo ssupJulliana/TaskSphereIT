@@ -1,18 +1,3 @@
-// src/components/Notes.jsx
-// Shared Notes component for Adviser, Project Manager, and Member roles.
-//
-// Firestore structure (as requested):
-// notes (collection)
-//   ├─ adviser (doc; can be empty)
-//   │   └─ adviserNotes (subcollection)       <-- notes live here
-//   ├─ projectManager (doc)
-//   │   └─ projectManagerNotes (subcollection)
-//   └─ member (doc)
-//       └─ memberNotes (subcollection)
-//
-// Each note document fields:
-//   { uid, role, title, content, createdAt, updatedAt?, email?, migratedAt? }
-
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import {
@@ -34,7 +19,9 @@ import {
   Strikethrough,
   Link as LinkIcon,
   Image as ImageIcon,
+  Download,
 } from "lucide-react";
+import Swal from "sweetalert2";
 
 /* ===== Firebase ===== */
 import { auth, db } from "../config/firebase";
@@ -54,6 +41,9 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 
+/* ===== Supabase ===== */
+import { supabase } from "../config/supabase"; // Make sure you have this config file
+
 const MAROON = "#6A0F14";
 
 /* ---------------- Helpers ---------------- */
@@ -67,16 +57,114 @@ const plainPreview = (html, max = 120) => {
 const roleRoutingMap = {
   // route segment -> { roleName, roleDocId, subColName }
   adviser: { role: "Adviser", doc: "adviser", sub: "adviserNotes" },
-  projectmanager: { role: "Project Manager", doc: "projectManager", sub: "projectManagerNotes" },
-  "project-manager": { role: "Project Manager", doc: "projectManager", sub: "projectManagerNotes" },
+  projectmanager: {
+    role: "Project Manager",
+    doc: "projectManager",
+    sub: "projectManagerNotes",
+  },
+  "project-manager": {
+    role: "Project Manager",
+    doc: "projectManager",
+    sub: "projectManagerNotes",
+  },
   member: { role: "Member", doc: "member", sub: "memberNotes" },
+};
+
+/* ---------------- Image Upload Functions ---------------- */
+const uploadImageToSupabase = async (file, userId) => {
+  try {
+    // Generate unique filename
+    const fileExt = file.name.split(".").pop();
+    const fileName = `${userId}/${Date.now()}-${Math.random()
+      .toString(36)
+      .substring(2, 15)}.${fileExt}`;
+
+    // Upload to Supabase storage
+    const { data, error } = await supabase.storage
+      .from("user-notes")
+      .upload(fileName, file);
+
+    if (error) {
+      throw new Error(`Upload failed: ${error.message}`);
+    }
+
+    // Get public URL
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from("user-notes").getPublicUrl(fileName);
+
+    return {
+      url: publicUrl,
+      fileName: fileName,
+      originalName: file.name,
+    };
+  } catch (error) {
+    console.error("Error uploading to Supabase:", error);
+    throw error;
+  }
+};
+
+const deleteImageFromSupabase = async (fileName) => {
+  try {
+    const { error } = await supabase.storage
+      .from("user-notes")
+      .remove([fileName]);
+
+    if (error) {
+      console.error("Error deleting from Supabase:", error);
+      throw error;
+    }
+    return true;
+  } catch (error) {
+    console.error("Error deleting image:", error);
+    throw error;
+  }
+};
+
+// Function to download image
+const downloadImage = async (imageUrl, imageName) => {
+  try {
+    const response = await fetch(imageUrl);
+    const blob = await response.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = imageName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    // Clean up the blob URL
+    window.URL.revokeObjectURL(blobUrl);
+
+    Swal.fire({
+      icon: "success",
+      title: "Download Started",
+      text: `"${imageName}" is being downloaded`,
+      confirmButtonColor: MAROON,
+      timer: 2000,
+    });
+  } catch (error) {
+    console.error("Download error:", error);
+    Swal.fire({
+      icon: "error",
+      title: "Download Failed",
+      text: "Failed to download image. Please try again.",
+      confirmButtonColor: MAROON,
+    });
+  }
 };
 
 /* ---------------- Modals ---------------- */
 function Modal({ title, children, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} aria-hidden />
+      <div
+        className="absolute inset-0 bg-black/30"
+        onClick={onClose}
+        aria-hidden
+      />
       <div className="relative max-h-[90vh] w-[min(900px,92vw)] overflow-auto rounded-2xl border border-neutral-200 bg-white p-4 shadow-2xl">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-base font-semibold">{title}</h3>
@@ -103,7 +191,11 @@ function ConfirmModal({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/30" onClick={onCancel} aria-hidden />
+      <div
+        className="absolute inset-0 bg-black/30"
+        onClick={onCancel}
+        aria-hidden
+      />
       <div className="relative w-[min(420px,92vw)] rounded-2xl border border-neutral-200 bg-white p-5 shadow-2xl">
         <h3 className="text-base font-semibold mb-2">{title}</h3>
         <p className="text-sm text-neutral-700 mb-4">{message}</p>
@@ -141,49 +233,113 @@ const Toolbar = ({ onCmd, onInsertLink, onAttachImage, active }) => {
   return (
     <div className="flex flex-wrap items-center gap-3 p-2 border-b border-neutral-200 bg-neutral-50">
       <div className={group}>
-        <button className={`${baseBtn} ${active.bold ? activeBtn : ""}`} type="button" onMouseDown={h("bold")} title="Bold" aria-pressed={active.bold}>
+        <button
+          className={`${baseBtn} ${active.bold ? activeBtn : ""}`}
+          type="button"
+          onMouseDown={h("bold")}
+          title="Bold"
+          aria-pressed={active.bold}
+        >
           <BoldIcon className="w-4 h-4" />
           <span className="hidden sm:inline">Bold</span>
         </button>
-        <button className={`${baseBtn} ${active.italic ? activeBtn : ""}`} type="button" onMouseDown={h("italic")} title="Italic" aria-pressed={active.italic}>
+        <button
+          className={`${baseBtn} ${active.italic ? activeBtn : ""}`}
+          type="button"
+          onMouseDown={h("italic")}
+          title="Italic"
+          aria-pressed={active.italic}
+        >
           <ItalicIcon className="w-4 h-4" />
           <span className="hidden sm:inline">Italic</span>
         </button>
-        <button className={`${baseBtn} ${active.underline ? activeBtn : ""}`} type="button" onMouseDown={h("underline")} title="Underline" aria-pressed={active.underline}>
+        <button
+          className={`${baseBtn} ${active.underline ? activeBtn : ""}`}
+          type="button"
+          onMouseDown={h("underline")}
+          title="Underline"
+          aria-pressed={active.underline}
+        >
           <UnderlineIcon className="w-4 h-4" />
           <span className="hidden sm:inline">Underline</span>
         </button>
-        <button className={`${baseBtn} ${active.strike ? activeBtn : ""}`} type="button" onMouseDown={h("strikeThrough")} title="Strikethrough" aria-pressed={active.strike}>
+        <button
+          className={`${baseBtn} ${active.strike ? activeBtn : ""}`}
+          type="button"
+          onMouseDown={h("strikeThrough")}
+          title="Strikethrough"
+          aria-pressed={active.strike}
+        >
           <Strikethrough className="w-4 h-4" />
           <span className="hidden sm:inline">Strike</span>
         </button>
       </div>
 
       <div className={group}>
-        <button className={`${baseBtn} ${active.ul ? activeBtn : ""}`} type="button" title="Bulleted list" onMouseDown={h("insertUnorderedList")} aria-pressed={active.ul}>
+        <button
+          className={`${baseBtn} ${active.ul ? activeBtn : ""}`}
+          type="button"
+          title="Bulleted list"
+          onMouseDown={h("insertUnorderedList")}
+          aria-pressed={active.ul}
+        >
           <List className="w-4 h-4" />
           <span className="hidden sm:inline">Bullets</span>
         </button>
-        <button className={`${baseBtn} ${active.ol ? activeBtn : ""}`} type="button" title="Numbered list" onMouseDown={h("insertOrderedList")} aria-pressed={active.ol}>
+        <button
+          className={`${baseBtn} ${active.ol ? activeBtn : ""}`}
+          type="button"
+          title="Numbered list"
+          onMouseDown={h("insertOrderedList")}
+          aria-pressed={active.ol}
+        >
           <ListOrdered className="w-4 h-4" />
           <span className="hidden sm:inline">Numbered</span>
         </button>
-        <button className={baseBtn} type="button" title="Outdent" onMouseDown={h("outdent")}>
+        <button
+          className={baseBtn}
+          type="button"
+          title="Outdent"
+          onMouseDown={h("outdent")}
+        >
           <IndentDecrease className="w-4 h-4" />
         </button>
-        <button className={baseBtn} type="button" title="Indent" onMouseDown={h("indent")}>
+        <button
+          className={baseBtn}
+          type="button"
+          title="Indent"
+          onMouseDown={h("indent")}
+        >
           <IndentIncrease className="w-4 h-4" />
         </button>
       </div>
 
       <div className={group}>
-        <button className={`${baseBtn} ${active.align === "left" ? activeBtn : ""}`} type="button" onMouseDown={h("justifyLeft")} title="Align left" aria-pressed={active.align === "left"}>
+        <button
+          className={`${baseBtn} ${active.align === "left" ? activeBtn : ""}`}
+          type="button"
+          onMouseDown={h("justifyLeft")}
+          title="Align left"
+          aria-pressed={active.align === "left"}
+        >
           <AlignLeft className="w-4 h-4" />
         </button>
-        <button className={`${baseBtn} ${active.align === "center" ? activeBtn : ""}`} type="button" onMouseDown={h("justifyCenter")} title="Align center" aria-pressed={active.align === "center"}>
+        <button
+          className={`${baseBtn} ${active.align === "center" ? activeBtn : ""}`}
+          type="button"
+          onMouseDown={h("justifyCenter")}
+          title="Align center"
+          aria-pressed={active.align === "center"}
+        >
           <AlignCenter className="w-4 h-4" />
         </button>
-        <button className={`${baseBtn} ${active.align === "right" ? activeBtn : ""}`} type="button" onMouseDown={h("justifyRight")} title="Align right" aria-pressed={active.align === "right"}>
+        <button
+          className={`${baseBtn} ${active.align === "right" ? activeBtn : ""}`}
+          type="button"
+          onMouseDown={h("justifyRight")}
+          title="Align right"
+          aria-pressed={active.align === "right"}
+        >
           <AlignRight className="w-4 h-4" />
         </button>
       </div>
@@ -304,6 +460,12 @@ function NoteForm({ existing, onSave, onCancel }) {
   const [title, setTitle] = useState(existing?.title || "");
   const [content, setContent] = useState(existing?.content || "");
   const [focused, setFocused] = useState(false);
+  const [attachedImages, setAttachedImages] = useState(
+    existing?.attachedImages || []
+  );
+  const [newImages, setNewImages] = useState([]); // Store new images as File objects
+  const [imagesToDelete, setImagesToDelete] = useState([]); // Track images to delete from Supabase
+  const [saving, setSaving] = useState(false);
   const [active, setActive] = useState({
     bold: false,
     italic: false,
@@ -315,6 +477,7 @@ function NoteForm({ existing, onSave, onCancel }) {
   });
   const editorRef = useRef(null);
   const selectionRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const normalizeEditorHTML = () => {
     const el = editorRef.current;
@@ -391,6 +554,105 @@ function NoteForm({ existing, onSave, onCancel }) {
     }
   };
 
+  const handleAttachImage = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files);
+    const imageFiles = files.filter(
+      (file) =>
+        file.type === "image/png" ||
+        file.type === "image/jpeg" ||
+        file.type === "image/jpg"
+    );
+
+    if (imageFiles.length === 0) {
+      Swal.fire({
+        icon: "error",
+        title: "Invalid File Type",
+        text: "Please select only PNG, JPG, or JPEG images.",
+        confirmButtonColor: MAROON,
+      });
+      return;
+    }
+
+    // Store files as new images with preview URLs
+    const newImageObjects = imageFiles.map((file) => ({
+      id: Date.now() + Math.random(),
+      file: file,
+      name: file.name,
+      previewUrl: URL.createObjectURL(file), // For preview only
+      isNew: true,
+    }));
+
+    setNewImages((prev) => [...prev, ...newImageObjects]);
+    e.target.value = ""; // Reset file input
+  };
+
+  const removeImage = async (imageId, isNewImage = false) => {
+    if (isNewImage) {
+      // Remove from new images and revoke object URL
+      setNewImages((prev) => {
+        const imageToRemove = prev.find((img) => img.id === imageId);
+        if (imageToRemove?.previewUrl) {
+          URL.revokeObjectURL(imageToRemove.previewUrl);
+        }
+        return prev.filter((img) => img.id !== imageId);
+      });
+    } else {
+      // Remove from existing attached images and mark for deletion from Supabase
+      const imageToRemove = attachedImages.find((img) => img.id === imageId);
+      if (imageToRemove) {
+        // Ask for confirmation before deleting from Supabase
+        const result = await Swal.fire({
+          title: "Remove Image?",
+          text: "This image will be removed when you save the note.",
+          icon: "warning",
+          showCancelButton: true,
+          confirmButtonColor: MAROON,
+          cancelButtonColor: "#6c757d",
+          confirmButtonText: "Yes, remove it!",
+          cancelButtonText: "Cancel",
+          reverseButtons: true,
+        });
+
+        if (result.isConfirmed) {
+          setImagesToDelete((prev) => [...prev, imageToRemove]);
+          setAttachedImages((prev) => prev.filter((img) => img.id !== imageId));
+        }
+      }
+    }
+  };
+
+  const viewImage = (imageUrl, imageName) => {
+    Swal.fire({
+      html: `<div class="text-center">
+        <img src="${imageUrl}" alt="${imageName}" class="max-w-full max-h-[70vh] mx-auto rounded-lg" />
+        <p class="mt-2 text-sm text-gray-600">${imageName}</p>
+      </div>`,
+      showConfirmButton: false,
+      showCloseButton: true,
+      showDenyButton: true,
+      denyButtonText: `<div class="flex items-center gap-1"><Download class="w-4 h-4" /> Download</div>`,
+      denyButtonColor: MAROON,
+      width: "auto",
+      padding: "20px",
+      background: "transparent",
+      backdrop: "rgba(0,0,0,0.8)",
+      customClass: {
+        closeButton:
+          "!text-white !text-2xl !top-4 !right-4 !hover:text-gray-300",
+        denyButton:
+          "!bg-[#6A0F14] !border-[#6A0F14] !text-white !hover:bg-[#5a0e12]",
+      },
+      preDeny: () => {
+        downloadImage(imageUrl, imageName);
+        return false; // Prevent modal from closing
+      },
+    });
+  };
+
   const onInput = () => {
     if (editorRef.current) {
       normalizeEditorHTML();
@@ -401,13 +663,76 @@ function NoteForm({ existing, onSave, onCancel }) {
 
   const onPaste = (e) => {
     e.preventDefault();
-    const text = (e.clipboardData || window.clipboardData).getData("text/plain");
+    const text = (e.clipboardData || window.clipboardData).getData(
+      "text/plain"
+    );
     document.execCommand("insertText", false, text);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    onSave({ title: title.trim(), content });
+    setSaving(true);
+
+    try {
+      const userId = auth.currentUser?.uid || localStorage.getItem("uid");
+      if (!userId) {
+        throw new Error("User not authenticated");
+      }
+
+      // Delete images marked for deletion from Supabase
+      if (imagesToDelete.length > 0) {
+        const deletePromises = imagesToDelete.map(async (image) => {
+          if (image.fileName) {
+            await deleteImageFromSupabase(image.fileName);
+          }
+        });
+        await Promise.allSettled(deletePromises);
+      }
+
+      // Upload new images to Supabase
+      let uploadedImages = [];
+      if (newImages.length > 0) {
+        const uploadPromises = newImages.map(async (image) => {
+          const uploadResult = await uploadImageToSupabase(image.file, userId);
+          return {
+            id: image.id,
+            name: uploadResult.originalName,
+            fileName: uploadResult.fileName,
+            url: uploadResult.url,
+            uploadedAt: new Date().toISOString(),
+          };
+        });
+
+        uploadedImages = await Promise.all(uploadPromises);
+
+        // Clean up preview URLs
+        newImages.forEach((image) => {
+          if (image.previewUrl) {
+            URL.revokeObjectURL(image.previewUrl);
+          }
+        });
+      }
+
+      // Combine existing images with newly uploaded ones
+      const allAttachedImages = [...attachedImages, ...uploadedImages];
+
+      // Call onSave with the complete data
+      onSave({
+        title: title.trim(),
+        content,
+        attachedImages: allAttachedImages,
+      });
+    } catch (error) {
+      console.error("Save error:", error);
+      Swal.fire({
+        icon: "error",
+        title: "Save Failed",
+        text: error.message || "Failed to save note. Please try again.",
+        confirmButtonColor: MAROON,
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const refreshActiveStates = () => {
@@ -425,10 +750,37 @@ function NoteForm({ existing, onSave, onCancel }) {
     });
   };
 
+  // Clean up object URLs when component unmounts
+  useEffect(() => {
+    return () => {
+      newImages.forEach((image) => {
+        if (image.previewUrl) {
+          URL.revokeObjectURL(image.previewUrl);
+        }
+      });
+    };
+  }, [newImages]);
+
+  const allImages = [...attachedImages, ...newImages];
+
   return (
-    <form onSubmit={handleSubmit} className="p-0 bg-transparent border-0 shadow-none space-y-3">
+    <form
+      onSubmit={handleSubmit}
+      className="p-0 bg-transparent border-0 shadow-none space-y-3"
+    >
+      <input
+        type="file"
+        ref={fileInputRef}
+        multiple
+        accept=".png,.jpg,.jpeg,image/png,image/jpg,image/jpeg"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+
       <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-[0_6px_12px_rgba(0,0,0,0.12)]">
-        <label className="block mb-1 text-sm font-medium text-neutral-700">Title</label>
+        <label className="block mb-1 text-sm font-medium text-neutral-700">
+          Title
+        </label>
         <input
           type="text"
           value={title}
@@ -443,12 +795,14 @@ function NoteForm({ existing, onSave, onCancel }) {
         <Toolbar
           onCmd={exec}
           onInsertLink={insertLink}
-          onAttachImage={() => {}}
+          onAttachImage={handleAttachImage}
           active={active}
         />
         <div
           ref={editorRef}
-          className={`min-h-[220px] p-3 text-sm outline-none bg-white ${focused ? "ring-2 ring-[#6A0F14]/30" : ""}`}
+          className={`min-h-[220px] p-3 text-sm outline-none bg-white ${
+            focused ? "ring-2 ring-[#6A0F14]/30" : ""
+          }`}
           contentEditable
           suppressContentEditableWarning
           onInput={onInput}
@@ -490,19 +844,70 @@ function NoteForm({ existing, onSave, onCancel }) {
         )}
       </div>
 
+      {/* Attached Images Section */}
+      {allImages.length > 0 && (
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-[0_6px_12px_rgba(0,0,0,0.12)]">
+          <label className="block mb-3 text-sm font-medium text-neutral-700">
+            Attached Images ({allImages.length})
+            {newImages.length > 0 && (
+              <span className="ml-2 text-sm text-blue-600">
+                {newImages.length} new image(s) ready to upload
+              </span>
+            )}
+            {imagesToDelete.length > 0 && (
+              <span className="ml-2 text-sm text-red-600">
+                {imagesToDelete.length} image(s) marked for deletion
+              </span>
+            )}
+          </label>
+          <div className="space-y-2">
+            {allImages.map((image) => (
+              <div
+                key={image.id}
+                className="flex items-center justify-between p-2 rounded-lg border border-neutral-200 hover:bg-neutral-50"
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    viewImage(image.url || image.previewUrl, image.name)
+                  }
+                  className="text-sm text-[#6A0F14] hover:underline cursor-pointer flex-1 text-left truncate"
+                  title={image.name}
+                >
+                  {image.name}
+                  {image.isNew && (
+                    <span className="ml-2 text-xs text-blue-600">(new)</span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeImage(image.id, image.isNew)}
+                  className="p-1 rounded-md hover:bg-neutral-200 cursor-pointer ml-2 flex-shrink-0"
+                  aria-label={`Remove ${image.name}`}
+                >
+                  <X className="w-4 h-4 text-neutral-600" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-end gap-2 pt-2">
         <button
           type="button"
           onClick={onCancel}
-          className="inline-flex items-center gap-1 px-4 py-2 rounded-lg border border-neutral-300 text-sm hover:bg-neutral-100 cursor-pointer"
+          disabled={saving}
+          className="inline-flex items-center gap-1 px-4 py-2 rounded-lg border border-neutral-300 text-sm hover:bg-neutral-100 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Cancel
         </button>
         <button
           type="submit"
-          className="inline-flex items-center gap-1 px-4 py-2 rounded-lg text-sm text-white shadow hover:shadow-md cursor-pointer bg-[#6A0F14]"
+          disabled={saving}
+          className="inline-flex items-center gap-1 px-4 py-2 rounded-lg text-sm text-white shadow hover:shadow-md cursor-pointer bg-[#6A0F14] disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {existing ? "Save Changes" : "Create Note"}
+          {saving ? "Saving..." : existing ? "Save Changes" : "Create Note"}
         </button>
       </div>
     </form>
@@ -538,15 +943,17 @@ function Notes() {
         const flagKey = `tsit_notes_migrated:v2:${uid}:${roleDocId}:${subColName}`;
         if (localStorage.getItem(flagKey) === "1") return;
 
-        const destHasAtLeastOne = await getDocs(query(destCol, where("uid", "==", uid), limit(1)));
+        const destHasAtLeastOne = await getDocs(
+          query(destCol, where("uid", "==", uid), limit(1))
+        );
         if (!destHasAtLeastOne.empty) {
           localStorage.setItem(flagKey, "1");
           return;
         }
 
         // sources to migrate from (old shapes)
-        const userSubCol = collection(db, `users/${uid}/${subColName}`);          // old: users/{uid}/adviserNotes etc
-        const legacyTopLevel = collection(db, subColName);                         // old: adviserNotes etc (top-level)
+        const userSubCol = collection(db, `users/${uid}/${subColName}`); // old: users/{uid}/adviserNotes etc
+        const legacyTopLevel = collection(db, subColName); // old: adviserNotes etc (top-level)
 
         const sources = [
           { ref: userSubCol, deleteAfter: true },
@@ -569,6 +976,7 @@ function Notes() {
                 role: roleName,
                 title: data.title || "",
                 content: data.content || "",
+                attachedImages: data.attachedImages || [],
                 createdAt: data.createdAt || serverTimestamp(),
                 email: data.email || auth.currentUser?.email || "",
                 migratedAt: serverTimestamp(),
@@ -598,7 +1006,11 @@ function Notes() {
   /* ---- live subscription to the new nested location ---- */
   useEffect(() => {
     if (!uid) return;
-    const qRef = query(destCol, where("uid", "==", uid), orderBy("createdAt", "desc"));
+    const qRef = query(
+      destCol,
+      where("uid", "==", uid),
+      orderBy("createdAt", "desc")
+    );
     const unsub = onSnapshot(
       qRef,
       (snap) => {
@@ -629,6 +1041,15 @@ function Notes() {
     const note = confirmDelete;
     if (!note) return;
     try {
+      // Delete associated images from Supabase
+      if (note.attachedImages && note.attachedImages.length > 0) {
+        const deletePromises = note.attachedImages.map((image) =>
+          deleteImageFromSupabase(image.fileName)
+        );
+        await Promise.allSettled(deletePromises);
+      }
+
+      // Delete note from Firebase
       await deleteDoc(doc(db, `notes/${roleDocId}/${subColName}/${note.id}`));
     } catch (e) {
       alert(e.message || "Failed to delete note");
@@ -640,17 +1061,22 @@ function Notes() {
   const handleSave = async (data) => {
     try {
       if (editingNote) {
-        await updateDoc(doc(db, `notes/${roleDocId}/${subColName}/${editingNote.id}`), {
-          title: data.title,
-          content: data.content,
-          updatedAt: serverTimestamp(),
-        });
+        await updateDoc(
+          doc(db, `notes/${roleDocId}/${subColName}/${editingNote.id}`),
+          {
+            title: data.title,
+            content: data.content,
+            attachedImages: data.attachedImages || [],
+            updatedAt: serverTimestamp(),
+          }
+        );
       } else {
         await addDoc(destCol, {
           uid,
           role: roleName,
           title: data.title,
           content: data.content,
+          attachedImages: data.attachedImages || [],
           createdAt: serverTimestamp(),
           email: auth.currentUser?.email || "",
         });
@@ -708,7 +1134,7 @@ function Notes() {
       {confirmDelete && (
         <ConfirmModal
           title="Delete Note"
-          message="Are you sure you want to delete this note? This action cannot be undone."
+          message="Are you sure you want to delete this note? This will also delete all attached images. This action cannot be undone."
           confirmText="Delete"
           onConfirm={handleDelete}
           onCancel={() => setConfirmDelete(null)}
@@ -719,7 +1145,9 @@ function Notes() {
       {loading && !error && <p className="text-neutral-500">Loading notes…</p>}
       {error && <p className="text-red-600">{error}</p>}
       {!loading && !error && notes.length === 0 && (
-        <p className="text-neutral-500">No notes yet. Click "Create Note" to get started.</p>
+        <p className="text-neutral-500">
+          No notes yet. Click "Create Note" to get started.
+        </p>
       )}
 
       {/* grid */}

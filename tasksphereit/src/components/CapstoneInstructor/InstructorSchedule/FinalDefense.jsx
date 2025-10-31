@@ -337,49 +337,33 @@ export default function FinalDefense() {
     }
   };
 
-  /* ===== PDF export (fits Verdict column) ===== */
+ /* ===== PDF export (fits Verdict column) ===== */
   const handleExportPDF = () => {
     const title = "Final Defense Schedule";
-    const doc = new jsPDF({ unit: "pt", format: "a4" });
-    const pageWidth = doc.internal.pageSize.getWidth(); // ~595
+    const doc = new jsPDF({ unit: "pt", format: "a4" }); // portrait A4
+    const pageWidth = doc.internal.pageSize.getWidth();   // 595pt
     const pageHeight = doc.internal.pageSize.getHeight();
-    const marginX = 40;
+    const marginX = 40;                                   // 40pt margins
     const headerY = 46;
 
     const drawHeader = () => {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(12);
-      doc.text(
-        "DOMINICAN COLLEGE OF TARLAC, INC.",
-        pageWidth / 2,
-        headerY,
-        { align: "center" }
-      );
+      doc.text("DOMINICAN COLLEGE OF TARLAC, INC.", pageWidth / 2, headerY, { align: "center" });
       doc.setFont("helvetica", "normal");
-      doc.text(
-        "COLLEGE OF COMPUTER STUDIES",
-        pageWidth / 2,
-        headerY + 16,
-        { align: "center" }
-      );
+      doc.text("COLLEGE OF COMPUTER STUDIES", pageWidth / 2, headerY + 16, { align: "center" });
       doc.setFontSize(10);
       doc.text(
         "McArthur Highway, Poblacion (Sto. Rosario), Capas, 2315 Tarlac, Philippines",
-        pageWidth / 2,
-        headerY + 32,
-        { align: "center" }
+        pageWidth / 2, headerY + 32, { align: "center" }
       );
       doc.text(
         "Institutional Contact Nos.: +63938-918-4093    Website: dct.edu.ph",
-        pageWidth / 2,
-        headerY + 48,
-        { align: "center" }
+        pageWidth / 2, headerY + 48, { align: "center" }
       );
       doc.text(
         "E-mail: domct_2315@yahoo.com.ph / domct_2315@dct.edu.ph",
-        pageWidth / 2,
-        headerY + 64,
-        { align: "center" }
+        pageWidth / 2, headerY + 64, { align: "center" }
       );
 
       doc.setFont("helvetica", "bold");
@@ -388,12 +372,7 @@ export default function FinalDefense() {
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
-      doc.text(
-        `As of ${new Date().toLocaleDateString()}`,
-        pageWidth / 2,
-        headerY + 112,
-        { align: "center" }
-      );
+      doc.text(`As of ${new Date().toLocaleDateString()}`, pageWidth / 2, headerY + 112, { align: "center" });
 
       doc.setDrawColor(180);
       doc.line(marginX, headerY + 122, pageWidth - marginX, headerY + 122);
@@ -423,13 +402,12 @@ export default function FinalDefense() {
         fontStyle: "bold",
       },
       bodyStyles: { lineWidth: 0.3, lineColor: [235, 235, 235] },
-      /* Total width = 35 + 150 + 85 + 95 + 80 + 70 = 515pt (fits 595-80 margins) */
       columnStyles: {
-        0: { cellWidth: 35 }, // NO
-        1: { cellWidth: 150 }, // Team
-        2: { cellWidth: 85 }, // Date
-        3: { cellWidth: 95 }, // Time
-        4: { cellWidth: 80 }, // Panelists (wraps)
+        0: { cellWidth: 35 },               // NO
+        1: { cellWidth: 150 },              // Team
+        2: { cellWidth: 85 },               // Date
+        3: { cellWidth: 95 },               // Time
+        4: { cellWidth: 80 },               // Panelists
         5: { cellWidth: 70, halign: "center" }, // Verdict
       },
       margin: { left: marginX, right: marginX },
@@ -443,12 +421,9 @@ export default function FinalDefense() {
       },
     });
 
-    const fname = `final_defense_schedule_${new Date()
-      .toISOString()
-      .slice(0, 10)}.pdf`;
+    const fname = `final_defense_schedule_${new Date().toISOString().slice(0, 10)}.pdf`;
     doc.save(fname);
   };
-
   // search filter (client-side)
   const filtered = useMemo(() => {
     const q = queryText.trim().toLowerCase();

@@ -35,6 +35,11 @@ import {
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
+/* ---- logos for PDF (DCT left, CCS right, TaskSphere footer-left) ---- */
+import DCTLOGO from "../../../assets/imgs/pdf imgs/DCTLOGO.png";
+import CCSLOGO from "../../../assets/imgs/pdf imgs/CCSLOGO.png";
+import TASKSPHERELOGO from "../../../assets/imgs/pdf imgs/TASKSPHERELOGO.png";
+
 const MAROON = "#6A0F14";
 const COLLECTION = "manuscriptSubmissions";
 
@@ -273,53 +278,132 @@ export default function ManuscriptSubmission() {
     }
   };
 
-  /* ===== PDF export (fits all columns, wraps long text, colors %) ===== */
-  const handleExportPDF = () => {
+  // search filter (client)
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (r) =>
+        r.team.toLowerCase().includes(q) ||
+        r.title.toLowerCase().includes(q) ||
+        (r.file || "").toLowerCase().includes(q)
+    );
+  }, [query, rows]);
+
+  /* ===== PDF export — SAME header/footer + IMAGES as credentials/title defense ===== */
+  const loadImage = (src) =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+
+  const handleExportPDF = async () => {
     const title = "Manuscript Submissions";
     const doc = new jsPDF({ unit: "pt", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const marginX = 40;
-    const headerY = 46;
-    const contentWidth = pageWidth - marginX * 2;
+
+    // preload images
+    let dctImg, ccsImg, tsImg;
+    try {
+      [dctImg, ccsImg, tsImg] = await Promise.all([
+        loadImage(DCTLOGO),
+        loadImage(CCSLOGO),
+        loadImage(TASKSPHERELOGO),
+      ]);
+    } catch {
+      // continue even if images fail
+    }
 
     const drawHeader = () => {
+      const topY = 24;
+
+      if (dctImg) {
+        const sideW = 64;
+        const sideH = (dctImg.height / dctImg.width) * sideW;
+        doc.addImage(dctImg, "PNG", marginX, topY, sideW, sideH);
+      }
+      if (ccsImg) {
+        const sideW = 64;
+        const sideH = (ccsImg.height / ccsImg.width) * sideW;
+        doc.addImage(ccsImg, "PNG", pageWidth - marginX - sideW, topY, sideW, sideH);
+      }
+
+      const headerY = 92;
       doc.setFont("helvetica", "bold");
       doc.setFontSize(12);
       doc.text("DOMINICAN COLLEGE OF TARLAC, INC.", pageWidth / 2, headerY, { align: "center" });
       doc.setFont("helvetica", "normal");
       doc.text("COLLEGE OF COMPUTER STUDIES", pageWidth / 2, headerY + 16, { align: "center" });
       doc.setFontSize(10);
-      doc.text("McArthur Highway, Poblacion (Sto. Rosario), Capas, 2315 Tarlac, Philippines",
-        pageWidth / 2, headerY + 32, { align: "center" });
-      doc.text("Institutional Contact Nos.: +63938-918-4093    Website: dct.edu.ph",
-        pageWidth / 2, headerY + 48, { align: "center" });
-      doc.text("E-mail: domct_2315@yahoo.com.ph / domct_2315@dct.edu.ph",
-        pageWidth / 2, headerY + 64, { align: "center" });
+      doc.text(
+        "McArthur Highway, Poblacion (Sto. Rosario), Capas, 2315 Tarlac, Philippines",
+        pageWidth / 2,
+        headerY + 32,
+        { align: "center" }
+      );
+      doc.text(
+        "Institutional Contact Nos.: +63938-918-4093    Website: dct.edu.ph",
+        pageWidth / 2,
+        headerY + 48,
+        { align: "center" }
+      );
+      doc.text(
+        "E-mail: domct_2315@yahoo.com.ph / domct_2315@dct.edu.ph",
+        pageWidth / 2,
+        headerY + 64,
+        { align: "center" }
+      );
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(14);
-      doc.text(title, pageWidth / 2, headerY + 96, { align: "center" });
+      const titleY = headerY + 96;
+      doc.text(title, pageWidth / 2, titleY, { align: "center" });
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
-      doc.text(`As of ${new Date().toLocaleDateString()}`, pageWidth / 2, headerY + 112, { align: "center" });
+      doc.text(`As of ${new Date().toLocaleDateString()}`, pageWidth / 2, titleY + 16, {
+        align: "center",
+      });
 
       doc.setDrawColor(180);
-      doc.line(marginX, headerY + 122, pageWidth - marginX, headerY + 122);
+      doc.line(marginX, titleY + 26, pageWidth - marginX, titleY + 26);
+
+      return titleY + 38; // table start Y
     };
 
-    // proportional column widths (sum = 100% of content width)
+    const drawFooter = () => {
+      if (tsImg) {
+        const logoW = 72;
+        const logoH = (tsImg.height / tsImg.width) * logoW;
+        const x = marginX;
+        const y = pageHeight - 20 - logoH;
+        doc.addImage(tsImg, "PNG", x, y, logoW, logoH);
+      }
+
+      const str = `Page ${doc.internal.getNumberOfPages()}`;
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text(str, pageWidth - marginX, pageHeight - 14, { align: "right" });
+    };
+
+    const tableYStart = drawHeader();
+
+    // proportional column widths (sum = printable width)
+    const contentWidth = pageWidth - marginX * 2;
     const W = {
-      no: 0.06 * contentWidth,
+      no:   0.06 * contentWidth,
       team: 0.18 * contentWidth,
-      title: 0.24 * contentWidth,
+      title:0.24 * contentWidth,
       date: 0.10 * contentWidth,
       time: 0.10 * contentWidth,
       plag: 0.07 * contentWidth,
-      ai: 0.06 * contentWidth,
+      ai:   0.06 * contentWidth,
       file: 0.11 * contentWidth,
-      ver: 0.08 * contentWidth,
+      ver:  0.08 * contentWidth,
     };
 
     const verdictColor = (v) => {
@@ -331,7 +415,7 @@ export default function ManuscriptSubmission() {
     const pctColor = (n) => (Number(n) <= 10 ? [34,139,34] : [180,35,24]);
 
     autoTable(doc, {
-      startY: headerY + 134,
+      startY: tableYStart,
       head: [["NO", "Team", "Title", "Due Date", "Time", "Plag.", "AI", "File Uploaded", "Verdict"]],
       body: filtered.map((r, i) => [
         `${i + 1}.`,
@@ -369,7 +453,7 @@ export default function ManuscriptSubmission() {
         7: { cellWidth: W.file },
         8: { cellWidth: W.ver, halign: "center" },
       },
-      margin: { left: marginX, right: marginX },
+      margin: { left: marginX, right: marginX, bottom: 64 },
       tableWidth: contentWidth,
       didParseCell: (data) => {
         if (data.section === "body") {
@@ -391,27 +475,12 @@ export default function ManuscriptSubmission() {
       },
       didDrawPage: () => {
         drawHeader();
-        const str = `Page ${doc.internal.getNumberOfPages()}`;
-        doc.setFontSize(9);
-        doc.setTextColor(120);
-        doc.text(str, pageWidth - marginX, pageHeight - 24, { align: "right" });
+        drawFooter();
       },
     });
 
     doc.save(`manuscript_submissions_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
-
-  // search filter (client)
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
-      (r) =>
-        r.team.toLowerCase().includes(q) ||
-        r.title.toLowerCase().includes(q) ||
-        (r.file || "").toLowerCase().includes(q)
-    );
-  }, [query, rows]);
 
   // bulk helpers
   const toggleSelect = (id) => {
@@ -683,14 +752,14 @@ function CreateOrEditDialog({
 
   // Get the current date and time
   const currentDate = new Date();
-  const currentDateString = currentDate.toISOString().split('T')[0]; // Current date in YYYY-MM-DD format
-  const currentTimeString = currentDate.toTimeString().split(' ')[0].slice(0, 5); // Current time in HH:MM format
+  const currentDateString = currentDate.toISOString().split('T')[0]; // YYYY-MM-DD
+  const currentTimeString = currentDate.toTimeString().split(' ')[0].slice(0, 5); // HH:MM
 
-  // Set default values to current date and time if initial values are empty
+  // Set defaults if empty
   const [teamName, setTeamName] = useState(initial?.team || "");
   const [title, setTitle] = useState(initial?.title || "");
-  const [date, setDate] = useState(initial?.date || currentDateString);  // Use current date if not provided
-  const [time, setTime] = useState(initial?.time || currentTimeString);  // Use current time if not provided
+  const [date, setDate] = useState(initial?.date || currentDateString);
+  const [time, setTime] = useState(initial?.time || currentTimeString);
   const [plag, setPlag] = useState(String(initial?.plag ?? 0));
   const [ai, setAi] = useState(String(initial?.ai ?? 0));
 
@@ -803,7 +872,6 @@ function CreateOrEditDialog({
                     onChange={(e) => setDate(e.target.value)}
                     className="w-full pr-10 pl-3 py-2 rounded-md border border-neutral-300 text-sm"
                   />
-                  <Clock size={0} className="hidden" />
                   <Calendar size={16} className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none" />
                 </div>
               </div>
@@ -912,7 +980,7 @@ function ViewTeamDialog({ row, onClose }) {
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w=[760px] max-w-[92vw]">
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[760px] max-w-[92vw]">
         <div className="rounded-2xl bg-white border border-neutral-200 shadow-2xl focus:outline-none p-0">
           <div className="flex items-center justify-between px-5 pt-4">
             <div className="text-[16px] font-semibold" style={{ color: MAROON }}>
