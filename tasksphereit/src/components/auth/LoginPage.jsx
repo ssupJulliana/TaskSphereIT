@@ -12,11 +12,7 @@ import {
   signInWithEmailAndPassword,
   signOut,
   updatePassword,
-
-  onAuthStateChanged, // auth guard
-
   onAuthStateChanged,
-
 } from "firebase/auth";
 import {
   collection,
@@ -119,23 +115,27 @@ const LoginPage = () => {
   const findUserByEmailOrIdNumber = async (identifier) => {
     const usersRef = collection(db, "users");
     const trimmedId = identifier.trim();
-    
+
     // Try by email first
     const byEmail = query(usersRef, where("email", "==", trimmedId), limit(1));
     const emailSnap = await getDocs(byEmail);
-    
+
     if (!emailSnap.empty) {
       return emailSnap.docs[0];
     }
-    
+
     // Try by idNumber if email not found
-    const byIdNumber = query(usersRef, where("idNumber", "==", trimmedId), limit(1));
+    const byIdNumber = query(
+      usersRef,
+      where("idNumber", "==", trimmedId),
+      limit(1)
+    );
     const idNumberSnap = await getDocs(byIdNumber);
-    
+
     if (!idNumberSnap.empty) {
       return idNumberSnap.docs[0];
     }
-    
+
     return null;
   };
 
@@ -146,7 +146,7 @@ const LoginPage = () => {
 
     try {
       const identifier = loginId.trim();
-      
+
       if (!identifier) {
         setErr("Please enter your email or ID number.");
         setLoading(false);
@@ -155,7 +155,7 @@ const LoginPage = () => {
 
       // Find user profile by email OR idNumber
       const profileDoc = await findUserByEmailOrIdNumber(identifier);
-      
+
       if (!profileDoc) {
         setErr("Account not found. Please check your email/ID number.");
         setLoading(false);
@@ -260,7 +260,10 @@ const LoginPage = () => {
       console.error("Login error:", e2);
       let msg = "Sign-in failed. Please check your credentials.";
       if (e2.code === "auth/invalid-email") msg = "Invalid email address.";
-      else if (e2.code === "auth/user-not-found" || e2.code === "auth/wrong-password")
+      else if (
+        e2.code === "auth/user-not-found" ||
+        e2.code === "auth/wrong-password"
+      )
         msg = "Incorrect email/ID number or password.";
       else if (e2.code === "auth/too-many-requests")
         msg = "Too many attempts. Try again later.";
@@ -284,7 +287,11 @@ const LoginPage = () => {
                 TaskSphere IT
               </h1>
               <div className="mx-auto mt-6 h-20 w-20 grid place-items-center">
-                <img src={TaskSphereLogo} alt="TaskSphere Logo" className="object-contain h-full w-full" />
+                <img
+                  src={TaskSphereLogo}
+                  alt="TaskSphere Logo"
+                  className="object-contain h-full w-full"
+                />
               </div>
             </div>
 
@@ -304,7 +311,9 @@ const LoginPage = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-700">Password</label>
+                <label className="block text-sm font-medium text-neutral-700">
+                  Password
+                </label>
                 <div className="relative">
                   <input
                     type={showPwd ? "text" : "password"}
@@ -322,21 +331,52 @@ const LoginPage = () => {
                     tabIndex={-1}
                   >
                     {showPwd ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18M10.584 10.59a3 3 0 104.243 4.243M9.88 5.08A8.967 8.967 0 0112 5c4.5 0 8.268 2.943 9.75 7-.365 1.053-.915 2.03-1.62 2.9m-3.014 2.518A10.013 10.013 0 0112 19c-4.5 0-8.268-2.943-9.542-7a11.415 11.415 0 012.694-4.042" />
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M3 3l18 18M10.584 10.59a3 3 0 104.243 4.243M9.88 5.08A8.967 8.967 0 0112 5c4.5 0 8.268 2.943 9.75 7-.365 1.053-.915 2.03-1.62 2.9m-3.014 2.518A10.013 10.013 0 0112 19c-4.5 0-8.268-2.943-9.542-7a11.415 11.415 0 012.694-4.042"
+                        />
                       </svg>
                     ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                        />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
                       </svg>
                     )}
                   </button>
                 </div>
 
                 <div className="mt-2 flex items-center justify-between">
-                  <div className="h-5">{err && <p className="text-xs text-red-600">{err}</p>}</div>
-                  <Link to="/forgot-password" className="text-sm text-[#6A0F14] hover:underline">
+                  <div className="h-5">
+                    {err && <p className="text-xs text-red-600">{err}</p>}
+                  </div>
+                  <Link
+                    to="/forgot-password"
+                    className="text-sm text-[#6A0F14] hover:underline"
+                  >
                     Forgot password?
                   </Link>
                 </div>
@@ -355,7 +395,11 @@ const LoginPage = () => {
 
         <div className="flex items-center justify-center text-center md:text-left">
           <div className="flex flex-col md:flex-row md:items-center md:gap-6">
-            <img src={CCSLogo} alt="CCS Logo" className="mx-auto md:mx-0 h-28 w-28 object-contain" />
+            <img
+              src={CCSLogo}
+              alt="CCS Logo"
+              className="mx-auto md:mx-0 h-28 w-28 object-contain"
+            />
             <h2 className="mt-6 md:mt-0 text-2xl md:text-3xl font-bold text-neutral-700 max-w-md">
               A Task Management System for
               <br className="hidden md:block" />
