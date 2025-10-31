@@ -1,6 +1,6 @@
 // src/components/ProjectManager/ProjectManagerTaskBoard.jsx
 import React, { useMemo, useState } from "react";
-import { Search, Image as ImageIcon, Paperclip } from "lucide-react";
+import { Search, Image as ImageIcon, Paperclip, ClipboardList } from "lucide-react";
 
 const MAROON = "#6A0F14";
 
@@ -115,7 +115,19 @@ export default function ProjectManagerTaskBoard() {
 
   return (
     <div className="space-y-4">
-      {/* Search bar only: header/title removed */}
+      {/* ===== Title + underline (match ProjectManagerTasks header) ===== */}
+      <div className="space-y-2">
+        <div
+          className="flex items-center gap-2 text-[18px] font-semibold"
+          style={{ color: MAROON }}
+        >
+          <ClipboardList className="w-5 h-5" />
+          <span>Tasks</span>
+        </div>
+        <div className="h-[3px] w-full" style={{ backgroundColor: MAROON }} />
+      </div>
+
+      {/* Search */}
       <div className="w-full max-w-[280px]">
         <div className="relative">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />

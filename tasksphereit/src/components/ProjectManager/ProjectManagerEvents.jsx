@@ -83,128 +83,107 @@ function ProjectManagerEvents() {
   const hasFinal = useMemo(() => data.finalDefense.length > 0, []);
 
   return (
-    // prevent any sidebar squeezing
-    <div className="flex-1 min-w-0 max-w-full overflow-hidden space-y-8">
-      {/* Title Defense */}
-      <section>
-        <SectionTitle icon={ClipboardList}>Title Defense</SectionTitle>
-        <CardTable>
-          <thead>
-            <tr className="bg-neutral-50/80 text-neutral-600">
-              <th className="text-left py-2 pl-6 pr-3">NO</th>
-              <th className="text-left py-2 pr-3">Team</th>
-              <th className="text-left py-2 pr-3">Date</th>
-              <th className="text-left py-2 pr-3">Time</th>
-              <th className="text-left py-2 pr-3">Panelist</th>
-              <th className="text-left py-2 pr-6">Verdict</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.titleDefense.map((r) => (
-              <tr key={`td-${r.no}`} className="border-t border-neutral-200">
-                <td className="py-2 pl-6 pr-3">{r.no}.</td>
-                <td className="py-2 pr-3">{r.team}</td>
-                <td className="py-2 pr-3">{r.date}</td>
-                <td className="py-2 pr-3">{r.time}</td>
-                <td className="py-2 pr-3">{r.panelist}</td>
-                <td className="py-2 pr-6">
-                  <Pill>{r.verdict}</Pill>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </CardTable>
-      </section>
+    <div className="space-y-4">
+      {/* ===== Header (match ProjectManagerTasks) ===== */}
+      <div className="space-y-2">
+        <div
+          className="flex items-center gap-2 text-[18px] font-semibold"
+          style={{ color: MAROON }}
+        >
+          <ClipboardList className="w-5 h-5" />
+          <span>Events</span>
+        </div>
+        <div className="h-[3px] w-full" style={{ backgroundColor: MAROON }} />
+      </div>
 
-      {/* Manuscript Results */}
-      <section>
-        <SectionTitle icon={BookOpenCheck}>Manuscript Results</SectionTitle>
-        <CardTable>
-          <thead>
-            <tr className="bg-neutral-50/80 text-neutral-600">
-              <th className="text-left py-2 pl-6 pr-3">NO</th>
-              <th className="text-left py-2 pr-3">Team</th>
-              <th className="text-left py-2 pr-3">Title</th>
-              <th className="text-left py-2 pr-3">Due Date</th>
-              <th className="text-left py-2 pr-3">Time</th>
-              <th className="text-left py-2 pr-3">Plagiarism</th>
-              <th className="text-left py-2 pr-3">AI</th>
-              <th className="text-left py-2 pr-3">File Uploaded</th>
-              <th className="text-left py-2 pr-6">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.manuscript.map((r) => (
-              <tr key={`ms-${r.no}`} className="border-t border-neutral-200">
-                <td className="py-2 pl-6 pr-3">{r.no}.</td>
-                <td className="py-2 pr-3">{r.team}</td>
-                <td className="py-2 pr-3">{r.title}</td>
-                <td className="py-2 pr-3">{r.dueDate}</td>
-                <td className="py-2 pr-3">{r.time}</td>
-                <td className="py-2 pr-3">{r.plagiarism}</td>
-                <td className="py-2 pr-3">{r.ai}</td>
-                <td className="py-2 pr-3">{r.uploaded ? "Yes" : "No"}</td>
-                <td className="py-2 pr-6">
-                  <Pill tone="success">{r.status}</Pill>
-                </td>
+      {/* ===== Content ===== */}
+      <div className="flex-1 min-w-0 max-w-full overflow-hidden space-y-8">
+        {/* Title Defense */}
+        <section>
+          <SectionTitle icon={ClipboardList}>Title Defense</SectionTitle>
+          <CardTable>
+            <thead>
+              <tr className="bg-neutral-50/80 text-neutral-600">
+                <th className="text-left py-2 pl-6 pr-3">NO</th>
+                <th className="text-left py-2 pr-3">Team</th>
+                <th className="text-left py-2 pr-3">Date</th>
+                <th className="text-left py-2 pr-3">Time</th>
+                <th className="text-left py-2 pr-3">Panelist</th>
+                <th className="text-left py-2 pr-6">Verdict</th>
               </tr>
-            ))}
-          </tbody>
-        </CardTable>
-      </section>
+            </thead>
+            <tbody>
+              {data.titleDefense.map((r) => (
+                <tr key={`td-${r.no}`} className="border-t border-neutral-200">
+                  <td className="py-2 pl-6 pr-3">{r.no}.</td>
+                  <td className="py-2 pr-3">{r.team}</td>
+                  <td className="py-2 pr-3">{r.date}</td>
+                  <td className="py-2 pr-3">{r.time}</td>
+                  <td className="py-2 pr-3">{r.panelist}</td>
+                  <td className="py-2 pr-6">
+                    <Pill>{r.verdict}</Pill>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </CardTable>
+        </section>
 
-      {/* Oral Defense */}
-      <section>
-        <SectionTitle icon={Presentation}>Oral Defense</SectionTitle>
-        <CardTable>
-          <thead>
-            <tr className="bg-neutral-50/80 text-neutral-600">
-              <th className="text-left py-2 pl-6 pr-3">NO</th>
-              <th className="text-left py-2 pr-3">Team</th>
-              <th className="text-left py-2 pr-3">Title</th>
-              <th className="text-left py-2 pr-3">Date</th>
-              <th className="text-left py-2 pr-3">Time</th>
-              <th className="text-left py-2 pr-3">Panelist</th>
-              <th className="text-left py-2 pr-6">Verdict</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.oralDefense.map((r) => (
-              <tr key={`od-${r.no}`} className="border-t border-neutral-200">
-                <td className="py-2 pl-6 pr-3">{r.no}.</td>
-                <td className="py-2 pr-3">{r.team}</td>
-                <td className="py-2 pr-3">{r.title}</td>
-                <td className="py-2 pr-3">{r.date}</td>
-                <td className="py-2 pr-3">{r.time}</td>
-                <td className="py-2 pr-3">{r.panelist}</td>
-                <td className="py-2 pr-6">
-                  <Pill>{r.verdict}</Pill>
-                </td>
+        {/* Manuscript Results */}
+        <section>
+          <SectionTitle icon={BookOpenCheck}>Manuscript Results</SectionTitle>
+          <CardTable>
+            <thead>
+              <tr className="bg-neutral-50/80 text-neutral-600">
+                <th className="text-left py-2 pl-6 pr-3">NO</th>
+                <th className="text-left py-2 pr-3">Team</th>
+                <th className="text-left py-2 pr-3">Title</th>
+                <th className="text-left py-2 pr-3">Due Date</th>
+                <th className="text-left py-2 pr-3">Time</th>
+                <th className="text-left py-2 pr-3">Plagiarism</th>
+                <th className="text-left py-2 pr-3">AI</th>
+                <th className="text-left py-2 pr-3">File Uploaded</th>
+                <th className="text-left py-2 pr-6">Status</th>
               </tr>
-            ))}
-          </tbody>
-        </CardTable>
-      </section>
+            </thead>
+            <tbody>
+              {data.manuscript.map((r) => (
+                <tr key={`ms-${r.no}`} className="border-t border-neutral-200">
+                  <td className="py-2 pl-6 pr-3">{r.no}.</td>
+                  <td className="py-2 pr-3">{r.team}</td>
+                  <td className="py-2 pr-3">{r.title}</td>
+                  <td className="py-2 pr-3">{r.dueDate}</td>
+                  <td className="py-2 pr-3">{r.time}</td>
+                  <td className="py-2 pr-3">{r.plagiarism}</td>
+                  <td className="py-2 pr-3">{r.ai}</td>
+                  <td className="py-2 pr-3">{r.uploaded ? "Yes" : "No"}</td>
+                  <td className="py-2 pr-6">
+                    <Pill tone="success">{r.status}</Pill>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </CardTable>
+        </section>
 
-      {/* Final Defense */}
-      <section>
-        <SectionTitle icon={GraduationCap}>Final Defense</SectionTitle>
-        <CardTable>
-          <thead>
-            <tr className="bg-neutral-50/80 text-neutral-600">
-              <th className="text-left py-2 pl-6 pr-3">NO</th>
-              <th className="text-left py-2 pr-3">Team</th>
-              <th className="text-left py-2 pr-3">Title</th>
-              <th className="text-left py-2 pr-3">Date</th>
-              <th className="text-left py-2 pr-3">Time</th>
-              <th className="text-left py-2 pr-3">Panelist</th>
-              <th className="text-left py-2 pr-6">Verdict</th>
-            </tr>
-          </thead>
-          <tbody>
-            {hasFinal ? (
-              data.finalDefense.map((r) => (
-                <tr key={`fd-${r.no}`} className="border-t border-neutral-200">
+        {/* Oral Defense */}
+        <section>
+          <SectionTitle icon={Presentation}>Oral Defense</SectionTitle>
+          <CardTable>
+            <thead>
+              <tr className="bg-neutral-50/80 text-neutral-600">
+                <th className="text-left py-2 pl-6 pr-3">NO</th>
+                <th className="text-left py-2 pr-3">Team</th>
+                <th className="text-left py-2 pr-3">Title</th>
+                <th className="text-left py-2 pr-3">Date</th>
+                <th className="text-left py-2 pr-3">Time</th>
+                <th className="text-left py-2 pr-3">Panelist</th>
+                <th className="text-left py-2 pr-6">Verdict</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.oralDefense.map((r) => (
+                <tr key={`od-${r.no}`} className="border-t border-neutral-200">
                   <td className="py-2 pl-6 pr-3">{r.no}.</td>
                   <td className="py-2 pr-3">{r.team}</td>
                   <td className="py-2 pr-3">{r.title}</td>
@@ -212,20 +191,55 @@ function ProjectManagerEvents() {
                   <td className="py-2 pr-3">{r.time}</td>
                   <td className="py-2 pr-3">{r.panelist}</td>
                   <td className="py-2 pr-6">
-                    <Pill>{r.verdict || "Pending"}</Pill>
+                    <Pill>{r.verdict}</Pill>
                   </td>
                 </tr>
-              ))
-            ) : (
-              <tr className="border-t border-neutral-200">
-                <td className="py-6 text-center text-neutral-500" colSpan={7}>
-                  No final defense items yet.
-                </td>
+              ))}
+            </tbody>
+          </CardTable>
+        </section>
+
+        {/* Final Defense */}
+        <section>
+          <SectionTitle icon={GraduationCap}>Final Defense</SectionTitle>
+          <CardTable>
+            <thead>
+              <tr className="bg-neutral-50/80 text-neutral-600">
+                <th className="text-left py-2 pl-6 pr-3">NO</th>
+                <th className="text-left py-2 pr-3">Team</th>
+                <th className="text-left py-2 pr-3">Title</th>
+                <th className="text-left py-2 pr-3">Date</th>
+                <th className="text-left py-2 pr-3">Time</th>
+                <th className="text-left py-2 pr-3">Panelist</th>
+                <th className="text-left py-2 pr-6">Verdict</th>
               </tr>
-            )}
-          </tbody>
-        </CardTable>
-      </section>
+            </thead>
+            <tbody>
+              {hasFinal ? (
+                data.finalDefense.map((r) => (
+                  <tr key={`fd-${r.no}`} className="border-t border-neutral-200">
+                    <td className="py-2 pl-6 pr-3">{r.no}.</td>
+                    <td className="py-2 pr-3">{r.team}</td>
+                    <td className="py-2 pr-3">{r.title}</td>
+                    <td className="py-2 pr-3">{r.date}</td>
+                    <td className="py-2 pr-3">{r.time}</td>
+                    <td className="py-2 pr-3">{r.panelist}</td>
+                    <td className="py-2 pr-6">
+                      <Pill>{r.verdict || "Pending"}</Pill>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="border-t border-neutral-200">
+                  <td className="py-6 text-center text-neutral-500" colSpan={7}>
+                    No final defense items yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </CardTable>
+        </section>
+      </div>
     </div>
   );
 }
