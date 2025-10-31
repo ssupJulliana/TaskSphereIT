@@ -1,7 +1,6 @@
 // src/components/CapstoneInstructor/InstructorEnroll.jsx
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
-  ChevronRight,
   Download,
   Upload,
   Search,
@@ -22,20 +21,19 @@ import {
   bulkResetPasswords,
   getMiddleInitial,
 } from "../../assets/scripts/enroll";
-
-// PDF
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-
-// Modals
 import ExcelModal from "../../assets/modals/excelModal.js";
 import AddUserModal from "../../assets/modals/addUserModal.jsx";
 
-const ROLES = ["Adviser", "Project Manager", "Member"];
+/* ---------- tabs & role mapping ---------- */
+const TABS = ["Adviser", "Student"];
+const STUDENT_ROLES = ["Project Manager", "Member"];
+const displayPlural = (tab) => (tab === "Student" ? "Students" : "Advisers");
 
 const InstructorEnroll = () => {
   /* ---------------- Role & dialogs ---------------- */
-  const [selectedRole, setSelectedRole] = useState("Adviser");
+  const [selectedTab, setSelectedTab] = useState("Adviser");
   const [openAddUserModal, setOpenAddUserModal] = useState(false);
 
   /* ---------------- Add user form ---------------- */
@@ -59,18 +57,13 @@ const InstructorEnroll = () => {
   const [filterOpen, setFilterOpen] = useState(false);
   const filterRef = useRef(null);
 
-  // ToS status: any | accepted | not
   const [fTos, setFTos] = useState("any");
-  // Must-change-password: any | true | false
   const [fMustChange, setFMustChange] = useState("any");
-  // Created date range (YYYY-MM-DD)
   const [fCreatedFrom, setFCreatedFrom] = useState("");
   const [fCreatedTo, setFCreatedTo] = useState("");
-  // Sort
-  const [sortBy, setSortBy] = useState("lastName"); // idNumber | lastName | firstName | createdAt
-  const [sortDir, setSortDir] = useState("asc"); // asc | desc
+  const [sortBy, setSortBy] = useState("lastName");
+  const [sortDir, setSortDir] = useState("asc");
 
-  // close filter popover on outside click
   useEffect(() => {
     const onDocClick = (e) => {
       if (!filterRef.current) return;
@@ -88,6 +81,7 @@ const InstructorEnroll = () => {
     saving: false,
     err: "",
   });
+
   const fileRef = useRef(null);
   const triggerExcelModal = () => fileRef.current?.click();
 
@@ -111,8 +105,7 @@ const InstructorEnroll = () => {
 
     try {
       setImportState((p) => ({ ...p, parsing: true, err: "" }));
-      const rows = await parseExcelFile(file, selectedRole);
-
+      const rows = await parseExcelFile(file, selectedTab === "Student" ? "Student" : "Adviser");
       ExcelModal.show({
         rows,
         parsing: false,
@@ -146,7 +139,7 @@ const InstructorEnroll = () => {
     }
     setImportState((p) => ({ ...p, saving: true, err: "" }));
     try {
-      await saveImportedUsers(rows, selectedRole);
+      await saveImportedUsers(rows, selectedTab);
       setImportState({ open: false, rows: [], parsing: false, saving: false, err: "" });
     } catch (error) {
       setImportState((p) => ({ ...p, saving: false, err: error.message }));
@@ -158,14 +151,14 @@ const InstructorEnroll = () => {
     setError("");
     setSaving(true);
     try {
-      await createUser({ ...form, role: selectedRole });
+      await createUser({ ...form });
       setForm({
         email: "",
         lastName: "",
         firstName: "",
         middleName: "",
         idNumber: "",
-        role: selectedRole,
+        role: selectedTab === "Adviser" ? "Adviser" : "Project Manager",
       });
       setOpenAddUserModal(false);
     } catch (e) {
@@ -179,9 +172,14 @@ const InstructorEnroll = () => {
   useEffect(() => {
     setLoadingList(true);
     const usersRef = collection(db, "users");
-    const q = query(usersRef, where("role", "==", selectedRole));
+    let qy;
+    if (selectedTab === "Student") {
+      qy = query(usersRef, where("role", "in", STUDENT_ROLES));
+    } else {
+      qy = query(usersRef, where("role", "==", "Adviser"));
+    }
     const unsub = onSnapshot(
-      q,
+      qy,
       (snap) => {
         const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         setUsers(data);
@@ -193,28 +191,12 @@ const InstructorEnroll = () => {
       }
     );
     return () => unsub();
-  }, [selectedRole]);
+  }, [selectedTab]);
 
   /* ---------------- Search + Filter + Sort (client-side) ---------------- */
-  const formatTs = (ts) => {
-    try {
-      if (!ts) return "";
-      const d = ts.toDate ? ts.toDate() : new Date(ts);
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, "0");
-      const dd = String(d.getDate()).padStart(2, "0");
-      const hh = String(d.getHours()).padStart(2, "0");
-      const mi = String(d.getMinutes()).padStart(2, "0");
-      return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
-    } catch {
-      return "";
-    }
-  };
-
   const filteredUsers = useMemo(() => {
     let arr = [...users];
 
-    // search text
     const needle = qText.trim().toLowerCase();
     if (needle) {
       arr = arr.filter((u) => {
@@ -229,19 +211,16 @@ const InstructorEnroll = () => {
       });
     }
 
-    // ToS
     if (fTos !== "any") {
       const want = fTos === "accepted";
       arr = arr.filter((u) => !!u.isTosAccepted === want);
     }
 
-    // Must change password
     if (fMustChange !== "any") {
       const want = fMustChange === "true";
       arr = arr.filter((u) => !!u.mustChangePassword === want);
     }
 
-    // Date range (createdAt)
     const from = fCreatedFrom ? new Date(`${fCreatedFrom}T00:00:00`) : null;
     const to = fCreatedTo ? new Date(`${fCreatedTo}T23:59:59`) : null;
     if (from) {
@@ -257,7 +236,6 @@ const InstructorEnroll = () => {
       });
     }
 
-    // Sort
     const field = sortBy;
     const dir = sortDir === "asc" ? 1 : -1;
     arr.sort((a, b) => {
@@ -303,7 +281,7 @@ const InstructorEnroll = () => {
   /* ---------------- Export PDF (ONLY the 4 visible columns) ---------------- */
   const exportPdf = () => {
     const doc = new jsPDF({ unit: "pt" });
-    const title = `TaskSphere IT — ${selectedRole} (${filteredUsers.length})`;
+    const title = `TaskSphere IT — ${displayPlural(selectedTab)} (${filteredUsers.length})`;
     doc.setFontSize(14);
     doc.text(title, 40, 40);
 
@@ -320,16 +298,13 @@ const InstructorEnroll = () => {
       body,
       startY: 60,
       styles: { fontSize: 9 },
-      headStyles: { fillColor: [106, 15, 20] }, // maroon
-      margin: { left: 40, right: 40 },
-      tableWidth: "auto",
+      headStyles: { fillColor: [106, 15, 20] },
     });
 
-    const fname = `users_${selectedRole}_${new Date().toISOString().slice(0, 10)}.pdf`;
+    const fname = `users_${selectedTab}_${new Date().toISOString().slice(0, 10)}.pdf`;
     doc.save(fname);
   };
 
-  /* ---------------- UI helpers ---------------- */
   const resetFilters = () => {
     setFTos("any");
     setFMustChange("any");
@@ -339,9 +314,12 @@ const InstructorEnroll = () => {
     setSortDir("asc");
   };
 
+  /* ---------- allowed roles for modal ---------- */
+  const roleOptions = selectedTab === "Student" ? STUDENT_ROLES : ["Adviser"];
+  const lockRole = roleOptions.length === 1; // lock when only one choice
+
   return (
     <div className="min-h-screen flex flex-col bg-neutral-50">
-      {/* Hidden file input for Excel */}
       <input
         ref={fileRef}
         type="file"
@@ -350,77 +328,88 @@ const InstructorEnroll = () => {
         onChange={handleImportChange}
       />
 
-      <main className="flex-1 flex flex-col px-6 md:px-10 py-6">
-        {/* Top actions */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <nav className="flex items-center text-sm text-neutral-600 space-x-2">
-            <span className="font-medium text-[#6A0F14]">Enroll</span>
-            <ChevronRight className="w-3 h-3 text-neutral-500" />
-            <span className="font-medium text-[#6A0F14]">Instructor</span>
-          </nav>
-
-          <div className="flex gap-2 flex-wrap">
-            {selectedIds.length > 0 ? (
-              <>
-                <button
-                  onClick={handleBulkResetDefault}
-                  className="flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
-                  title="Reset selected to default"
-                >
-                  <Undo2 className="w-4 h-4" />
-                  Reset Selected
-                </button>
-                <button
-                  onClick={handleBulkDelete}
-                  className="flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50"
-                  title="Delete/Block selected"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Delete Selected
-                </button>
-              </>
-            ) : (
-              <>
-                <button className="flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100">
-                  <Download className="w-4 h-4" />
-                  Download Template
-                </button>
-
-                {/* Export PDF */}
-                <button
-                  onClick={exportPdf}
-                  className="flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
-                >
-                  <FileText className="w-4 h-4" />
-                  Export PDF
-                </button>
-
-                <button
-                  onClick={triggerExcelModal}
-                  className="flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
-                >
-                  <Upload className="w-4 h-4" />
-                  Import File
-                </button>
-              </>
-            )}
+      <main className="min-h-full flex flex-col">
+        {/* ===== Header + underline ===== */}
+        <div>
+          <div className="flex items-center gap-2">
+            <FileText className="w-5 h-5 text-neutral-800" />
+            <h2 className="text-base font-semibold text-neutral-900">
+              {displayPlural(selectedTab)}
+            </h2>
           </div>
+
+          {/* thin wide bar only */}
+          <div className="mt-3 h-[2px] w-full bg-[#6A0F14]" />
         </div>
 
-        {/* Filter, search, and user list */}
+        {/* ===== Action buttons (LEFT aligned) ===== */}
+        <div className="mt-5 flex justify-start">
+          {selectedIds.length > 0 ? (
+            <div className="flex gap-3 flex-wrap">
+              <button
+                onClick={handleBulkResetDefault}
+                className="flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
+              >
+                <Undo2 className="w-4 h-4" />
+                Reset Selected
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                className="flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete Selected
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-3 flex-wrap">
+              <button className="cursor-pointer flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100">
+                <Download className="w-4 h-4" />
+                Download Template
+              </button>
+              <button
+                onClick={exportPdf}
+                className="cursor-pointer flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
+              >
+                <FileText className="w-4 h-4" />
+                Export PDF
+              </button>
+              <button
+                onClick={triggerExcelModal}
+                className="cursor-pointer flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
+              >
+                <Upload className="w-4 h-4" />
+                Import File
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ===== Tabs + search/filters row ===== */}
         <div className="mt-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex flex-wrap gap-2">
-            {ROLES.map((role) => (
+            {TABS.map((tab) => (
               <button
-                key={role}
-                onClick={() => setSelectedRole(role)}
-                className={`px-4 py-2 rounded-full text-sm font-medium ${
-                  selectedRole === role
+                key={tab}
+                onClick={() => {
+                  setSelectedTab(tab);
+                  setForm((f) => ({
+                    ...f,
+                    role:
+                      tab === "Adviser"
+                        ? "Adviser"
+                        : STUDENT_ROLES.includes(f.role)
+                        ? f.role
+                        : "Project Manager",
+                  }));
+                }}
+                className={`cursor-pointer px-4 py-2 rounded-full text-sm font-medium ${
+                  selectedTab === tab
                     ? "bg-[#6A0F14] text-white"
                     : "bg-neutral-200 text-neutral-700 hover:bg-neutral-300"
                 }`}
               >
-                {role}
+                {tab}
               </button>
             ))}
           </div>
@@ -442,7 +431,7 @@ const InstructorEnroll = () => {
 
             <button
               onClick={() => setFilterOpen((s) => !s)}
-              className="p-2 rounded-lg border border-neutral-300 hover:bg-neutral-100"
+              className="p-2 rounded-lg border border-neutral-300 hover:bg-neutral-100 cursor-pointer"
               aria-haspopup="dialog"
               aria-expanded={filterOpen}
               aria-controls="enroll-filter-popover"
@@ -450,7 +439,6 @@ const InstructorEnroll = () => {
               <FilterIcon className="w-5 h-5 text-neutral-600" />
             </button>
 
-            {/* filter popover */}
             {filterOpen && (
               <div
                 id="enroll-filter-popover"
@@ -460,16 +448,15 @@ const InstructorEnroll = () => {
                 <div className="flex items-center justify-between mb-2">
                   <div className="font-semibold">Filters</div>
                   <button
-                    className="p-1.5 rounded-md hover:bg-neutral-100"
+                    className="p-1.5 rounded-md hover:bg-neutral-100 cursor-pointer "
                     onClick={() => setFilterOpen(false)}
                     aria-label="Close"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="w-4 h-4 " />
                   </button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* ToS */}
                   <div>
                     <label className="block text-xs font-medium text-neutral-600 mb-1">
                       ToS Status
@@ -485,7 +472,6 @@ const InstructorEnroll = () => {
                     </select>
                   </div>
 
-                  {/* Must change */}
                   <div>
                     <label className="block text-xs font-medium text-neutral-600 mb-1">
                       Must Change Password
@@ -501,7 +487,6 @@ const InstructorEnroll = () => {
                     </select>
                   </div>
 
-                  {/* Date range */}
                   <div>
                     <label className="block text-xs font-medium text-neutral-600 mb-1">
                       Created From
@@ -525,7 +510,6 @@ const InstructorEnroll = () => {
                     />
                   </div>
 
-                  {/* Sort */}
                   <div>
                     <label className="block text-xs font-medium text-neutral-600 mb-1">
                       Sort By
@@ -577,9 +561,8 @@ const InstructorEnroll = () => {
           </div>
         </div>
 
-        {/* User list */}
+        {/* ===== User list ===== */}
         <div className="mt-6 flex flex-col md:flex-row gap-6">
-          {/* User Table (reverted: only the 4 visible columns) */}
           <div className="flex-1">
             <div className="border border-neutral-200 rounded-2xl shadow-lg overflow-visible bg-white">
               <table className="min-w-full divide-y divide-neutral-200">
@@ -638,7 +621,18 @@ const InstructorEnroll = () => {
           <div className="w-full md:w-64">
             <button
               type="button"
-              onClick={() => setOpenAddUserModal(true)}
+              onClick={() => {
+                setForm((f) => ({
+                  ...f,
+                  role:
+                    selectedTab === "Adviser"
+                      ? "Adviser"
+                      : STUDENT_ROLES.includes(f.role)
+                      ? f.role
+                      : "Project Manager",
+                }));
+                setOpenAddUserModal(true);
+              }}
               className="w-full h-full focus:outline-none"
               aria-haspopup="dialog"
               aria-expanded={openAddUserModal}
@@ -648,7 +642,7 @@ const InstructorEnroll = () => {
                   <PlusCircle className="w-8 h-8 text-[#6A0F14]" />
                 </div>
                 <p className="mt-4 text-base font-semibold text-[#6A0F14] text-center uppercase tracking-wide">
-                  Add User
+                  Add {selectedTab === "Student" ? "Student" : "Adviser"}
                 </p>
               </div>
             </button>
@@ -656,7 +650,7 @@ const InstructorEnroll = () => {
         </div>
       </main>
 
-      {/* Add User Modal */}
+      {/* Add User Modal (role list/lock passed in) */}
       <AddUserModal
         open={openAddUserModal}
         form={form}
@@ -665,6 +659,8 @@ const InstructorEnroll = () => {
         saving={saving}
         closeModal={() => setOpenAddUserModal(false)}
         error={error}
+        roleOptions={roleOptions}     // ← only show valid roles
+        lockRole={lockRole}           // ← disable/hide dropdown when single option
       />
     </div>
   );

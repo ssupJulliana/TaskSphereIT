@@ -10,6 +10,7 @@ import {
   Clock,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   User2,
   X,
   PlusCircle,
@@ -56,21 +57,6 @@ const fmtTimeRange = (start, end) => {
   return `${a} - ${b}`;
 };
 
-/* ------------------------- small button ------------------------- */
-const Btn = ({ children, variant = "solid", icon: Icon, ...props }) => {
-  const cls =
-    variant === "solid"
-      ? "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-white"
-      : "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium border border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50";
-  const style = variant === "solid" ? { backgroundColor: MAROON } : undefined;
-  return (
-    <button {...props} className={cls} style={style}>
-      {Icon && <Icon size={16} />}
-      {children}
-    </button>
-  );
-};
-
 const Breadcrumbs = () => {
   const navigate = useNavigate();
   return (
@@ -90,6 +76,7 @@ const Breadcrumbs = () => {
 };
 
 export default function TitleDefense() {
+  const navigate = useNavigate();
   const [queryText, setQueryText] = useState("");
 
   const [editSchedule, setEditSchedule] = useState(null);
@@ -295,22 +282,65 @@ export default function TitleDefense() {
     }
   };
 
-  return (
-    <div className="p-6">
-      {/* breadcrumbs + divider */}
-      <Breadcrumbs />
-      <div className="mt-2 h-[2px] w-full bg-neutral-200">
-        <div className="h-[2px]" style={{ backgroundColor: MAROON, width: 300 }} />
-      </div>
+  // Export CSV of the *filtered* list
+  const handleExport = () => {
+    const rows = [
+      ["Team", "Date", "Time", "Panelists", "Verdict"],
+      ...filtered.map((s) => [
+        s.teamName || "",
+        s.date || "",
+        fmtTimeRange(s.timeStart, s.timeEnd) || "",
+        (s.panelists || []).join("; "),
+        s.verdict || "",
+      ]),
+    ];
+    const csv = rows.map(r =>
+      r.map((cell) => {
+        const v = String(cell ?? "");
+        return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+      }).join(",")
+    ).join("\n");
 
-      {/* actions */}
-      <div className="mt-6 space-y-4">
-        {/* Row 1: Export only (Create removed) */}
-        <div className="flex items-center gap-3">
-          <Btn icon={Download} variant="outline">Export</Btn>
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `title_defense_schedules_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="">
+      {/* Back + breadcrumbs + divider (breadcrumbs kept as-is) */}
+      <div className="space-y-4">
+        {/* Back */}
+        <div>
+
         </div>
 
-        {/* Row 2: Search (left) + Delete (right) */}
+        {/* original breadcrumbs (unchanged) */}
+        <Breadcrumbs />
+
+        {/* thin maroon underline */}
+        <div className="h-[2px] w-full bg-neutral-200">
+          <div className="h-[2px]" style={{ backgroundColor: MAROON, width: 300 }} />
+        </div>
+
+         <button
+            onClick={() => (window.history.length ? window.history.back() : navigate("/instructor/schedule"))}
+            className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100 cursor-pointer"
+            title="Back to Tasks"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back to Schedule
+          </button>
+      </div>
+
+        
+      {/* actions */}
+      <div className="mt-6 space-y-4">
+        {/* Row: Search (left) + Export & Delete (right) */}
         <div className="flex items-center justify-between">
           <div className="relative">
             <input
@@ -323,11 +353,21 @@ export default function TitleDefense() {
             <Search size={16} className="absolute left-3 top-2.5 text-neutral-400" />
           </div>
 
-          <div className="flex items-center">
+          <div className="flex items-center gap-3">
+            {/* Export beside Delete */}
+            <button
+              onClick={handleExport}
+              className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium border border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50"
+              title="Export"
+            >
+              <Download size={16} />
+              Export
+            </button>
+
             {bulkMode && (
               <button
                 onClick={exitBulk}
-                className="mr-3 inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 border border-neutral-300 bg-white"
+                className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 border border-neutral-300 bg-white"
               >
                 Cancel
               </button>
@@ -515,7 +555,6 @@ function ScheduleDialog({
   adviserOptions = [],
   loadingAdvisers = false,
 }) {
-  // controlled inputs (prefill when editing)
   const [team, setTeam] = useState(initial?.teamName || "");
   const [date, setDate] = useState(initial?.date || "");
   const [time, setTime] = useState(initial?.timeStart || "");
@@ -533,7 +572,6 @@ function ScheduleDialog({
 
   const timeIsValid = time && timeEnd && time < timeEnd;
 
-  // update only
   const handleSubmit = async () => {
     try {
       const selected = teamOptions.find((t) => t.name === team);

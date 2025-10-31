@@ -1,11 +1,11 @@
+// src/components/CapstoneInstructor/InstructorSchedule.jsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import {
   CalendarDays,
   FileText,
-  Presentation,   // <— new icon for Oral Defense
+  Presentation,
   GraduationCap,
-  ChevronLeft,
 } from "lucide-react";
 
 const MAROON = "#6A0F14";
@@ -23,28 +23,18 @@ const Card = ({ title, icon, onClick }) => (
       focus:outline-none focus:ring-2 focus:ring-[#6A0F14] focus:ring-offset-2 cursor-pointer
     "
   >
-    {/* icon */}
     <div className="grid place-items-center mt-16">
       <div className="grid place-items-center h-20 w-20 rounded-xl border border-neutral-300 bg-white">
         {icon}
       </div>
     </div>
 
-    {/* label (maroon, centered) */}
     <div className="mt-8 px-4 text-center text-[18px] font-semibold" style={{ color: MAROON }}>
       {title}
     </div>
 
-    {/* bottom maroon band */}
     <div className="absolute bottom-0 left-0 right-0 h-8 rounded-b-2xl" style={{ backgroundColor: "#4a0a0d" }} />
   </button>
-);
-
-const Breadcrumbs = () => (
-  <div className="flex items-center gap-2 text-neutral-700">
-    <ChevronLeft size={18} className="text-neutral-400" />
-    <span className="text-[15px] font-semibold">Schedule</span>
-  </div>
 );
 
 export default function InstructorSchedule() {
@@ -63,26 +53,25 @@ export default function InstructorSchedule() {
     },
     {
       title: "Oral Defense",
-      // Replaced Mic with Presentation to better convey a formal presentation/defense
       icon: <Presentation size={44} strokeWidth={2.2} />,
-      onClick: () => navigate("/instructor/schedule/oral-defense", ),
+      onClick: () => navigate("/instructor/schedule/oral-defense"),
     },
     {
       title: "Final Defense",
       icon: <GraduationCap size={44} strokeWidth={2.2} />,
-      onClick: () => navigate("/instructor/schedule/final-defense",),
-  
+      onClick: () => navigate("/instructor/schedule/final-defense"),
     },
   ];
 
   return (
-    <div className="p-6">
-      {/* breadcrumbs + divider */}
-      <div className="flex items-center justify-between">
-        <Breadcrumbs />
-      </div>
-      <div className="mt-2 h-[2px] w-full bg-neutral-200">
-        <div className="h-[2px] cursor-pointer" style={{ backgroundColor: MAROON, width: 220 }} />
+    <div className="min-h-full flex flex-col">
+      {/* header to match Enroll (icon + title + thin maroon rule) */}
+      <div>
+        <div className="flex items-center gap-2">
+          <CalendarDays className="w-5 h-5 text-neutral-800" />
+          <h2 className="text-base font-semibold text-neutral-900">Schedule</h2>
+        </div>
+        <div className="mt-3 h-[2px] w-full bg-[#6A0F14]" />
       </div>
 
       {/* cards */}
