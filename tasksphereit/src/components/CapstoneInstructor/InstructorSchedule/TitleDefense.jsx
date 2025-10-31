@@ -164,6 +164,27 @@ export default function TitleDefense() {
     return () => { alive = false; };
   }, []);
 
+// Button Component (ensure it's either imported or defined here)
+const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props }) => {
+  const base =
+    "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium cursor-pointer " +
+    "focus:outline-none focus:ring-2 focus:ring-neutral-200 " + className;
+
+  const cls =
+    variant === "solid"
+      ? base + " text-white"
+      : base + " border border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50";
+
+  const style = variant === "solid" ? { backgroundColor: MAROON } : undefined;
+  return (
+    <button {...props} className={cls} style={style}>
+      {Icon && <Icon size={16} />}
+      {children}
+    </button>
+  );
+};
+
+
   // Load Schedules
   const loadSchedules = async () => {
     setLoadingSchedules(true);
@@ -312,71 +333,64 @@ export default function TitleDefense() {
 
   return (
     <div className="">
-      {/* Back + breadcrumbs + divider (breadcrumbs kept as-is) */}
-      <div className="space-y-4">
-        {/* Back */}
-        <div>
-
-        </div>
-
-        {/* original breadcrumbs (unchanged) */}
-        <Breadcrumbs />
-
-        {/* thin maroon underline */}
-        <div className="h-[2px] w-full bg-neutral-200">
-          <div className="h-[2px]" style={{ backgroundColor: MAROON, width: 300 }} />
-        </div>
-
-         <button
-            onClick={() => (window.history.length ? window.history.back() : navigate("/instructor/schedule"))}
-            className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100 cursor-pointer"
-            title="Back to Tasks"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            Back to Schedule
-          </button>
+      <Breadcrumbs />
+      <div className="mt-2 h-[2px] w-full bg-neutral-200">
+        <div className="h-[2px]" style={{ backgroundColor: MAROON, width: 260 }} />
       </div>
 
         
       {/* actions */}
       <div className="mt-6 space-y-4">
-        {/* Row 1: Export only (Create removed) */}
+        {/* Row 1: Back + Create + Export (aligned) */}
         <div className="flex items-center gap-3">
+          <Btn
+            icon={ChevronLeft}
+            variant="outline"
+            onClick={() =>
+              window.history.length
+                ? window.history.back()
+                : navigate("/instructor/schedule")
+            }
+          >
+            Back to Schedule
+          </Btn>
           <Btn icon={Download} variant="outline">Export</Btn>
         </div>
 
-        {/* Row 2: Search (left) + Action (right) */}
+        {/* Row 2: Search (left) + Delete (right) */}
         <div className="flex items-center justify-between">
           <div className="relative">
             <input
               type="text"
               placeholder="Search"
-              value={queryText}
-              onChange={(e) => setQueryText(e.target.value)}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
               className="pl-10 pr-3 py-2 w-72 rounded-md border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-300"
             />
             <Search size={16} className="absolute left-3 top-2.5 text-neutral-400" />
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Export beside Delete */}
-            <button
-              onClick={handleExport}
-              className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium border border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50"
-              title="Export"
-            >
-              <Download size={16} />
-              Export
-            </button>
-
+          <div className="flex items-center">
             {bulkMode && (
               <button
                 onClick={exitBulk}
-                className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 border border-neutral-300 bg-white"
+                className="mr-3 inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 border border-neutral-300 bg-white"
               >
                 Cancel
               </button>
             )}
+
+            <button
+              onClick={handleBulkDeleteClick}
+              className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium border
+                ${bulkMode
+                  ? "border-red-600 text-white bg-red-600 hover:bg-red-700"
+                  : "border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50"}`}
+              aria-label={bulkMode ? "Delete Selected" : "Delete"}
+              title={bulkMode ? "Delete Selected" : "Delete"}
+            >
+              {bulkMode ? `Delete Selected (${selected.size})` : "Delete"}
+            </button>
           </div>
         </div>
       </div>
