@@ -11,8 +11,16 @@ import {
   FileText,
   X,
 } from "lucide-react";
+
 import { db } from "../../config/firebase";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import {
+  collection,
+  onSnapshot,
+  query,
+  where,
+  getDocs,
+} from "firebase/firestore";
+
 import { parseExcelFile, validateExcelFile } from "../../assets/scripts/excel";
 import {
   createUser,
@@ -21,8 +29,10 @@ import {
   bulkResetPasswords,
   getMiddleInitial,
 } from "../../assets/scripts/enroll";
+
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+
 import ExcelModal from "../../assets/modals/excelModal.js";
 import AddUserModal from "../../assets/modals/addUserModal.jsx";
 
@@ -31,6 +41,18 @@ const TABS = ["Adviser", "Student"];
 const STUDENT_ROLES = ["Project Manager", "Member"];
 const displayPlural = (tab) => (tab === "Student" ? "Students" : "Advisers");
 
+/* ---------- tiny helpers ---------- */
+const isTs = (v) => v && typeof v === "object" && typeof v.toDate === "function";
+const toDateValue = (v) => (isTs(v) ? v.toDate() : v ? new Date(v) : null);
+
+const fullNameOf = (u) => {
+  const mi = getMiddleInitial(u?.middleName);
+  const last = u?.lastName || "";
+  const first = u?.firstName || "";
+  return `${last}, ${first}${mi ? `, ${mi}` : ""}`;
+};
+
+/* =============================== MAIN =============================== */
 const InstructorEnroll = () => {
   /* ---------------- Role & dialogs ---------------- */
   const [selectedTab, setSelectedTab] = useState("Adviser");
@@ -225,14 +247,14 @@ const InstructorEnroll = () => {
     const to = fCreatedTo ? new Date(`${fCreatedTo}T23:59:59`) : null;
     if (from) {
       arr = arr.filter((u) => {
-        const d = u.createdAt?.toDate ? u.createdAt.toDate() : u.createdAt;
-        return d ? new Date(d) >= from : false;
+        const d = toDateValue(u.createdAt);
+        return d ? d >= from : false;
       });
     }
     if (to) {
       arr = arr.filter((u) => {
-        const d = u.createdAt?.toDate ? u.createdAt.toDate() : u.createdAt;
-        return d ? new Date(d) <= to : false;
+        const d = toDateValue(u.createdAt);
+        return d ? d <= to : false;
       });
     }
 
@@ -241,11 +263,11 @@ const InstructorEnroll = () => {
     arr.sort((a, b) => {
       const va =
         field === "createdAt"
-          ? (a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0)
+          ? (toDateValue(a.createdAt)?.getTime?.() ?? 0)
           : (a[field] || "").toString().toLowerCase();
       const vb =
         field === "createdAt"
-          ? (b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0)
+          ? (toDateValue(b.createdAt)?.getTime?.() ?? 0)
           : (b[field] || "").toString().toLowerCase();
 
       if (va < vb) return -1 * dir;
@@ -278,33 +300,6 @@ const InstructorEnroll = () => {
     setSelectedIds([]);
   };
 
-  /* ---------------- Export PDF (ONLY the 4 visible columns) ---------------- */
-  const exportPdf = () => {
-    const doc = new jsPDF({ unit: "pt" });
-    const title = `TaskSphere IT — ${displayPlural(selectedTab)} (${filteredUsers.length})`;
-    doc.setFontSize(14);
-    doc.text(title, 40, 40);
-
-    const head = [["ID Number", "Last Name", "First Name", "Middle Initial"]];
-    const body = filteredUsers.map((u) => [
-      u.idNumber || "",
-      u.lastName || "",
-      u.firstName || "",
-      getMiddleInitial(u.middleName),
-    ]);
-
-    autoTable(doc, {
-      head,
-      body,
-      startY: 60,
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [106, 15, 20] },
-    });
-
-    const fname = `users_${selectedTab}_${new Date().toISOString().slice(0, 10)}.pdf`;
-    doc.save(fname);
-  };
-
   const resetFilters = () => {
     setFTos("any");
     setFMustChange("any");
@@ -314,9 +309,8 @@ const InstructorEnroll = () => {
     setSortDir("asc");
   };
 
-  /* ---------- allowed roles for modal ---------- */
-  const roleOptions = selectedTab === "Student" ? STUDENT_ROLES : ["Adviser"];
-  const lockRole = roleOptions.length === 1; // lock when only one choice
+  /* ---------------- Export Credentials Modal ---------------- */
+  const [exportOpen, setExportOpen] = useState(false);
 
   return (
     <div className="min-h-screen flex flex-col bg-neutral-50">
@@ -337,8 +331,6 @@ const InstructorEnroll = () => {
               {displayPlural(selectedTab)}
             </h2>
           </div>
-
-          {/* thin wide bar only */}
           <div className="mt-3 h-[2px] w-full bg-[#6A0F14]" />
         </div>
 
@@ -363,16 +355,12 @@ const InstructorEnroll = () => {
             </div>
           ) : (
             <div className="flex gap-3 flex-wrap">
-              <button className="cursor-pointer flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100">
-                <Download className="w-4 h-4" />
-                Download Template
-              </button>
               <button
-                onClick={exportPdf}
+                onClick={() => setExportOpen(true)}
                 className="cursor-pointer flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
               >
-                <FileText className="w-4 h-4" />
-                Export PDF
+                <Download className="w-4 h-4" />
+                Export Credentials
               </button>
               <button
                 onClick={triggerExcelModal}
@@ -650,7 +638,7 @@ const InstructorEnroll = () => {
         </div>
       </main>
 
-      {/* Add User Modal (role list/lock passed in) */}
+      {/* Add User Modal */}
       <AddUserModal
         open={openAddUserModal}
         form={form}
@@ -659,11 +647,334 @@ const InstructorEnroll = () => {
         saving={saving}
         closeModal={() => setOpenAddUserModal(false)}
         error={error}
-        roleOptions={roleOptions}     // ← only show valid roles
-        lockRole={lockRole}           // ← disable/hide dropdown when single option
+        roleOptions={selectedTab === "Student" ? STUDENT_ROLES : ["Adviser"]}
+        lockRole={(selectedTab === "Student" ? STUDENT_ROLES : ["Adviser"]).length === 1}
       />
+
+      {/* Export Credentials Modal */}
+      {exportOpen && (
+        <ExportCredentialsModal onClose={() => setExportOpen(false)} />
+      )}
     </div>
   );
 };
 
 export default InstructorEnroll;
+
+/* ===================== Export Modal (inline) ===================== */
+function ExportCredentialsModal({ onClose }) {
+  const [audience, setAudience] = useState("Student"); // "Student" | "Adviser"
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const title =
+    audience === "Student"
+      ? "Capstone Student Credentials"
+      : "Capstone Adviser Credentials";
+
+  // Try multiple field names commonly used to keep initial passwords
+  const readPwdFromObject = (obj) => {
+    if (!obj) return null;
+    const keys = [
+      "plainPassword",
+      "password",
+      "tempPassword",
+      "generatedPassword",
+      "defaultPassword",
+      "initialPassword",
+      "rawPassword",
+      "pwd",
+    ];
+    for (const k of keys) {
+      const v = obj[k];
+      if (typeof v === "string" && v.trim()) return v.trim();
+    }
+    return null;
+  };
+
+  // Fallback lookups if password isn't on user doc:
+  //  - find a matching invite by email or uid and read any of the password keys above
+  const fetchPasswordForUser = async (userDoc) => {
+    const fromUser = readPwdFromObject(userDoc);
+    if (fromUser) return fromUser;
+
+    try {
+      // search invites by email (primary) then by uid
+      if (userDoc?.email) {
+        const qEmail = query(
+          collection(db, "invites"),
+          where("email", "==", (userDoc.email || "").trim())
+        );
+        const s1 = await getDocs(qEmail);
+        if (!s1.empty) {
+          const pwd = readPwdFromObject(s1.docs[0].data());
+          if (pwd) return pwd;
+        }
+      }
+      if (userDoc?.uid) {
+        const qUid = query(collection(db, "invites"), where("uid", "==", userDoc.uid));
+        const s2 = await getDocs(qUid);
+        if (!s2.empty) {
+          const pwd = readPwdFromObject(s2.docs[0].data());
+          if (pwd) return pwd;
+        }
+      }
+    } catch (e) {
+      // ignore lookup error; we'll just show em dash
+      console.warn("Password lookup failed:", e);
+    }
+
+    return "—";
+  };
+
+  const fetchUsersForExport = async () => {
+    const usersRef = collection(db, "users");
+    let base;
+    if (audience === "Student") {
+      base = query(usersRef, where("role", "in", ["Project Manager", "Member"]));
+    } else {
+      base = query(usersRef, where("role", "==", "Adviser"));
+    }
+
+    const snap = await getDocs(base);
+    let rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+    const fromD = from ? new Date(`${from}T00:00:00`) : null;
+    const toD = to ? new Date(`${to}T23:59:59`) : null;
+
+    rows = rows.filter((u) => {
+      if (!fromD && !toD) return true;
+      const dv = toDateValue(u.createdAt);
+      if (!dv) return false;
+      if (fromD && dv < fromD) return false;
+      if (toD && dv > toD) return false;
+      return true;
+    });
+
+    // sort by lastName, firstName
+    rows.sort((a, b) => {
+      const aL = (a.lastName || "").toLowerCase();
+      const bL = (b.lastName || "").toLowerCase();
+      if (aL !== bL) return aL < bL ? -1 : 1;
+      const aF = (a.firstName || "").toLowerCase();
+      const bF = (b.firstName || "").toLowerCase();
+      return aF < bF ? -1 : aF > bF ? 1 : 0;
+    });
+
+    // attach password for each user (from doc or invites)
+    const withPw = [];
+    for (const u of rows) {
+      const pwd = await fetchPasswordForUser(u);
+      withPw.push({ ...u, _password: pwd });
+    }
+
+    return withPw;
+  };
+
+  const makePdf = (rows) => {
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const marginX = 40;
+    const headerY = 46;
+
+    const drawHeader = () => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text("DOMINICAN COLLEGE OF TARLAC, INC.", pageWidth / 2, headerY, { align: "center" });
+      doc.setFont("helvetica", "normal");
+      doc.text("COLLEGE OF COMPUTER STUDIES", pageWidth / 2, headerY + 16, { align: "center" });
+      doc.setFontSize(10);
+      doc.text(
+        "McArthur Highway, Poblacion (Sto. Rosario), Capas, 2315 Tarlac, Philippines",
+        pageWidth / 2,
+        headerY + 32,
+        { align: "center" }
+      );
+      doc.text(
+        "Institutional Contact Nos.: +63938-918-4093    Website: dct.edu.ph",
+        pageWidth / 2,
+        headerY + 48,
+        { align: "center" }
+      );
+      doc.text(
+        "E-mail: domct_2315@yahoo.com.ph / domct_2315@dct.edu.ph",
+        pageWidth / 2,
+        headerY + 64,
+        { align: "center" }
+      );
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text(title, pageWidth / 2, headerY + 96, { align: "center" });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      const dateLineParts = [];
+      if (from) dateLineParts.push(`From: ${from}`);
+      if (to) dateLineParts.push(`To: ${to}`);
+      const dateLine =
+        dateLineParts.length > 0
+          ? dateLineParts.join("   ")
+          : `As of ${new Date().toLocaleDateString()}`;
+      doc.text(dateLine, pageWidth / 2, headerY + 112, { align: "center" });
+
+      doc.setDrawColor(180);
+      doc.line(marginX, headerY + 122, pageWidth - marginX, headerY + 122);
+    };
+
+    const tableYStart = headerY + 134;
+
+    autoTable(doc, {
+      startY: tableYStart,
+      head: [["NO", "Full Name", "UserID", "Password"]],
+      body: rows.map((u, i) => [
+        `${i + 1}.`,
+        fullNameOf(u),
+        u.idNumber || "",
+        (u._password && typeof u._password === "string" ? u._password : "—"),
+      ]),
+      styles: { fontSize: 10, cellPadding: 6 },
+      headStyles: {
+        fillColor: [245, 245, 245],
+        textColor: 60,
+        lineWidth: 0.4,
+        lineColor: [220, 220, 220],
+        fontStyle: "bold",
+      },
+      bodyStyles: { lineWidth: 0.3, lineColor: [235, 235, 235] },
+      columnStyles: {
+        0: { cellWidth: 40 },
+        1: { cellWidth: 260 },
+        2: { cellWidth: 120 },
+        3: { cellWidth: 140 },
+      },
+      margin: { left: marginX, right: marginX },
+      didDrawPage: () => {
+        drawHeader();
+        const str = `Page ${doc.internal.getNumberOfPages()}`;
+        doc.setFontSize(9);
+        doc.setTextColor(120);
+        doc.text(str, pageWidth - marginX, pageHeight - 24, { align: "right" });
+      },
+    });
+
+    const fnameSafe = title.toLowerCase().replace(/\s+/g, "_");
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    doc.save(`${fnameSafe}_${dateStamp}.pdf`);
+  };
+
+  const onGenerate = async () => {
+    try {
+      setBusy(true);
+      setErr("");
+      const rows = await fetchUsersForExport();
+      makePdf(rows);
+      onClose();
+    } catch (e) {
+      console.error(e);
+      setErr("Export failed. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[640px] max-w-[92vw]">
+        <div className="rounded-2xl bg-white border border-neutral-200 shadow-2xl p-0">
+          {/* Header */}
+          <div className="px-6 pt-5 pb-3">
+            <div className="flex items-center gap-2 text-[16px] font-semibold text-[#6A0F14]">
+              <Download size={18} />
+              Export Credentials
+            </div>
+            <div className="mt-3 h-[2px] w-full bg-neutral-200">
+              <div className="h-[2px]" style={{ backgroundColor: "#6A0F14", width: 190 }} />
+            </div>
+          </div>
+
+          {/* Body */}
+          <div className="px-6 pb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  What do you want to export?
+                </label>
+                <div className="flex gap-4">
+                  <label className="inline-flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="audience"
+                      value="Student"
+                      checked={audience === "Student"}
+                      onChange={() => setAudience("Student")}
+                    />
+                    Students
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="audience"
+                      value="Adviser"
+                      checked={audience === "Adviser"}
+                      onChange={() => setAudience("Adviser")}
+                    />
+                    Advisers
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Created From
+                </label>
+                <input
+                  type="date"
+                  value={from}
+                  onChange={(e) => setFrom(e.target.value)}
+                  className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Created To
+                </label>
+                <input
+                  type="date"
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                  className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            {err && <p className="mt-3 text-sm text-red-600">{err}</p>}
+
+            <div className="mt-8 flex items-center justify-end gap-3">
+              <button
+                onClick={onClose}
+                className="inline-flex items-center justify-center rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                disabled={busy}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={onGenerate}
+                disabled={busy}
+                className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white ${busy ? "opacity-60 cursor-not-allowed" : ""}`}
+                style={{ backgroundColor: "#6A0F14" }}
+              >
+                {busy ? "Generating…" : "Generate PDF"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
