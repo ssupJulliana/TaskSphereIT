@@ -29,20 +29,36 @@ import {
   where,
 } from "firebase/firestore";
 
-import * as XLSX from 'xlsx';
+/* ===== PDF ===== */
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const MAROON = "#6A0F14";
 
 /* ===== helpers ===== */
-const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 const fmtDate = (yyyy_mm_dd) => {
   if (!yyyy_mm_dd) return "";
-  const [y,m,d] = yyyy_mm_dd.split("-");
+  const [y, m, d] = yyyy_mm_dd.split("-");
   return `${MONTHS[Number(m) - 1]} ${Number(d)}, ${y}`;
 };
 
 const fmtTimeRange = (start, end) => {
-  const isBlankish = (v) => v == null || ["", "-", "—", "——"].includes(String(v).trim());
+  const isBlankish = (v) =>
+    v == null || ["", "-", "—", "——"].includes(String(v).trim());
   const to12h = (t) => {
     if (isBlankish(t)) return "";
     const [H, M] = String(t).split(":").map(Number);
@@ -77,6 +93,27 @@ const Breadcrumbs = () => {
   );
 };
 
+// Button
+const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props }) => {
+  const base =
+    "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium cursor-pointer " +
+    "focus:outline-none focus:ring-2 focus:ring-neutral-200 " +
+    className;
+
+  const cls =
+    variant === "solid"
+      ? base + " text-white"
+      : base + " border border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50";
+
+  const style = variant === "solid" ? { backgroundColor: MAROON } : undefined;
+  return (
+    <button {...props} className={cls} style={style}>
+      {Icon && <Icon size={16} />}
+      {children}
+    </button>
+  );
+};
+
 export default function FinalDefense() {
   const navigate = useNavigate();
   const [queryText, setQueryText] = useState("");
@@ -85,14 +122,14 @@ export default function FinalDefense() {
   const [viewSchedule, setViewSchedule] = useState(null);
 
   /* ===== Firestore-backed options ===== */
-  const [teamOptions, setTeamOptions] = useState([]);       // [{id, name}]
+  const [teamOptions, setTeamOptions] = useState([]); // [{id, name}]
   const [loadingTeams, setLoadingTeams] = useState(true);
 
   const [adviserOptions, setAdviserOptions] = useState([]); // ["Full Name", ...]
   const [loadingAdvisers, setLoadingAdvisers] = useState(true);
 
   /* ===== Schedules list ===== */
-  const [schedules, setSchedules] = useState([]);           // [{id, ...}]
+  const [schedules, setSchedules] = useState([]); // [{id, ...}]
   const [loadingSchedules, setLoadingSchedules] = useState(true);
 
   // Row menu
@@ -134,7 +171,9 @@ export default function FinalDefense() {
         if (alive) setLoadingTeams(false);
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
   // Load Advisers from users where role == "Adviser"
@@ -142,7 +181,10 @@ export default function FinalDefense() {
     let alive = true;
     (async () => {
       try {
-        const qUsers = query(collection(db, "users"), where("role", "==", "Adviser"));
+        const qUsers = query(
+          collection(db, "users"),
+          where("role", "==", "Adviser")
+        );
         const snap = await getDocs(qUsers);
         const names = [];
         snap.forEach((docX) => {
@@ -163,29 +205,10 @@ export default function FinalDefense() {
         if (alive) setLoadingAdvisers(false);
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
-
-// Button Component (ensure it's either imported or defined here)
-const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props }) => {
-  const base =
-    "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium cursor-pointer " +
-    "focus:outline-none focus:ring-2 focus:ring-neutral-200 " + className;
-
-  const cls =
-    variant === "solid"
-      ? base + " text-white"
-      : base + " border border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50";
-
-  const style = variant === "solid" ? { backgroundColor: MAROON } : undefined;
-  return (
-    <button {...props} className={cls} style={style}>
-      {Icon && <Icon size={16} />}
-      {children}
-    </button>
-  );
-};
-
 
   // Load Schedules
   const loadSchedules = async () => {
@@ -208,7 +231,8 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
         });
       });
       rows.sort((a, b) => {
-        const ad = a.date || "", bd = b.date || "";
+        const ad = a.date || "",
+          bd = b.date || "";
         if (ad < bd) return -1;
         if (ad > bd) return 1;
         return (a.timeStart || "").localeCompare(b.timeStart || "");
@@ -229,7 +253,9 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
   const handleChangeVerdict = async (scheduleId, newVerdict) => {
     try {
       setSchedules((prev) =>
-        prev.map((s) => (s.id === scheduleId ? { ...s, verdict: newVerdict } : s))
+        prev.map((s) =>
+          s.id === scheduleId ? { ...s, verdict: newVerdict } : s
+        )
       );
       await updateDoc(doc(db, "finalDefenseSchedules", scheduleId), {
         verdict: newVerdict,
@@ -241,37 +267,122 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
     }
   };
 
-  // Export function to generate Excel
-  const handleExportToExcel = () => {
-    // Prepare the data
-    const rows = [
-      ["No", "Team", "Date", "Time", "Panelists", "Verdict"],
-      ...filtered.map((s, idx) => [
-        idx + 1,
+  /* ===== PDF export (fits Verdict column) ===== */
+  const handleExportPDF = () => {
+    const title = "Final Defense Schedule";
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth(); // ~595
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const marginX = 40;
+    const headerY = 46;
+
+    const drawHeader = () => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text(
+        "DOMINICAN COLLEGE OF TARLAC, INC.",
+        pageWidth / 2,
+        headerY,
+        { align: "center" }
+      );
+      doc.setFont("helvetica", "normal");
+      doc.text(
+        "COLLEGE OF COMPUTER STUDIES",
+        pageWidth / 2,
+        headerY + 16,
+        { align: "center" }
+      );
+      doc.setFontSize(10);
+      doc.text(
+        "McArthur Highway, Poblacion (Sto. Rosario), Capas, 2315 Tarlac, Philippines",
+        pageWidth / 2,
+        headerY + 32,
+        { align: "center" }
+      );
+      doc.text(
+        "Institutional Contact Nos.: +63938-918-4093    Website: dct.edu.ph",
+        pageWidth / 2,
+        headerY + 48,
+        { align: "center" }
+      );
+      doc.text(
+        "E-mail: domct_2315@yahoo.com.ph / domct_2315@dct.edu.ph",
+        pageWidth / 2,
+        headerY + 64,
+        { align: "center" }
+      );
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text(title, pageWidth / 2, headerY + 96, { align: "center" });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text(
+        `As of ${new Date().toLocaleDateString()}`,
+        pageWidth / 2,
+        headerY + 112,
+        { align: "center" }
+      );
+
+      doc.setDrawColor(180);
+      doc.line(marginX, headerY + 122, pageWidth - marginX, headerY + 122);
+    };
+
+    autoTable(doc, {
+      startY: headerY + 134,
+      head: [["NO", "Team", "Date", "Time", "Panelists", "Verdict"]],
+      body: filtered.map((s, i) => [
+        `${i + 1}.`,
         s.teamName || "",
-        s.date || "",
+        fmtDate(s.date) || "",
         fmtTimeRange(s.timeStart, s.timeEnd) || "",
-        (s.panelists || []).join("; "),
+        (s.panelists || []).join(", "),
         s.verdict || "",
       ]),
-    ];
+      styles: {
+        fontSize: 9,
+        cellPadding: { top: 5, right: 4, bottom: 5, left: 4 },
+        overflow: "linebreak",
+      },
+      headStyles: {
+        fillColor: [245, 245, 245],
+        textColor: 60,
+        lineWidth: 0.4,
+        lineColor: [220, 220, 220],
+        fontStyle: "bold",
+      },
+      bodyStyles: { lineWidth: 0.3, lineColor: [235, 235, 235] },
+      /* Total width = 35 + 150 + 85 + 95 + 80 + 70 = 515pt (fits 595-80 margins) */
+      columnStyles: {
+        0: { cellWidth: 35 }, // NO
+        1: { cellWidth: 150 }, // Team
+        2: { cellWidth: 85 }, // Date
+        3: { cellWidth: 95 }, // Time
+        4: { cellWidth: 80 }, // Panelists (wraps)
+        5: { cellWidth: 70, halign: "center" }, // Verdict
+      },
+      margin: { left: marginX, right: marginX },
+      tableWidth: pageWidth - marginX * 2,
+      didDrawPage: () => {
+        drawHeader();
+        const str = `Page ${doc.internal.getNumberOfPages()}`;
+        doc.setFontSize(9);
+        doc.setTextColor(120);
+        doc.text(str, pageWidth - marginX, pageHeight - 24, { align: "right" });
+      },
+    });
 
-    // Create a worksheet from the data
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-
-    // Create a workbook and add the worksheet
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Final Defense');
-
-    // Download the file as Excel
-    XLSX.writeFile(wb, `final_defense_schedules_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    const fname = `final_defense_schedule_${new Date()
+      .toISOString()
+      .slice(0, 10)}.pdf`;
+    doc.save(fname);
   };
 
   // search filter (client-side)
-  // In the useMemo hook, make sure it's using queryText, not query
   const filtered = useMemo(() => {
     const q = queryText.trim().toLowerCase();
-    if (!q) return schedules; // Return all schedules if there's no query
+    if (!q) return schedules;
     return schedules.filter((t) =>
       [
         t.teamName,
@@ -284,11 +395,12 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
         .toLowerCase()
         .includes(q)
     );
-  }, [queryText, schedules]); // Watch for queryText changes here
+  }, [queryText, schedules]);
 
-  // Select-all works on the filtered (visible) list
+  // Select-all works on visible list
   const allVisibleIds = useMemo(() => filtered.map((s) => s.id), [filtered]);
-  const allSelected = selected.size > 0 && allVisibleIds.every((id) => selected.has(id));
+  const allSelected =
+    selected.size > 0 && allVisibleIds.every((id) => selected.has(id));
   const toggleSelectAll = () => {
     setSelected((prev) => (allSelected ? new Set() : new Set(allVisibleIds)));
   };
@@ -303,12 +415,16 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
       alert("Select at least one schedule to delete.");
       return;
     }
-    const ok = window.confirm(`Delete ${selected.size} selected schedule(s)? This cannot be undone.`);
+    const ok = window.confirm(
+      `Delete ${selected.size} selected schedule(s)? This cannot be undone.`
+    );
     if (!ok) return;
 
     try {
       await Promise.all(
-        Array.from(selected).map((id) => deleteDoc(doc(db, "finalDefenseSchedules", id)))
+        Array.from(selected).map((id) =>
+          deleteDoc(doc(db, "finalDefenseSchedules", id))
+        )
       );
       exitBulk();
       await loadSchedules();
@@ -319,34 +435,6 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
     }
   };
 
-  // Export CSV of the *filtered* list
-  const handleExport = () => {
-    const rows = [
-      ["Team", "Date", "Time", "Panelists", "Verdict"],
-      ...filtered.map((s) => [
-        s.teamName || "",
-        s.date || "",
-        fmtTimeRange(s.timeStart, s.timeEnd) || "",
-        (s.panelists || []).join("; "),
-        s.verdict || "",
-      ]),
-    ];
-    const csv = rows.map(r =>
-      r.map((cell) => {
-        const v = String(cell ?? "");
-        return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
-      }).join(",")
-    ).join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `final_defense_schedules_${new Date().toISOString().slice(0,10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   return (
     <div className="">
       <Breadcrumbs />
@@ -354,10 +442,9 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
         <div className="h-[2px]" style={{ backgroundColor: MAROON, width: 260 }} />
       </div>
 
-        
       {/* actions */}
       <div className="mt-6 space-y-4">
-        {/* Row 1: Back + Create + Export (aligned) */}
+        {/* Row 1: Back + Export PDF */}
         <div className="flex items-center gap-3">
           <Btn
             icon={ChevronLeft}
@@ -370,17 +457,19 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
           >
             Back to Schedule
           </Btn>
-          <Btn icon={Download} variant="outline" onClick={handleExportToExcel}>Export</Btn>
+          <Btn icon={Download} variant="outline" onClick={handleExportPDF}>
+            Export PDF
+          </Btn>
         </div>
 
-        {/* Row 2: Search (left) + Delete (right) */}
+        {/* Row 2: Search (left) + Bulk controls (right) */}
         <div className="flex items-center justify-between">
           <div className="relative">
             <input
               type="text"
               placeholder="Search"
-              value={queryText} // Update here to bind with queryText
-              onChange={(e) => setQueryText(e.target.value)} // Set queryText here
+              value={queryText}
+              onChange={(e) => setQueryText(e.target.value)}
               className="pl-10 pr-3 py-2 w-72 rounded-md border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-300"
             />
             <Search size={16} className="absolute left-3 top-2.5 text-neutral-400" />
@@ -419,10 +508,14 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
               )}
               <th className="text-left px-4 py-3">Team</th>
               <th className="text-left px-4 py-3">
-                <div className="inline-flex items-center gap-2"><CalIcon size={16} /> Date</div>
+                <div className="inline-flex items-center gap-2">
+                  <CalIcon size={16} /> Date
+                </div>
               </th>
               <th className="text-left px-4 py-3">
-                <div className="inline-flex items-center gap-2"><Clock size={16} /> Time</div>
+                <div className="inline-flex items-center gap-2">
+                  <Clock size={16} /> Time
+                </div>
               </th>
               <th className="text-left px-4 py-3">Panelists</th>
               <th className="text-left px-4 py-3">Verdict</th>
@@ -432,96 +525,135 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
           <tbody>
             {loadingSchedules ? (
               <tr>
-                <td className="px-4 py-6 text-neutral-500" colSpan={7}>Loading schedules…</td>
+                <td className="px-4 py-6 text-neutral-500" colSpan={7}>
+                  Loading schedules…
+                </td>
               </tr>
             ) : schedules.length === 0 ? (
               <tr>
-                <td className="px-4 py-6 text-neutral-500" colSpan={7}>No schedules yet.</td>
+                <td className="px-4 py-6 text-neutral-500" colSpan={7}>
+                  No schedules yet.
+                </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td className="px-4 py-6 text-neutral-500" colSpan={7}>No matches for “{queryText}”.</td>
+                <td className="px-4 py-6 text-neutral-500" colSpan={7}>
+                  No matches for “{queryText}”.
+                </td>
               </tr>
             ) : (
-            filtered.map((s, idx) => {
-              const isChecked = selected.has(s.id);
-              return (
-                <tr key={s.id} className={idx % 2 ? "bg-neutral-50/60" : "bg-white"}>
-                  {/* first column: checkbox or row number */}
-                  {bulkMode ? (
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select ${s.teamName}`}
-                        checked={isChecked}
-                        onChange={() => toggleSelect(s.id)}
-                        className="h-4 w-4"
-                      />
-                    </td>
-                  ) : (
-                    <td className="px-4 py-3 text-neutral-600">{idx + 1}.</td>
-                  )}
-
-                  <td className="px-4 py-3 font-medium text-neutral-800">{s.teamName}</td>
-
-                  {/* Date */}
-                  <td className="px-4 py-3 text-neutral-700">{s.date || "—"}</td>
-
-                  {/* Time */}
-                  <td className="px-4 py-3 text-neutral-700">{fmtTimeRange(s.timeStart, s.timeEnd) || "—"}</td>
-
-                  {/* Panelists */}
-                  <td className="px-4 py-3 text-neutral-700">{s.panelists.length > 0 ? s.panelists.join(", ") : "—"}</td>
-
-                  {/* Verdict */}
-                  <td className="px-4 py-3">
-                    <div className="relative inline-flex items-center">
-                      <select
-                        value={s.verdict || "Pending"}
-                        onChange={(e) => handleChangeVerdict(s.id, e.target.value)}
-                        disabled={bulkMode}
-                        className={`appearance-none pr-8 pl-3 py-1.5 rounded-md border text-sm ${bulkMode ? "opacity-60 cursor-not-allowed" : ""}`}
-                        style={{ borderColor: MAROON, color: "#111827" }}
-                      >
-                        <option>Pending</option>
-                        <option>Passed</option>
-                        <option>Re-Defense</option>
-                        <option>Failed</option>
-                      </select>
-                      <ChevronDown size={16} className="absolute right-2 pointer-events-none text-neutral-500" />
-                    </div>
-                  </td>
-
-                  {/* Row actions */}
-                  <td className="px-2 py-3 relative">
-                    <button
-                      disabled={bulkMode}
-                      className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${bulkMode ? "opacity-40 cursor-not-allowed" : "hover:bg-neutral-100"}`}
-                      onClick={() => setMenuOpenId(menuOpenId === s.id ? null : s.id)}
-                    >
-                      <MoreVertical size={18} />
-                    </button>
-
-                    {!bulkMode && menuOpenId === s.id && (
-                      <div className="absolute right-2 mt-1 z-20 w-40 rounded-md border bg-white shadow">
-                        <button
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
-                          onClick={() => { setViewSchedule(s); setMenuOpenId(null); }}
-                        >
-                          View Team
-                        </button>
-                        <button
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
-                          onClick={() => { setEditSchedule(s); setMenuOpenId(null); }}
-                        >
-                          Edit
-                        </button>
-                      </div>
+              filtered.map((s, idx) => {
+                const isChecked = selected.has(s.id);
+                return (
+                  <tr
+                    key={s.id}
+                    className={idx % 2 ? "bg-neutral-50/60" : "bg-white"}
+                  >
+                    {/* first column: checkbox or row number */}
+                    {bulkMode ? (
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${s.teamName}`}
+                          checked={isChecked}
+                          onChange={() => toggleSelect(s.id)}
+                          className="h-4 w-4"
+                        />
+                      </td>
+                    ) : (
+                      <td className="px-4 py-3 text-neutral-600">{idx + 1}.</td>
                     )}
-                  </td>
-                </tr>
-              );
-            }))}
+
+                    <td className="px-4 py-3 font-medium text-neutral-800">
+                      {s.teamName}
+                    </td>
+
+                    {/* Date */}
+                    <td className="px-4 py-3 text-neutral-700">
+                      {fmtDate(s.date) || "—"}
+                    </td>
+
+                    {/* Time */}
+                    <td className="px-4 py-3 text-neutral-700">
+                      {fmtTimeRange(s.timeStart, s.timeEnd) || "—"}
+                    </td>
+
+                    {/* Panelists */}
+                    <td className="px-4 py-3 text-neutral-700">
+                      {s.panelists.length > 0
+                        ? s.panelists.join(", ")
+                        : "—"}
+                    </td>
+
+                    {/* Verdict */}
+                    <td className="px-4 py-3">
+                      <div className="relative inline-flex items-center">
+                        <select
+                          value={s.verdict || "Pending"}
+                          onChange={(e) =>
+                            handleChangeVerdict(s.id, e.target.value)
+                          }
+                          disabled={bulkMode}
+                          className={`appearance-none pr-8 pl-3 py-1.5 rounded-md border text-sm ${
+                            bulkMode ? "opacity-60 cursor-not-allowed" : ""
+                          }`}
+                          style={{ borderColor: MAROON, color: "#111827" }}
+                        >
+                          <option>Pending</option>
+                          <option>Passed</option>
+                          <option>Re-Defense</option>
+                          <option>Failed</option>
+                        </select>
+                        <ChevronDown
+                          size={16}
+                          className="absolute right-2 pointer-events-none text-neutral-500"
+                        />
+                      </div>
+                    </td>
+
+                    {/* Row actions */}
+                    <td className="px-2 py-3 relative">
+                      <button
+                        disabled={bulkMode}
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${
+                          bulkMode
+                            ? "opacity-40 cursor-not-allowed"
+                            : "hover:bg-neutral-100"
+                        }`}
+                        onClick={() =>
+                          setMenuOpenId(menuOpenId === s.id ? null : s.id)
+                        }
+                      >
+                        <MoreVertical size={18} />
+                      </button>
+
+                      {!bulkMode && menuOpenId === s.id && (
+                        <div className="absolute right-2 mt-1 z-20 w-40 rounded-md border bg-white shadow">
+                          <button
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+                            onClick={() => {
+                              setViewSchedule(s);
+                              setMenuOpenId(null);
+                            }}
+                          >
+                            View Team
+                          </button>
+                          <button
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+                            onClick={() => {
+                              setEditSchedule(s);
+                              setMenuOpenId(null);
+                            }}
+                          >
+                            Edit
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
@@ -566,14 +698,17 @@ function ScheduleDialog({
   const [timeEnd, setTimeEnd] = useState(initial?.timeEnd || "");
 
   const [panelistPick, setPanelistPick] = useState("");
-  const [panelists, setPanelists] = useState(Array.isArray(initial?.panelists) ? initial.panelists : []);
+  const [panelists, setPanelists] = useState(
+    Array.isArray(initial?.panelists) ? initial.panelists : []
+  );
 
   const addPanelist = (name) => {
     if (!name) return;
     if (!panelists.includes(name)) setPanelists((p) => [...p, name]);
     setPanelistPick("");
   };
-  const removePanelist = (name) => setPanelists((p) => p.filter((n) => n !== name));
+  const removePanelist = (name) =>
+    setPanelists((p) => p.filter((n) => n !== name));
 
   const timeIsValid = time && timeEnd && time < timeEnd;
 
@@ -610,12 +745,18 @@ function ScheduleDialog({
         <div className="rounded-2xl bg-white border border-neutral-200 shadow-2xl focus:outline-none p-0">
           {/* header */}
           <div className="px-6 pt-5 pb-3">
-            <div className="flex items-center gap-2 text-[16px] font-semibold" style={{ color: MAROON }}>
+            <div
+              className="flex items-center gap-2 text-[16px] font-semibold"
+              style={{ color: MAROON }}
+            >
               <PlusCircle size={18} />
               Edit Schedule
             </div>
             <div className="mt-3 h-[2px] w-full bg-neutral-200">
-              <div className="h-[2px]" style={{ backgroundColor: MAROON, width: 130 }} />
+              <div
+                className="h-[2px]"
+                style={{ backgroundColor: MAROON, width: 130 }}
+              />
             </div>
           </div>
 
@@ -624,7 +765,9 @@ function ScheduleDialog({
             <div className="grid grid-cols-2 gap-x-10 gap-y-6">
               {/* Assign Team */}
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">Assign Team</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Assign Team
+                </label>
                 <div className="relative">
                   <select
                     value={team}
@@ -641,13 +784,18 @@ function ScheduleDialog({
                         </option>
                       ))}
                   </select>
-                  <ChevronDown size={16} className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none" />
+                  <ChevronDown
+                    size={16}
+                    className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none"
+                  />
                 </div>
               </div>
 
-              {/* Assign Panelists (from users/Adviser) */}
+              {/* Assign Panelists */}
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">Assign Panelists</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Assign Panelists
+                </label>
                 <div className="relative">
                   <select
                     value={panelistPick}
@@ -664,13 +812,18 @@ function ScheduleDialog({
                         </option>
                       ))}
                   </select>
-                  <ChevronDown size={16} className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none" />
+                  <ChevronDown
+                    size={16}
+                    className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none"
+                  />
                 </div>
               </div>
 
               {/* Date */}
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">Date</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Date
+                </label>
                 <div className="relative">
                   <input
                     type="date"
@@ -678,13 +831,18 @@ function ScheduleDialog({
                     onChange={(e) => setDate(e.target.value)}
                     className="w-full pr-10 pl-3 py-2 rounded-md border border-neutral-300 text-sm"
                   />
-                  <Calendar size={16} className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none" />
+                  <Calendar
+                    size={16}
+                    className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none"
+                  />
                 </div>
               </div>
 
               {/* Panelists chips */}
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">Panelists</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Panelists
+                </label>
                 <div className="w-full rounded-md border border-neutral-300 bg-white px-2 py-2 flex flex-wrap gap-2 min-h-[40px]">
                   {panelists.map((p) => (
                     <span
@@ -703,14 +861,18 @@ function ScheduleDialog({
                     </span>
                   ))}
                   {panelists.length === 0 && (
-                    <span className="text-xs text-neutral-400 px-1 py-1">No panelists selected.</span>
+                    <span className="text-xs text-neutral-400 px-1 py-1">
+                      No panelists selected.
+                    </span>
                   )}
                 </div>
               </div>
 
               {/* Time range */}
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">Time</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Time
+                </label>
                 <div className="flex items-center gap-3">
                   <div className="relative flex-1">
                     <input
@@ -719,7 +881,10 @@ function ScheduleDialog({
                       onChange={(e) => setTime(e.target.value)}
                       className="w-full pr-10 pl-3 py-2 rounded-md border border-neutral-300 text-sm"
                     />
-                    <Clock size={16} className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none" />
+                    <Clock
+                      size={16}
+                      className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none"
+                    />
                   </div>
                   <span className="text-neutral-400">—</span>
                   <div className="relative flex-1">
@@ -729,11 +894,16 @@ function ScheduleDialog({
                       onChange={(e) => setTimeEnd(e.target.value)}
                       className="w-full pr-10 pl-3 py-2 rounded-md border border-neutral-300 text-sm"
                     />
-                    <Clock size={16} className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none" />
+                    <Clock
+                      size={16}
+                      className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none"
+                    />
                   </div>
                 </div>
                 {!time || !timeEnd || time < timeEnd ? null : (
-                  <p className="mt-1 text-xs text-red-600">End time must be after start time.</p>
+                  <p className="mt-1 text-xs text-red-600">
+                    End time must be after start time.
+                  </p>
                 )}
               </div>
             </div>
@@ -748,8 +918,12 @@ function ScheduleDialog({
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={(!team || !(time && timeEnd && time < timeEnd))}
-                className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white ${(!team || !(time && timeEnd && time < timeEnd)) ? "opacity-60 cursor-not-allowed" : ""}`}
+                disabled={!team || !(time && timeEnd && time < timeEnd)}
+                className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white ${
+                  !team || !(time && timeEnd && time < timeEnd)
+                    ? "opacity-60 cursor-not-allowed"
+                    : ""
+                }`}
                 style={{ backgroundColor: MAROON }}
               >
                 Save
@@ -780,7 +954,9 @@ function ViewTeamDialog({ schedule, onClose }) {
           if (alive && data) {
             setAdviser(data?.adviser?.fullName || "-");
             setManager(data?.manager?.fullName || "-");
-            setMembers(Array.isArray(data?.memberNames) ? data.memberNames : []);
+            setMembers(
+              Array.isArray(data?.memberNames) ? data.memberNames : []
+            );
           }
         } else {
           setAdviser("-");
@@ -793,7 +969,9 @@ function ViewTeamDialog({ schedule, onClose }) {
         if (alive) setLoading(false);
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [schedule?.teamId]);
 
   return (
@@ -803,12 +981,18 @@ function ViewTeamDialog({ schedule, onClose }) {
         <div className="rounded-2xl bg-white border border-neutral-200 shadow-2xl focus:outline-none p-0">
           {/* header */}
           <div className="px-6 pt-5 pb-3">
-            <div className="flex items-center gap-2 text-[16px] font-semibold" style={{ color: MAROON }}>
+            <div
+              className="flex items-center gap-2 text-[16px] font-semibold"
+              style={{ color: MAROON }}
+            >
               <PlusCircle size={18} />
               View Team
             </div>
             <div className="mt-3 h-[2px] w-full bg-neutral-200">
-              <div className="h-[2px]" style={{ backgroundColor: MAROON, width: 110 }} />
+              <div
+                className="h-[2px]"
+                style={{ backgroundColor: MAROON, width: 110 }}
+              />
             </div>
           </div>
 
@@ -817,7 +1001,9 @@ function ViewTeamDialog({ schedule, onClose }) {
             <div className="grid grid-cols-2 gap-x-10 gap-y-6">
               {/* Team Name */}
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-neutral-700 mb-2">Team</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Team
+                </label>
                 <div className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm">
                   {schedule?.teamName || "-"}
                 </div>
@@ -825,7 +1011,9 @@ function ViewTeamDialog({ schedule, onClose }) {
 
               {/* Adviser */}
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">Adviser</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Adviser
+                </label>
                 <div className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm">
                   {loading ? "Loading…" : adviser}
                 </div>
@@ -833,7 +1021,9 @@ function ViewTeamDialog({ schedule, onClose }) {
 
               {/* Project Manager */}
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">Project Manager</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Project Manager
+                </label>
                 <div className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm">
                   {loading ? "Loading…" : manager}
                 </div>
@@ -841,7 +1031,9 @@ function ViewTeamDialog({ schedule, onClose }) {
 
               {/* Members */}
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-neutral-700 mb-2">Members</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Members
+                </label>
                 <div className="w-full rounded-md border border-neutral-300 bg-white px-3 py-3 text-sm">
                   {loading ? (
                     "Loading…"
@@ -849,7 +1041,9 @@ function ViewTeamDialog({ schedule, onClose }) {
                     <span className="text-neutral-500">No members listed.</span>
                   ) : (
                     <ul className="list-disc ml-5 space-y-1">
-                      {members.map((m, i) => <li key={i}>{m}</li>)}
+                      {members.map((m, i) => (
+                        <li key={i}>{m}</li>
+                      ))}
                     </ul>
                   )}
                 </div>

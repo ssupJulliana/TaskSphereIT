@@ -29,7 +29,9 @@ import {
   where,
 } from "firebase/firestore";
 
-import * as XLSX from 'xlsx';
+/* ===== PDF ===== */
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const MAROON = "#6A0F14";
 
@@ -166,26 +168,25 @@ export default function OralDefense() {
     return () => { alive = false; };
   }, []);
 
-// Button Component (ensure it's either imported or defined here)
-const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props }) => {
-  const base =
-    "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium cursor-pointer " +
-    "focus:outline-none focus:ring-2 focus:ring-neutral-200 " + className;
+  // Button Component
+  const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props }) => {
+    const base =
+      "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium cursor-pointer " +
+      "focus:outline-none focus:ring-2 focus:ring-neutral-200 " + className;
 
-  const cls =
-    variant === "solid"
-      ? base + " text-white"
-      : base + " border border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50";
+    const cls =
+      variant === "solid"
+        ? base + " text-white"
+        : base + " border border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50";
 
-  const style = variant === "solid" ? { backgroundColor: MAROON } : undefined;
-  return (
-    <button {...props} className={cls} style={style}>
-      {Icon && <Icon size={16} />}
-      {children}
-    </button>
-  );
-};
-
+    const style = variant === "solid" ? { backgroundColor: MAROON } : undefined;
+    return (
+      <button {...props} className={cls} style={style}>
+        {Icon && <Icon size={16} />}
+        {children}
+      </button>
+    );
+  };
 
   // Load Schedules
   const loadSchedules = async () => {
@@ -241,37 +242,101 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
     }
   };
 
-  // Export function to generate Excel
-  const handleExportToExcel = () => {
-    // Prepare the data
-    const rows = [
-      ["No", "Team", "Date", "Time", "Panelists", "Verdict"],
-      ...filtered.map((s, idx) => [
-        idx + 1,
-        s.teamName || "",
-        s.date || "",
-        fmtTimeRange(s.timeStart, s.timeEnd) || "",
-        (s.panelists || []).join("; "),
-        s.verdict || "",
-      ]),
-    ];
+  /* ===== PDF export (same header as TD; verdict fits) ===== */
+/* ===== PDF export (fits Verdict column) ===== */
+const handleExportPDF = () => {
+  const title = "Oral Defense Schedule";
+  const doc = new jsPDF({ unit: "pt", format: "a4" }); // portrait A4
+  const pageWidth = doc.internal.pageSize.getWidth();   // 595pt
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginX = 40;                                   // 40pt margins
+  const headerY = 46;
 
-    // Create a worksheet from the data
-    const ws = XLSX.utils.aoa_to_sheet(rows);
+  const drawHeader = () => {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("DOMINICAN COLLEGE OF TARLAC, INC.", pageWidth / 2, headerY, { align: "center" });
+    doc.setFont("helvetica", "normal");
+    doc.text("COLLEGE OF COMPUTER STUDIES", pageWidth / 2, headerY + 16, { align: "center" });
+    doc.setFontSize(10);
+    doc.text(
+      "McArthur Highway, Poblacion (Sto. Rosario), Capas, 2315 Tarlac, Philippines",
+      pageWidth / 2, headerY + 32, { align: "center" }
+    );
+    doc.text(
+      "Institutional Contact Nos.: +63938-918-4093    Website: dct.edu.ph",
+      pageWidth / 2, headerY + 48, { align: "center" }
+    );
+    doc.text(
+      "E-mail: domct_2315@yahoo.com.ph / domct_2315@dct.edu.ph",
+      pageWidth / 2, headerY + 64, { align: "center" }
+    );
 
-    // Create a workbook and add the worksheet
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Oral Defense');
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text(title, pageWidth / 2, headerY + 96, { align: "center" });
 
-    // Download the file as Excel
-    XLSX.writeFile(wb, `oral_defense_schedules_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text(`As of ${new Date().toLocaleDateString()}`, pageWidth / 2, headerY + 112, { align: "center" });
+
+    doc.setDrawColor(180);
+    doc.line(marginX, headerY + 122, pageWidth - marginX, headerY + 122);
   };
 
+  autoTable(doc, {
+    startY: headerY + 134,
+    head: [["NO", "Team", "Date", "Time", "Panelists", "Verdict"]],
+    body: filtered.map((s, i) => [
+      `${i + 1}.`,
+      s.teamName || "",
+      fmtDate(s.date) || "",
+      fmtTimeRange(s.timeStart, s.timeEnd) || "",
+      (s.panelists || []).join(", "),
+      s.verdict || "",
+    ]),
+    // Keep total column widths <= (pageWidth - margins) = 515pt
+    styles: {
+      fontSize: 9,
+      cellPadding: { top: 5, right: 4, bottom: 5, left: 4 },
+      overflow: "linebreak",
+    },
+    headStyles: {
+      fillColor: [245, 245, 245],
+      textColor: 60,
+      lineWidth: 0.4,
+      lineColor: [220, 220, 220],
+      fontStyle: "bold",
+    },
+    bodyStyles: { lineWidth: 0.3, lineColor: [235, 235, 235] },
+    columnStyles: {
+      0: { cellWidth: 35 },              // NO
+      1: { cellWidth: 150 },             // Team
+      2: { cellWidth: 85 },              // Date
+      3: { cellWidth: 95 },              // Time
+      4: { cellWidth: 80 },              // Panelists (wraps if long)
+      5: { cellWidth: 70, halign: "center" }, // Verdict (fits "Re-Defense")
+    },
+    margin: { left: marginX, right: marginX },
+    tableWidth: pageWidth - marginX * 2,
+    didDrawPage: () => {
+      drawHeader();
+      const str = `Page ${doc.internal.getNumberOfPages()}`;
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text(str, pageWidth - marginX, pageHeight - 24, { align: "right" });
+    },
+  });
+
+  const fname = `oral_defense_schedule_${new Date().toISOString().slice(0, 10)}.pdf`;
+  doc.save(fname);
+};
+
+
   // search filter (client-side)
-  // In the useMemo hook, make sure it's using queryText, not query
   const filtered = useMemo(() => {
     const q = queryText.trim().toLowerCase();
-    if (!q) return schedules; // Return all schedules if there's no query
+    if (!q) return schedules;
     return schedules.filter((t) =>
       [
         t.teamName,
@@ -284,7 +349,7 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
         .toLowerCase()
         .includes(q)
     );
-  }, [queryText, schedules]); // Watch for queryText changes here
+  }, [queryText, schedules]);
 
   // Select-all works on the filtered (visible) list
   const allVisibleIds = useMemo(() => filtered.map((s) => s.id), [filtered]);
@@ -319,34 +384,6 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
     }
   };
 
-  // Export CSV of the *filtered* list
-  const handleExport = () => {
-    const rows = [
-      ["Team", "Date", "Time", "Panelists", "Verdict"],
-      ...filtered.map((s) => [
-        s.teamName || "",
-        s.date || "",
-        fmtTimeRange(s.timeStart, s.timeEnd) || "",
-        (s.panelists || []).join("; "),
-        s.verdict || "",
-      ]),
-    ];
-    const csv = rows.map(r =>
-      r.map((cell) => {
-        const v = String(cell ?? "");
-        return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
-      }).join(",")
-    ).join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `oral_defense_schedules_${new Date().toISOString().slice(0,10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   return (
     <div className="">
       <Breadcrumbs />
@@ -354,10 +391,9 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
         <div className="h-[2px]" style={{ backgroundColor: MAROON, width: 260 }} />
       </div>
 
-        
       {/* actions */}
       <div className="mt-6 space-y-4">
-        {/* Row 1: Back + Create + Export (aligned) */}
+        {/* Row 1: Back + Export PDF */}
         <div className="flex items-center gap-3">
           <Btn
             icon={ChevronLeft}
@@ -370,17 +406,19 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
           >
             Back to Schedule
           </Btn>
-          <Btn icon={Download} variant="outline" onClick={handleExportToExcel}>Export</Btn>
+          <Btn icon={Download} variant="outline" onClick={handleExportPDF}>
+            Export PDF
+          </Btn>
         </div>
 
-        {/* Row 2: Search (left) + Delete (right) */}
+        {/* Row 2: Search (left) */}
         <div className="flex items-center justify-between">
           <div className="relative">
             <input
               type="text"
               placeholder="Search"
-              value={queryText} // Update here to bind with queryText
-              onChange={(e) => setQueryText(e.target.value)} // Set queryText here
+              value={queryText}
+              onChange={(e) => setQueryText(e.target.value)}
               className="pl-10 pr-3 py-2 w-72 rounded-md border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-300"
             />
             <Search size={16} className="absolute left-3 top-2.5 text-neutral-400" />
@@ -443,85 +481,88 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
                 <td className="px-4 py-6 text-neutral-500" colSpan={7}>No matches for “{queryText}”.</td>
               </tr>
             ) : (
-            filtered.map((s, idx) => {
-              const isChecked = selected.has(s.id);
-              return (
-                <tr key={s.id} className={idx % 2 ? "bg-neutral-50/60" : "bg-white"}>
-                  {/* first column: checkbox or row number */}
-                  {bulkMode ? (
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select ${s.teamName}`}
-                        checked={isChecked}
-                        onChange={() => toggleSelect(s.id)}
-                        className="h-4 w-4"
-                      />
-                    </td>
-                  ) : (
-                    <td className="px-4 py-3 text-neutral-600">{idx + 1}.</td>
-                  )}
-
-                  <td className="px-4 py-3 font-medium text-neutral-800">{s.teamName}</td>
-
-                  {/* Date */}
-                  <td className="px-4 py-3 text-neutral-700">{s.date || "—"}</td>
-
-                  {/* Time */}
-                  <td className="px-4 py-3 text-neutral-700">{fmtTimeRange(s.timeStart, s.timeEnd) || "—"}</td>
-
-                  {/* Panelists */}
-                  <td className="px-4 py-3 text-neutral-700">{s.panelists.length > 0 ? s.panelists.join(", ") : "—"}</td>
-
-                  {/* Verdict */}
-                  <td className="px-4 py-3">
-                    <div className="relative inline-flex items-center">
-                      <select
-                        value={s.verdict || "Pending"}
-                        onChange={(e) => handleChangeVerdict(s.id, e.target.value)}
-                        disabled={bulkMode}
-                        className={`appearance-none pr-8 pl-3 py-1.5 rounded-md border text-sm ${bulkMode ? "opacity-60 cursor-not-allowed" : ""}`}
-                        style={{ borderColor: MAROON, color: "#111827" }}
-                      >
-                        <option>Pending</option>
-                        <option>Passed</option>
-                        <option>Re-Defense</option>
-                        <option>Failed</option>
-                      </select>
-                      <ChevronDown size={16} className="absolute right-2 pointer-events-none text-neutral-500" />
-                    </div>
-                  </td>
-
-                  {/* Row actions */}
-                  <td className="px-2 py-3 relative">
-                    <button
-                      disabled={bulkMode}
-                      className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${bulkMode ? "opacity-40 cursor-not-allowed" : "hover:bg-neutral-100"}`}
-                      onClick={() => setMenuOpenId(menuOpenId === s.id ? null : s.id)}
-                    >
-                      <MoreVertical size={18} />
-                    </button>
-
-                    {!bulkMode && menuOpenId === s.id && (
-                      <div className="absolute right-2 mt-1 z-20 w-40 rounded-md border bg-white shadow">
-                        <button
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
-                          onClick={() => { setViewSchedule(s); setMenuOpenId(null); }}
-                        >
-                          View Team
-                        </button>
-                        <button
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
-                          onClick={() => { setEditSchedule(s); setMenuOpenId(null); }}
-                        >
-                          Edit
-                        </button>
-                      </div>
+              filtered.map((s, idx) => {
+                const isChecked = selected.has(s.id);
+                return (
+                  <tr key={s.id} className={idx % 2 ? "bg-neutral-50/60" : "bg-white"}>
+                    {/* first column: checkbox or row number */}
+                    {bulkMode ? (
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${s.teamName}`}
+                          checked={isChecked}
+                          onChange={() => toggleSelect(s.id)}
+                          className="h-4 w-4"
+                        />
+                      </td>
+                    ) : (
+                      <td className="px-4 py-3 text-neutral-600">{idx + 1}.</td>
                     )}
-                  </td>
-                </tr>
-              );
-            }))}
+
+                    <td className="px-4 py-3 font-medium text-neutral-800">{s.teamName}</td>
+
+                    {/* Date */}
+                    <td className="px-4 py-3 text-neutral-700">{fmtDate(s.date) || "—"}</td>
+
+                    {/* Time */}
+                    <td className="px-4 py-3 text-neutral-700">{fmtTimeRange(s.timeStart, s.timeEnd) || "—"}</td>
+
+                    {/* Panelists */}
+                    <td className="px-4 py-3 text-neutral-700">
+                      {s.panelists.length > 0 ? s.panelists.join(", ") : "—"}
+                    </td>
+
+                    {/* Verdict */}
+                    <td className="px-4 py-3">
+                      <div className="relative inline-flex items-center">
+                        <select
+                          value={s.verdict || "Pending"}
+                          onChange={(e) => handleChangeVerdict(s.id, e.target.value)}
+                          disabled={bulkMode}
+                          className={`appearance-none pr-8 pl-3 py-1.5 rounded-md border text-sm ${bulkMode ? "opacity-60 cursor-not-allowed" : ""}`}
+                          style={{ borderColor: MAROON, color: "#111827" }}
+                        >
+                          <option>Pending</option>
+                          <option>Passed</option>
+                          <option>Re-Defense</option>
+                          <option>Failed</option>
+                        </select>
+                        <ChevronDown size={16} className="absolute right-2 pointer-events-none text-neutral-500" />
+                      </div>
+                    </td>
+
+                    {/* Row actions */}
+                    <td className="px-2 py-3 relative">
+                      <button
+                        disabled={bulkMode}
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${bulkMode ? "opacity-40 cursor-not-allowed" : "hover:bg-neutral-100"}`}
+                        onClick={() => setMenuOpenId(menuOpenId === s.id ? null : s.id)}
+                      >
+                        <MoreVertical size={18} />
+                      </button>
+
+                      {!bulkMode && menuOpenId === s.id && (
+                        <div className="absolute right-2 mt-1 z-20 w-40 rounded-md border bg-white shadow">
+                          <button
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+                            onClick={() => { setViewSchedule(s); setMenuOpenId(null); }}
+                          >
+                            View Team
+                          </button>
+                          <button
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+                            onClick={() => { setEditSchedule(s); setMenuOpenId(null); }}
+                          >
+                            Edit
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
