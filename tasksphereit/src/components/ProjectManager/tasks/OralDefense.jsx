@@ -61,7 +61,7 @@ const StatusBadge = ({ value, isEditable, onChange }) => {
     Completed: "bg-[#6A0F14] text-white",
   };
 
-  if (!value || value === "null") return <span>null</span>;
+  if (!value || value === "--") return <span>--</span>;
 
   return isEditable ? (
     <select
@@ -83,12 +83,12 @@ const StatusBadge = ({ value, isEditable, onChange }) => {
 };
 
 const RevisionPill = ({ value }) =>
-  value && value !== "null" ? (
+  value && value !== "--" ? (
     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[12px] font-medium bg-neutral-100 border border-neutral-200">
       {value}
     </span>
   ) : (
-    <span>null</span>
+    <span>--</span>
   );
 
 const RevisionSelect = ({ value, onChange, disabled }) => (
@@ -194,6 +194,7 @@ function EditTaskDialog({
   members = [],
   seedMember,
   existingTask,
+  mode,
 }) {
   const [saving, setSaving] = useState(false);
 
@@ -249,46 +250,50 @@ function EditTaskDialog({
   const removeAssignee = (uid) => setAssignees((arr) => arr.filter((a) => a.uid !== uid));
 
   const save = async () => {
-    if (!canSave) return;
-    setSaving(true);
-    try {
-      const team = teams.find((t) => t.id === teamId) || null;
+  if (!canSave) return;
+  setSaving(true);
+  try {
+    const team = teams.find((t) => t.id === teamId) || null;
 
-      const payload = {
-        methodology,
-        phase,
-        type,
-        task,
-        // PM cannot edit due/time in dialog
-        dueDate: existingTask ? (existingTask.dueDate ?? null) : null,
-        dueTime: existingTask ? (existingTask.dueTime ?? null) : null,
-        dueAtMs: existingTask ? (existingTask.dueAtMs ?? null) : null,
-        status: existingTask?.status || "To Do",
-        revision: existingTask?.revision || "No Revision", // Fixed revision
-        assignees: assignees.map((a) => ({ uid: a.uid, name: a.name })),
-        team: team ? { id: team.id, name: team.name } : null,
-        comment: comment || "",
-        createdBy: pm ? { uid: pm.uid, name: pm.name, role: "Project Manager" } : null,
-      };
+    // Determine taskManager based on the current mode
+    const taskManager = mode === "adviser" ? "Adviser" : "Project Manager";
 
-      if (existingTask?.id) {
-        await updateDoc(doc(db, TASKS_COLLECTION, existingTask.id), {
-          ...payload,
-          updatedAt: serverTimestamp(),
-        });
-      } else {
-        await addDoc(collection(db, TASKS_COLLECTION), {
-          ...payload,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      }
-      onSaved?.();
-      onClose();
-    } finally {
-      setSaving(false);
+    const payload = {
+      methodology,
+      phase,
+      type,
+      task,
+      // PM cannot edit due/time in dialog
+      dueDate: existingTask ? (existingTask.dueDate ?? null) : null,
+      dueTime: existingTask ? (existingTask.dueTime ?? null) : null,
+      dueAtMs: existingTask ? (existingTask.dueAtMs ?? null) : null,
+      status: existingTask?.status || "To Do",
+      revision: existingTask?.revision || "No Revision", // Fixed revision
+      assignees: assignees.map((a) => ({ uid: a.uid, name: a.name })),
+      team: team ? { id: team.id, name: team.name } : null,
+      comment: comment || "",
+      createdBy: pm ? { uid: pm.uid, name: pm.name, role: "Project Manager" } : null,
+      taskManager, // This will now be "Adviser" or "Project Manager" based on mode
+    };
+
+    if (existingTask?.id) {
+      await updateDoc(doc(db, TASKS_COLLECTION, existingTask.id), {
+        ...payload,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await addDoc(collection(db, TASKS_COLLECTION), {
+        ...payload,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
     }
-  };
+    onSaved?.();
+    onClose();
+  } finally {
+    setSaving(false);
+  }
+};
 
   if (!open) return null;
 
@@ -631,117 +636,124 @@ const OralDefense = ({ onBack }) => {
   }, [pmUid]);
 
   /* Tasks created by this PM (live) — client-side sort by updatedAt/createdAt */
-  useEffect(() => {
-    if (!pmUid) return;
-    const qRef = query(collection(db, TASKS_COLLECTION), where("createdBy.uid", "==", pmUid));
-    const unsub = onSnapshot(qRef, (snap) => {
-      const list = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => {
-          const aTs = a?.updatedAt?.toDate?.() ?? a?.createdAt?.toDate?.() ?? 0;
-          const bTs = b?.updatedAt?.toDate?.() ?? b?.createdAt?.toDate?.() ?? 0;
-          return bTs - aTs;
-        });
-
-      setTasks(list);
-      setSelected(new Set());
-      setPage(1);
-
-      setOptimistic((prev) => {
-        const next = { ...prev };
-        const memberWithTask = new Set();
-        for (const d of snap.docs) {
-          const data = d.data();
-          (data.assignees || []).forEach((a) => {
-            if (a?.uid) memberWithTask.add(a.uid);
-          });
-        }
-        for (const k of Object.keys(next)) {
-          if (memberWithTask.has(k)) delete next[k];
-        }
-        return next;
+  /* Tasks created by this PM (live) — client-side sort by updatedAt/createdAt */
+useEffect(() => {
+  if (!pmUid) return;
+  const qRef = query(collection(db, TASKS_COLLECTION), where("createdBy.uid", "==", pmUid));
+  const unsub = onSnapshot(qRef, (snap) => {
+    const list = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => {
+        const aTs = a?.updatedAt?.toDate?.() ?? a?.createdAt?.toDate?.() ?? 0;
+        const bTs = b?.updatedAt?.toDate?.() ?? b?.createdAt?.toDate?.() ?? 0;
+        return bTs - aTs;
       });
-    });
-    return () => unsub && unsub();
-  }, [pmUid]);
 
-  /* ---------- Rows for Team tab (per-member) ---------- */
-  const rows = useMemo(() => {
-    const out = [];
-    const seenMemberUids = new Set();
+    setTasks(list);
+    setSelected(new Set());
+    setPage(1);
 
-    for (const t of tasks) {
-      const assignees = t.assignees && t.assignees.length ? t.assignees : [{ uid: "", name: "Team" }];
-      assignees.forEach((a, idx) => {
-        if (a.uid) seenMemberUids.add(a.uid);
-        out.push({
-          key: `${t.id}:${a.uid || idx}`,
-          taskId: t.id,
-          memberUid: a.uid || "",
-          memberName: a.name || "Team",
-          methodology: t?.methodology || "null",
-          phase: t?.phase || "null",
-          type: t?.type || "null",
-          task: t?.task || "null",
-          created: t?.createdAt?.toDate?.()?.toLocaleDateString?.() || "null",
-          due: t?.dueDate || "null",
-          time: t?.dueTime || "null",
-          revision: t?.revision || "No Revision",
-          status: t?.status || "To Do",
-          existingTask: t,
-          teamId: t?.team?.id || null,
-          teamName: t?.team?.name || "No Team",
-        });
-      });
-    }
-
-    members.forEach((m, idx) => {
-      if (!seenMemberUids.has(m.uid)) {
-        out.push({
-          key: `placeholder:${m.uid || idx}`,
-          taskId: null,
-          memberUid: m.uid,
-          memberName: m.name,
-          methodology: "null",
-          phase: "null",
-          type: "null",
-          task: "null",
-          created: "null",
-          due: "null",
-          time: "null",
-          revision: "null",
-          status: "null",
-          existingTask: null,
-          teamId: teams[0]?.id ?? null,
-          teamName: teams[0]?.name ?? "No Team",
+    setOptimistic((prev) => {
+      const next = { ...prev };
+      const memberWithTask = new Set();
+      for (const d of snap.docs) {
+        const data = d.data();
+        (data.assignees || []).forEach((a) => {
+          if (a?.uid) memberWithTask.add(a.uid);
         });
       }
+      for (const k of Object.keys(next)) {
+        if (memberWithTask.has(k)) delete next[k];
+      }
+      return next;
     });
+  });
+  return () => unsub && unsub();
+}, [pmUid]);
 
-    return out;
-  }, [tasks, members, teams]);
+  /* ---------- Rows for Team tab (per-member) ---------- */
+const rows = useMemo(() => {
+  const out = [];
+  const seenMemberUids = new Set();
+
+  // Filter tasks for Team tab (only Project Manager tasks)
+  const teamTasks = tasks.filter(t => t.taskManager === "Project Manager");
+
+  for (const t of teamTasks) {
+    const assignees = t.assignees && t.assignees.length ? t.assignees : [{ uid: "", name: "Team" }];
+    assignees.forEach((a, idx) => {
+      if (a.uid) seenMemberUids.add(a.uid);
+      out.push({
+        key: `${t.id}:${a.uid || idx}`,
+        taskId: t.id,
+        memberUid: a.uid || "",
+        memberName: a.name || "Team",
+        methodology: t?.methodology || "--",
+        phase: t?.phase || "--",
+        type: t?.type || "--",
+        task: t?.task || "--",
+        created: t?.createdAt?.toDate?.()?.toLocaleDateString?.() || "--",
+        due: t?.dueDate || "--",
+        time: t?.dueTime || "--",
+        revision: t?.revision || "No Revision",
+        status: t?.status || "To Do",
+        existingTask: t,
+        teamId: t?.team?.id || null,
+        teamName: t?.team?.name || "No Team",
+      });
+    });
+  }
+
+  members.forEach((m, idx) => {
+    if (!seenMemberUids.has(m.uid)) {
+      out.push({
+        key: `placeholder:${m.uid || idx}`,
+        taskId: null,
+        memberUid: m.uid,
+        memberName: m.name,
+        methodology: "--",
+        phase: "--",
+        type: "--",
+        task: "--",
+        created: "--",
+        due: "--",
+        time: "--",
+        revision: "--",
+        status: "--",
+        existingTask: null,
+        teamId: teams[0]?.id ?? null,
+        teamName: teams[0]?.name ?? "No Team",
+      });
+    }
+  });
+
+  return out;
+}, [tasks, members, teams]);
 
   /* ---------- Rows for Adviser tab (group by team, one row per task) ---------- */
-  const adviserRows = useMemo(() => {
-    return tasks.map((t, idx) => ({
-      key: t.id,
-      taskId: t.id,
-      memberUid: "", // team-level
-      memberName: "Team", // show as team-level task
-      methodology: t?.methodology || "null",
-      phase: t?.phase || "null",
-      type: t?.type || "null",
-      task: t?.task || "null",
-      created: t?.createdAt?.toDate?.()?.toLocaleDateString?.() || "null",
-      due: t?.dueDate || "null",
-      time: t?.dueTime || "null",
-      revision: t?.revision || "No Revision",
-      status: t?.status || "To Do",
-      existingTask: t,
-      teamId: t?.team?.id || `no-team-${idx}`,
-      teamName: t?.team?.name || "No Team",
-    }));
-  }, [tasks]);
+const adviserRows = useMemo(() => {
+  // Filter tasks for Adviser tab (only Adviser tasks)
+  const adviserTasks = tasks.filter(t => t.taskManager === "Adviser");
+  
+  return adviserTasks.map((t, idx) => ({
+    key: t.id,
+    taskId: t.id,
+    memberUid: "", // team-level
+    memberName: "Team", // show as team-level task
+    methodology: t?.methodology || "--",
+    phase: t?.phase || "--",
+    type: t?.type || "--",
+    task: t?.task || "--",
+    created: t?.createdAt?.toDate?.()?.toLocaleDateString?.() || "--",
+    due: t?.dueDate || "--",
+    time: t?.dueTime || "--",
+    revision: t?.revision || "No Revision",
+    status: t?.status || "To Do",
+    existingTask: t,
+    teamId: t?.team?.id || `no-team-${idx}`,
+    teamName: t?.team?.name || "No Team",
+  }));
+}, [tasks]);
 
   /* Search + paging (different bases per tab) */
   const [qLocal, setQLocal] = useState("");
@@ -792,19 +804,19 @@ const OralDefense = ({ onBack }) => {
   };
 
   const startEdit = (row, field) => {
-    if (!canEdit) return;
-    // In Team tab, ALL visible columns are editable (including due/time).
-    const editingDueOrTime = field === "due" || field === "time";
-    if (!isTeam && editingDueOrTime) return; // lock due/time when not in Team tab
+  if (!canEdit) return;
+  // In Team tab, ALL visible columns are editable (including due/time).
+  const editingDueOrTime = field === "due" || field === "time";
+  if (!isTeam && editingDueOrTime) return; // lock due/time when not in Team tab
 
-    if (!isTeam) {
-      // enforce chain only outside Team tab
-      if (field === "phase" && row.methodology === "null") return;
-      if (field === "type" && (row.methodology === "null" || row.phase === "null")) return;
-      if (field === "task" && row.type === "null") return;
-    }
-    setEditingCell({ key: row.key, field });
-  };
+  if (!isTeam) {
+    // enforce chain only outside Team tab
+    if (field === "phase" && (row.methodology === "--" || row.methodology === "null")) return;
+    if (field === "type" && (row.methodology === "--" || row.methodology === "null" || row.phase === "--" || row.phase === "null")) return;
+    if (field === "task" && (row.type === "--" || row.type === "null")) return;
+  }
+  setEditingCell({ key: row.key, field });
+};
   const stopEdit = () => setEditingCell(null);
 
   const saveMethodology = async (row, newMethod) => {
@@ -1028,12 +1040,11 @@ const OralDefense = ({ onBack }) => {
                     {g.rows.map((r, idx) => {
                       const isEditing = (field) => editingCell?.key === r.key && editingCell?.field === field;
 
-                      const typeOptions = r.methodology !== "null" ? ["Documentation", "Discussion & Review"] : [];
-                      const taskOptions =
-                        r.methodology !== "null" && r.type !== "null" ? TASK_SEEDS[r.methodology]?.[r.type] || [] : [];
+                      const typeOptions = (r.methodology !== "--" && r.methodology !== "null") ? ["Documentation", "Discussion & Review"] : [];
+                      const taskOptions = (r.methodology !== "--" && r.methodology !== "null" && r.type !== "--" && r.type !== "null") ? TASK_SEEDS[r.methodology]?.[r.type] || [] : [];
 
-                      const canEditType = canEdit && (isTeam || (r.methodology !== "null" && r.phase !== "null"));
-                      const canEditTask = canEdit && (isTeam || r.type !== "null");
+                      const canEditType = canEdit && (isTeam || (r.methodology !== "--" && r.methodology !== "null" && r.phase !== "--" && r.phase !== "null"));
+                      const canEditTask = canEdit && (isTeam || (r.type !== "--" && r.type !== "null"));
 
                       return (
                         <tr key={r.key} className="border-t border-neutral-200">
@@ -1063,7 +1074,7 @@ const OralDefense = ({ onBack }) => {
                               <select
                                 autoFocus
                                 className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
-                                defaultValue={r.type === "null" ? "" : r.type}
+                                defaultValue={(r.type === "--" || r.type === "null") ? "" : r.type}
                                 onBlur={(e) => {
                                   updateTaskRow(r, { type: e.target.value || null, task: null });
                                   stopEdit();
@@ -1250,7 +1261,7 @@ const OralDefense = ({ onBack }) => {
                           <select
                             autoFocus
                             className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
-                            defaultValue={r.type === "null" ? "" : r.type}
+                            defaultValue={(r.type === "--" || r.type === "null") ? "" : r.type}
                             onBlur={(e) => {
                               updateTaskRow(r, { type: e.target.value || null, task: null });
                               stopEdit();
@@ -1489,6 +1500,7 @@ const OralDefense = ({ onBack }) => {
         members={members}
         seedMember={editingModal?.seedMember || null}
         existingTask={editingModal?.existingTask || null}
+        mode={mode} // Add this line to pass the current mode
       />
     </div>
   );
