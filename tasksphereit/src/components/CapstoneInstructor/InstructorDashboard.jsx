@@ -1,81 +1,108 @@
 // src/components/CapstoneInstructor/InstructorDashboard.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { Calendar, Clock, Users, MoreVertical } from "lucide-react";
+import { Calendar, Clock, Users } from "lucide-react";
 
 /* ==== Firestore ==== */
 import { db } from "../../config/firebase";
 import { collection, getDocs } from "firebase/firestore";
 
-console.log("[Dash] Firebase app:", db.app?.name || "(unknown)");
-
 const MAROON = "#6A0F14";
-const MAROON_DARK = "#4a0a0d";
 
-/* -------------------- Small UI helpers -------------------- */
+/* ----------------------------- UI Pieces (match sample) ----------------------------- */
 const Card = ({ className = "", children }) => (
-  <div
-    className={
-      "rounded-xl border border-neutral-200 bg-white shadow-[0_6px_18px_rgba(0,0,0,0.05)] " +
-      className
-    }
-  >
+  <div className={"bg-white border border-neutral-200 rounded-xl shadow-sm " + className}>
     {children}
   </div>
 );
 
-const Badge = ({ children, tone = "maroon" }) => {
-  const map = {
-    maroon: "bg-[#6A0F14] text-white",
-    soft: "bg-neutral-100 text-neutral-600",
-  };
+function UpcomingCard({ item }) {
   return (
-    <span
-      className={
-        "inline-flex items-center rounded-md px-2 py-[2px] text-xs font-medium " +
-        map[tone]
-      }
-    >
-      {children}
-    </span>
-  );
-};
-
-const Donut = ({ value = 0 }) => {
-  const clamped = Math.max(0, Math.min(100, value));
-  const ring = `conic-gradient(${MAROON} ${clamped * 3.6}deg, #eee 0deg)`;
-  return (
-    <div className="relative h-20 w-20 rounded-full" style={{ background: ring }}>
-      <div className="absolute inset-2 rounded-full bg-white grid place-items-center">
-        <span className="text-sm font-semibold" style={{ color: MAROON }}>
-          {clamped}%
-        </span>
+    <div className="w-[280px] bg-white border border-neutral-200 rounded-xl shadow-sm overflow-hidden">
+      <div
+        className="px-3 py-2 text-white text-sm font-semibold flex items-center gap-2"
+        style={{ backgroundColor: item.color }}
+      >
+        <Users className="w-4 h-4" />
+        {item.team || "—"}
+      </div>
+      <div className="p-3 text-sm">
+        <div className="text-neutral-800">{item.task}</div>
+        <div className="mt-2 text-neutral-600">{item.date}</div>
+        <div className="text-neutral-600">{item.time}</div>
       </div>
     </div>
   );
-};
-
-/* -------------------- Calendar generator -------------------- */
-function getMonthMatrix(today = new Date()) {
-  const y = today.getFullYear();
-  const m = today.getMonth(); // 0-based
-  const first = new Date(y, m, 1);
-  const startDay = (first.getDay() + 6) % 7; // make Monday=0
-  const daysInMonth = new Date(y, m + 1, 0).getDate();
-
-  const cells = [];
-  for (let i = 0; i < startDay; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(y, m, d));
-
-  while (cells.length % 7 !== 0) cells.push(null);
-
-  const weeks = [];
-  for (let i = 0; i < cells.length; i += 7) {
-    weeks.push(cells.slice(i, i + 7));
-  }
-  return weeks;
 }
 
-/* -------------------- Date/Time helpers -------------------- */
+function Donut({ percent }) {
+  const size = 120;
+  const stroke = 14;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const dash = (Math.max(0, Math.min(100, percent)) / 100) * c;
+
+  return (
+    <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#EEE" strokeWidth={stroke} />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke={MAROON}
+        strokeWidth={stroke}
+        strokeDasharray={`${dash} ${c - dash}`}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+      <text
+        x="50%"
+        y="50%"
+        dominantBaseline="middle"
+        textAnchor="middle"
+        className="fill-neutral-800"
+        style={{ fontSize: 20, fontWeight: 700 }}
+      >
+        {Math.round(Math.max(0, Math.min(100, percent)))}%
+      </text>
+    </svg>
+  );
+}
+
+function ProgressCard({ team, percent }) {
+  return (
+    <div className="w-[260px] bg-white border border-neutral-200 rounded-xl shadow-sm">
+      <div className="px-3 py-2 text-sm font-semibold flex items-center gap-2">
+        <Users className="w-4 h-4" />
+        {team}
+      </div>
+      <div className="grid place-items-center p-3">
+        <Donut percent={percent} />
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  const styles = React.useMemo(() => {
+    switch ((status || "").toLowerCase()) {
+      case "in progress":
+        return "bg-[#7C9C3B] text-white";
+      case "to review":
+        return "bg-[#6FA8DC] text-white";
+      case "to do":
+      default:
+        return "bg-[#D9A81E] text-white";
+    }
+  }, [status]);
+  return (
+    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs ${styles}`}>
+      {status || "Pending"}
+    </span>
+  );
+}
+
+/* ----------------------------- Helpers ----------------------------- */
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 function toDateObj(yyyy_mm_dd, hhmm = "00:00") {
@@ -83,9 +110,8 @@ function toDateObj(yyyy_mm_dd, hhmm = "00:00") {
   const [y, m, d] = yyyy_mm_dd.split("-").map(Number);
   const [H, M] = (hhmm || "00:00").split(":").map(Number);
   if (!y || !m || !d) return null;
-  return new Date(y, (m || 1) - 1, d || 1, H || 0, M || 0, 0, 0);
+  return new Date(y, (m || 1) - 1, d || 1, H || 0, M || 0, 0);
 }
-
 function fmtDate(yyyy_mm_dd) {
   if (!yyyy_mm_dd) return "";
   const [y, m, d] = yyyy_mm_dd.split("-").map(Number);
@@ -114,7 +140,25 @@ function fmtDateTimeHuman(d) {
   });
 }
 
-/* -------------------- Page -------------------- */
+/* ----------------------------- Calendar ----------------------------- */
+function getMonthMatrix(today = new Date()) {
+  const y = today.getFullYear();
+  const m = today.getMonth();
+  const first = new Date(y, m, 1);
+  const startDay = (first.getDay() + 6) % 7; // Monday=0
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+
+  const cells = [];
+  for (let i = 0; i < startDay; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(y, m, d));
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const weeks = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  return weeks;
+}
+
+/* ----------------------------- Page ----------------------------- */
 export default function InstructorDashboard() {
   const today = new Date();
   const monthWeeks = useMemo(() => getMonthMatrix(today), [today]);
@@ -128,25 +172,18 @@ export default function InstructorDashboard() {
   const [loadingRecent, setLoadingRecent] = useState(true);
   const [recentCreated, setRecentCreated] = useState([]);
 
-  // Advisers + progress data (dynamic)
-  const [loadingAdvisers, setLoadingAdvisers] = useState(true);
-  const [advisersData, setAdvisersData] = useState([]); // [{name, teams:[{id,name,progress}]}]
+  // Teams’ progress
+  const [loadingProgress, setLoadingProgress] = useState(true);
+  const [teamsProgress, setTeamsProgress] = useState([]); // [{team, percent}]
 
   useEffect(() => {
     let alive = true;
     (async () => {
       setLoadingUpcoming(true);
       setLoadingRecent(true);
-      setLoadingAdvisers(true);
+      setLoadingProgress(true);
       try {
-        // Pull all needed data in parallel
-        const [
-          titleSnap,
-          oralSnap,
-          finalSnap,
-          manusSnap,
-          teamsSnap,
-        ] = await Promise.all([
+        const [titleSnap, oralSnap, finalSnap, manusSnap, teamsSnap] = await Promise.all([
           getDocs(collection(db, "titleDefenseSchedules")),
           getDocs(collection(db, "oralDefenseSchedules")),
           getDocs(collection(db, "finalDefenseSchedules")),
@@ -154,7 +191,6 @@ export default function InstructorDashboard() {
           getDocs(collection(db, "teams")),
         ]);
 
-        /* ---------------- Normalize helpers ---------------- */
         const normalizeSched = (snap, tagLabel, opts = {}) => {
           const {
             useSingleTimeField = false,
@@ -205,7 +241,7 @@ export default function InstructorDashboard() {
           singleTimeFieldName: "time",
         });
 
-        /* ---------------- UPCOMING (nearest per team) ---------------- */
+        // ---------- UPCOMING (nearest per team) ----------
         const now = new Date();
         const futureOnly = [...titleRows, ...oralRows, ...finalRows, ...manusRows].filter(
           (r) => r.when && r.when >= now
@@ -219,7 +255,7 @@ export default function InstructorDashboard() {
         const resultUpcoming = Array.from(byTeamUpcoming.values()).sort((a, b) => a.when - b.when);
         if (alive) setUpcomingPerTeam(resultUpcoming);
 
-        /* ---------------- RECENT ACTIVITY CREATED ---------------- */
+        // ---------- RECENT (last 10) ----------
         const allRows = [...titleRows, ...oralRows, ...finalRows, ...manusRows];
         const recentList = allRows
           .map((r) => {
@@ -232,21 +268,8 @@ export default function InstructorDashboard() {
           .slice(0, 10);
         if (alive) setRecentCreated(recentList);
 
-        /* ---------------- TEAMS’ PROGRESS (dynamic) ---------------- */
-        // Teams with adviser grouped => compute progress per team:
-        // Progress = (# of schedule types PASSED) * 25
-        // A type is done if ANY doc for that team has verdict === "Passed"
-        const teamMeta = [];
-        teamsSnap.forEach((docX) => {
-          const data = docX.data() || {};
-          teamMeta.push({
-            id: docX.id,
-            name: (data.name || "").toString().trim(),
-            adviser: (data.adviser?.fullName || "-").toString().trim() || "-",
-          });
-        });
-
-        // Build quick lookup for "has passed" per type per teamKey
+        // ---------- TEAMS’ PROGRESS (0–100%) ----------
+        // Progress rule: each passed type (Title / Manuscript / Oral / Final) = +25
         const hasPassed = (rows, teamKey) =>
           rows.some(
             (r) =>
@@ -255,47 +278,36 @@ export default function InstructorDashboard() {
               r.status.toLowerCase() === "passed"
           );
 
-        const makeTeamProgress = (team) => {
-          const key = team.id || team.name;
-          const passedTitle = hasPassed(titleRows, key);
-          const passedOral  = hasPassed(oralRows, key);
-          const passedFinal = hasPassed(finalRows, key);
-          const passedManus = hasPassed(manusRows, key);
+        const progressList = [];
+        teamsSnap.forEach((docX) => {
+          const data = docX.data() || {};
+          const teamName = (data.name || "").toString().trim();
+          const teamKey = docX.id || teamName;
 
-          const count = [passedTitle, passedManus, passedOral, passedFinal].filter(Boolean).length;
-          return count * 25; // 0, 25, 50, 75, 100
-        };
+          const pts =
+            (hasPassed(titleRows, teamKey) ? 1 : 0) +
+            (hasPassed(manusRows, teamKey) ? 1 : 0) +
+            (hasPassed(oralRows,  teamKey) ? 1 : 0) +
+            (hasPassed(finalRows, teamKey) ? 1 : 0);
 
-        // Group by adviser
-        const buckets = new Map(); // adviserName -> {name, teams:[{id,name,progress}]}
-        for (const t of teamMeta) {
-          const prog = makeTeamProgress(t);
-          const entry = buckets.get(t.adviser) || { name: t.adviser, teams: [] };
-          entry.teams.push({ id: t.id, name: t.name, progress: prog });
-          buckets.set(t.adviser, entry);
-        }
+          progressList.push({ team: teamName, percent: pts * 25 });
+        });
 
-        // Sort advisers alpha; sort each adviser’s teams alpha
-        const advisersArr = Array.from(buckets.values())
-          .sort((a, b) => a.name.localeCompare(b.name))
-          .map((a) => ({
-            ...a,
-            teams: a.teams.sort((x, y) => x.name.localeCompare(y.name)),
-          }));
-
-        if (alive) setAdvisersData(advisersArr);
+        // Sort by team name for stable UI
+        progressList.sort((a, b) => a.team.localeCompare(b.team));
+        if (alive) setTeamsProgress(progressList);
       } catch (e) {
         console.error("Failed to load dashboard data:", e);
         if (alive) {
           setUpcomingPerTeam([]);
           setRecentCreated([]);
-          setAdvisersData([]);
+          setTeamsProgress([]);
         }
       } finally {
         if (alive) {
           setLoadingUpcoming(false);
           setLoadingRecent(false);
-          setLoadingAdvisers(false);
+          setLoadingProgress(false);
         }
       }
     })();
@@ -304,177 +316,150 @@ export default function InstructorDashboard() {
     };
   }, []);
 
+  // map activity type -> header color (same idea as sample’s colored headers)
+  const TAG_COLORS = {
+    "Title Defense": "#D9A81E",
+    "Manuscript Submission": "#6FA8DC",
+    "Oral Defense": "#7C9C3B",
+    "Final Defense": "#9E9E9E",
+  };
+
   return (
-    <div className="p-6">
-      {/* ---------- UPCOMING ACTIVITY ---------- */}
-      <h2 className="text-[18px] font-semibold tracking-wide" style={{ color: MAROON }}>
-        UPCOMING ACTIVITY
-      </h2>
+    <div className="space-y-8">
+      {/* UPCOMING TASKS (uniform header & card style) */}
+      <section className="space-y-3">
+        <h3 className="text-xl font-extrabold tracking-wide" style={{ color: MAROON }}>
+          UPCOMING TASKS
+        </h3>
 
-      {loadingUpcoming ? (
-        <div className="mt-3 text-sm text-neutral-500">Loading upcoming activities…</div>
-      ) : upcomingPerTeam.length === 0 ? (
-        <div className="mt-3 text-sm text-neutral-500">No upcoming activities.</div>
-      ) : (
-        <div className="mt-3 flex flex-wrap gap-4">
-          {upcomingPerTeam.map((u) => (
-            <Card key={`${u.tag}-${u.id}`} className="w-[300px]">
-              <div
-                className="rounded-t-xl px-3 py-2 text-white text-sm font-semibold"
-                style={{ backgroundColor: MAROON }}
-              >
-                {u.tag}
-              </div>
-              <div className="px-4 py-3">
-                <div className="flex items-center gap-2 text-[15px] font-medium text-neutral-800">
-                  <Users size={16} className="text-neutral-500" />
-                  {u.team || "—"}
-                </div>
-                <div className="mt-2 flex items-center gap-2 text-neutral-700">
-                  <Calendar size={16} className="text-neutral-500" />
-                  {fmtDate(u.date)}
-                </div>
-                <div className="mt-1 flex items-center gap-2 text-neutral-700">
-                  <Clock size={16} className="text-neutral-500" />
-                  {fmtTimeRange(u.timeStart, u.timeEnd)}
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
+        {loadingUpcoming ? (
+          <div className="text-sm text-neutral-500">Loading upcoming tasks…</div>
+        ) : upcomingPerTeam.length === 0 ? (
+          <div className="text-sm text-neutral-500">No upcoming tasks.</div>
+        ) : (
+          <div className="flex flex-wrap gap-4">
+            {upcomingPerTeam.map((u) => (
+              <UpcomingCard
+                key={`${u.tag}-${u.id}`}
+                item={{
+                  team: u.team,
+                  task: u.tag,
+                  date: fmtDate(u.date),
+                  time: fmtTimeRange(u.timeStart, u.timeEnd),
+                  color: TAG_COLORS[u.tag] || MAROON,
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
-      {/* ---------- TEAMS’ PROGRESS (dynamic from Firestore) ---------- */}
-      <h2 className="mt-8 text-[18px] font-semibold tracking-wide" style={{ color: MAROON }}>
-        TEAMS’ PROGRESS
-      </h2>
+      {/* TEAMS’ PROGRESS (uniform donut + card) */}
+      <section className="space-y-3">
+        <h3 className="text-xl font-extrabold tracking-wide" style={{ color: MAROON }}>
+          TEAMS’ PROGRESS
+        </h3>
 
-      {loadingAdvisers ? (
-        <div className="mt-3 text-sm text-neutral-500">Loading advisers and progress…</div>
-      ) : advisersData.length === 0 ? (
-        <div className="mt-3 text-sm text-neutral-500">No advisers/teams found.</div>
-      ) : (
-        <div className="mt-3 grid md:grid-cols-2 gap-5">
-          {advisersData.map((a) => (
-            <Card key={a.name} className="p-0">
-              <div className="px-4 pt-3 pb-2">
-                <div className="inline-flex items-center gap-2 text-sm font-medium text-neutral-700">
-                  <Users size={16} className="text-neutral-500" />
-                  {a.name}
-                </div>
-                <div className="mt-2 h-[2px] w-full bg-neutral-200">
-                  <div className="h-[2px]" style={{ backgroundColor: MAROON, width: 180 }} />
-                </div>
-              </div>
+        {loadingProgress ? (
+          <div className="text-sm text-neutral-500">Loading progress…</div>
+        ) : teamsProgress.length === 0 ? (
+          <div className="text-sm text-neutral-500">No teams found.</div>
+        ) : (
+          <div className="flex flex-wrap gap-4">
+            {teamsProgress.map((t) => (
+              <ProgressCard key={t.team} team={t.team} percent={t.percent} />
+            ))}
+          </div>
+        )}
+      </section>
 
-              <div className="px-4 pb-4 grid grid-cols-3 gap-4">
-                {a.teams.map((t) => (
-                  <div key={t.id} className="flex flex-col items-center gap-2">
-                    <div className="text-sm font-medium text-neutral-800 text-center">
-                      {t.name}
-                    </div>
-                    <Donut value={t.progress} />
-                  </div>
-                ))}
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
+      {/* RECENT TASKS CREATED (uniform table look) */}
+      <section className="space-y-3">
+        <h3 className="text-xl font-extrabold tracking-wide" style={{ color: MAROON }}>
+          RECENT TASKS CREATED
+        </h3>
 
-      {/* ---------- RECENT ACTIVITY CREATED ---------- */}
-      <h2 className="mt-8 text-[18px] font-semibold tracking-wide" style={{ color: MAROON }}>
-        RECENT ACTIVITY CREATED
-      </h2>
-
-      <Card className="mt-3 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-neutral-50 text-neutral-600">
-            <tr>
-              <th className="text-left px-4 py-3 w-16">NO</th>
-              <th className="text-left px-4 py-3">Activity</th>
-              <th className="text-left px-4 py-3">Team</th>
-              <th className="text-left px-4 py-3">Date Created</th>
-              <th className="text-left px-4 py-3">Date</th>
-              <th className="text-left px-4 py-3">Time</th>
-              <th className="text-left px-4 py-3">Status</th>
-              <th className="text-left px-4 py-3 w-12">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loadingRecent ? (
-              <tr>
-                <td className="px-4 py-3 text-neutral-600" colSpan={8}>
-                  Loading…
-                </td>
-              </tr>
-            ) : recentCreated.length === 0 ? (
-              <tr>
-                <td className="px-4 py-3 text-neutral-600" colSpan={8}>
-                  No recent activity.
-                </td>
-              </tr>
-            ) : (
-              recentCreated.map((r, idx) => (
-                <tr key={`${r.tag}-${r.id}`} className={idx % 2 ? "bg-neutral-50/60" : "bg-white"}>
-                  <td className="px-4 py-3 text-neutral-600">{idx + 1}.</td>
-                  <td className="px-4 py-3 font-medium text-neutral-800">{r.tag}</td>
-                  <td className="px-4 py-3 text-neutral-800">{r.team || "—"}</td>
-                  <td className="px-4 py-3 text-neutral-700">
-                    {r.createdAt ? fmtDateTimeHuman(r.createdAt) : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-neutral-700">{fmtDate(r.date)}</td>
-                  <td className="px-4 py-3 text-neutral-700">{r.timeText}</td>
-                  <td className="px-4 py-3">
-                    <Badge tone="soft">{r.status || "Pending"}</Badge>
-                  </td>
-                  <td className="px-2 py-3">
-                    <button className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-neutral-100 cursor-pointer">
-                      <MoreVertical size={18} />
-                    </button>
-                  </td>
+        <div className="bg-white border border-neutral-200 rounded-2xl shadow overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-neutral-500">
+                  <th className="py-3 pl-6 pr-3 w-16">No</th>
+                  <th className="py-3 pr-3">Activity</th>
+                  <th className="py-3 pr-3">Team</th>
+                  <th className="py-3 pr-3">Date Created</th>
+                  <th className="py-3 pr-3">Date</th>
+                  <th className="py-3 pr-6">Time</th>
+                  <th className="py-3 pr-6">Status</th>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </Card>
-
-      {/* ---------- CALENDAR ---------- */}
-      <h2 className="mt-8 text-[18px] font-semibold tracking-wide" style={{ color: MAROON }}>
-        CALENDAR
-      </h2>
-      <Card className="mt-3 p-4">
-        <div className="w-full text-center">
-          <span
-            className="inline-block rounded-md px-3 py-[2px] text-xs font-medium text-white"
-            style={{ backgroundColor: MAROON }}
-          >
-            {monthName}
-          </span>
+              </thead>
+              <tbody>
+                {loadingRecent ? (
+                  <tr>
+                    <td className="py-3 pl-6 pr-3" colSpan={7}>
+                      <span className="text-neutral-600">Loading…</span>
+                    </td>
+                  </tr>
+                ) : recentCreated.length === 0 ? (
+                  <tr>
+                    <td className="py-3 pl-6 pr-3" colSpan={7}>
+                      <span className="text-neutral-600">No recent activity.</span>
+                    </td>
+                  </tr>
+                ) : (
+                  recentCreated.map((r, idx) => (
+                    <tr key={`${r.tag}-${r.id}`} className="border-t border-neutral-200">
+                      <td className="py-3 pl-6 pr-3">{idx + 1}.</td>
+                      <td className="py-3 pr-3">{r.tag}</td>
+                      <td className="py-3 pr-3">{r.team || "—"}</td>
+                      <td className="py-3 pr-3">
+                        {r.createdAt ? fmtDateTimeHuman(r.createdAt) : "—"}
+                      </td>
+                      <td className="py-3 pr-3">{fmtDate(r.date)}</td>
+                      <td className="py-3 pr-6">{r.timeText}</td>
+                      <td className="py-3 pr-6">
+                        <StatusBadge status={r.status} />
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
+      </section>
 
-        <div className="mt-3 grid grid-cols-[40px_repeat(7,1fr)] gap-y-2 text-sm">
-          <div />
-          {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((d) => (
-            <div key={d} className="text-center text-neutral-600">
-              {d}
-            </div>
-          ))}
+      {/* CALENDAR (kept, but header style unified) */}
+      <section className="space-y-3">
+        <h3 className="text-xl font-extrabold tracking-wide" style={{ color: MAROON }}>
+          CALENDAR
+        </h3>
+        <Card className="p-4">
+          <div className="w-full text-center">
+            <span
+              className="inline-block rounded-md px-3 py-[2px] text-xs font-medium text-white"
+              style={{ backgroundColor: MAROON }}
+            >
+              {monthName}
+            </span>
+          </div>
 
-          {monthWeeks.map((week, wi) => {
-            const weekNum =
-              wi +
-              1 +
-              Number(new Date(today.getFullYear(), today.getMonth(), 1).getDay() > 1 ? 0 : 0);
-            return (
+          <div className="mt-3 grid grid-cols-[40px_repeat(7,1fr)] gap-y-2 text-sm">
+            <div />
+            {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((d) => (
+              <div key={d} className="text-center text-neutral-600">
+                {d}
+              </div>
+            ))}
+
+            {monthWeeks.map((week, wi) => (
               <React.Fragment key={wi}>
                 <div className="grid place-items-center">
                   <span
                     className="rounded-md px-2 py-[2px] text-xs font-medium text-white"
-                    style={{ backgroundColor: MAROON_DARK }}
+                    style={{ backgroundColor: "#4a0a0d" }}
                   >
-                    {String(weekNum + 39)}
+                    {String(wi + 40)}
                   </span>
                 </div>
                 {week.map((d, di) => {
@@ -483,7 +468,6 @@ export default function InstructorDashboard() {
                     d.getDate() === today.getDate() &&
                     d.getMonth() === today.getMonth() &&
                     d.getFullYear() === today.getFullYear();
-
                   return (
                     <div key={di} className="h-10 grid place-items-center">
                       {d ? (
@@ -503,10 +487,10 @@ export default function InstructorDashboard() {
                   );
                 })}
               </React.Fragment>
-            );
-          })}
-        </div>
-      </Card>
+            ))}
+          </div>
+        </Card>
+      </section>
     </div>
   );
 }

@@ -10,8 +10,15 @@ const AddUserModal = ({
   saving,
   closeModal,
   error,
+  // NEW: control which roles are allowed and whether to lock the field
+  roleOptions = ["Adviser", "Project Manager", "Member"],
+  lockRole = false,
 }) => {
   if (!open) return null;
+
+  const singleRole = roleOptions.length === 1;
+  const showLockedRole = lockRole || singleRole;
+  const lockedRoleValue = singleRole ? roleOptions[0] : form.role;
 
   return (
     <div
@@ -53,6 +60,7 @@ const AddUserModal = ({
                   className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                 />
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-neutral-700">
                   Last Name
@@ -65,9 +73,10 @@ const AddUserModal = ({
                   className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                 />
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-neutral-700">
-                  ID number
+                  ID Number
                 </label>
                 <input
                   type="text"
@@ -77,6 +86,7 @@ const AddUserModal = ({
                   className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                 />
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-neutral-700">
                   Password
@@ -88,6 +98,7 @@ const AddUserModal = ({
                   className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-neutral-100 text-neutral-500"
                 />
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-neutral-700">
                   First Name
@@ -100,20 +111,37 @@ const AddUserModal = ({
                   className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                 />
               </div>
+
+              {/* Role (dynamic) */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700">
-                  Select Role
+                  Role
                 </label>
-                <select
-                  value={form.role}
-                  onChange={onChange("role")}
-                  className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
-                >
-                  <option value="Adviser">Adviser</option>
-                  <option value="Project Manager">Project Manager</option>
-                  <option value="Member">Member</option>
-                </select>
+
+                {showLockedRole ? (
+                  // Locked / single option — show read-only input for clarity
+                  <input
+                    type="text"
+                    readOnly
+                    value={lockedRoleValue}
+                    className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-neutral-100 text-neutral-700"
+                    title="Role is fixed for this tab"
+                  />
+                ) : (
+                  <select
+                    value={form.role}
+                    onChange={onChange("role")}
+                    className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
+                  >
+                    {roleOptions.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
+
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-neutral-700">
                   Middle Name
@@ -126,10 +154,9 @@ const AddUserModal = ({
                   className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                 />
               </div>
+
               {error && (
-                <div className="md:col-span-2 text-sm text-red-600">
-                  {error}
-                </div>
+                <div className="md:col-span-2 text-sm text-red-600">{error}</div>
               )}
             </div>
           </div>
