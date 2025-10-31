@@ -12,6 +12,7 @@ import {
   Clock,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   GraduationCap,
   User2,
   X,
@@ -91,6 +92,8 @@ const Breadcrumbs = () => {
 };
 
 export default function FinalDefense() {
+  const navigate = useNavigate();
+
   const [showCreate, setShowCreate] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -263,7 +266,7 @@ export default function FinalDefense() {
   };
 
   return (
-    <div className="p-6">
+    <div className="">
       <Breadcrumbs />
       <div className="mt-2 h-[2px] w-full bg-neutral-200">
         <div className="h-[2px]" style={{ backgroundColor: MAROON, width: 240 }} />
@@ -271,8 +274,19 @@ export default function FinalDefense() {
 
       {/* actions */}
       <div className="mt-6 space-y-4">
-        {/* Row 1: Create + Export */}
+        {/* Row 1: Back + Create + Export (aligned) */}
         <div className="flex items-center gap-3">
+          <Btn
+            icon={ChevronLeft}
+            variant="outline"
+            onClick={() =>
+              window.history.length
+                ? window.history.back()
+                : navigate("/instructor/schedule")
+            }
+          >
+            Back to Schedule
+          </Btn>
           <Btn icon={Plus} onClick={() => setShowCreate(true)}>Create Schedule</Btn>
           <Btn icon={Download} variant="outline">Export</Btn>
         </div>
