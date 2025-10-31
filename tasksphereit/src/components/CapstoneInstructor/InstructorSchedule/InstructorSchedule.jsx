@@ -6,6 +6,7 @@ import {
   FileText,
   Presentation,
   GraduationCap,
+  RotateCcw, // Icon for Final Re-Defense
 } from "lucide-react";
 
 const MAROON = "#6A0F14";
@@ -60,6 +61,11 @@ export default function InstructorSchedule() {
       title: "Final Defense",
       icon: <GraduationCap size={44} strokeWidth={2.2} />,
       onClick: () => navigate("/instructor/schedule/final-defense"),
+    },
+    {
+      title: "Final Re-Defense", // New card
+      icon: <RotateCcw size={44} strokeWidth={2.2} />,
+      onClick: () => navigate("/instructor/schedule/final-redefense"),
     },
   ];
 

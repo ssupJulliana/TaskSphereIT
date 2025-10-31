@@ -116,29 +116,6 @@ export default function OralDefense() {
     });
   };
 
-  // Load Teams
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const snap = await getDocs(collection(db, "teams"));
-        const teamsRows = [];
-        snap.forEach((docX) => {
-          const data = docX.data();
-          if (data?.name) teamsRows.push({ id: docX.id, name: data.name });
-        });
-        teamsRows.sort((a, b) => a.name.localeCompare(b.name));
-        if (!alive) return;
-        setTeamOptions(teamsRows);
-      } catch (e) {
-        console.error("Failed to load teams:", e);
-      } finally {
-        if (alive) setLoadingTeams(false);
-      }
-    })();
-    return () => { alive = false; };
-  }, []);
-
   // Load Advisers from users where role == "Adviser"
   useEffect(() => {
     let alive = true;
@@ -168,6 +145,51 @@ export default function OralDefense() {
     return () => { alive = false; };
   }, []);
 
+  // Fetch teams that passed manuscript submission and due date has passed
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        // Load manuscript submissions first
+        const manuscriptSnap = await getDocs(collection(db, "manuscriptSubmissions"));
+        const currentDateTime = new Date();
+        const eligibleTeamIds = new Set();
+        
+        manuscriptSnap.forEach((docX) => {
+          const data = docX.data();
+          const teamId = data?.teamId;
+          const verdict = data?.verdict;
+          const dueDate = data?.date;
+          const dueTime = data?.time;
+          
+          if (teamId && verdict === "Passed" && dueDate && dueTime) {
+            const dueDateTime = new Date(`${dueDate}T${dueTime}:00`);
+            if (dueDateTime < currentDateTime) {
+              eligibleTeamIds.add(teamId);
+            }
+          }
+        });
+
+        // Now load teams but only include eligible ones
+        const teamsSnap = await getDocs(collection(db, "teams"));
+        const teams = [];
+        teamsSnap.forEach((docX) => {
+          const data = docX.data();
+          if (data?.name && eligibleTeamIds.has(docX.id)) {
+            teams.push({ id: docX.id, name: data.name });
+          }
+        });
+        teams.sort((a, b) => a.name.localeCompare(b.name));
+        if (alive) setTeamOptions(teams);
+      } catch (e) {
+        console.error("[OralDefense] Failed to load eligible teams:", e);
+      } finally {
+        if (alive) setLoadingTeams(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
   // Button Component
   const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props }) => {
     const base =
@@ -188,26 +210,57 @@ export default function OralDefense() {
     );
   };
 
-  // Load Schedules
+  // Load Schedules with Manuscript Submission filtering
   const loadSchedules = async () => {
     setLoadingSchedules(true);
     try {
-      const snap = await getDocs(collection(db, "oralDefenseSchedules"));
-      const rows = [];
-      snap.forEach((docX) => {
+      // First, load manuscript submissions to check which teams passed and have due dates passed
+      const manuscriptSnap = await getDocs(collection(db, "manuscriptSubmissions"));
+      const currentDateTime = new Date();
+      
+      // Create a map of team IDs that are eligible for oral defense
+      const eligibleTeams = new Map();
+      
+      manuscriptSnap.forEach((docX) => {
         const data = docX.data();
-        rows.push({
-          id: docX.id,
-          teamName: data?.teamName || "",
-          teamId: data?.teamId || null,
-          date: data?.date || "",
-          timeStart: data?.timeStart || "",
-          timeEnd: data?.timeEnd || "",
-          panelists: Array.isArray(data?.panelists) ? data.panelists : [],
-          verdict: data?.verdict || "Pending",
-          createdAt: data?.createdAt,
-        });
+        const teamId = data?.teamId;
+        const teamName = data?.teamName;
+        const verdict = data?.verdict;
+        const dueDate = data?.date;
+        const dueTime = data?.time;
+        
+        if (teamId && teamName && verdict === "Passed" && dueDate && dueTime) {
+          // Check if the due date/time has passed
+          const dueDateTime = new Date(`${dueDate}T${dueTime}:00`);
+          if (dueDateTime < currentDateTime) {
+            eligibleTeams.set(teamId, teamName);
+          }
+        }
       });
+
+      // Now load oral defense schedules, but only include those from eligible teams
+      const oralDefenseSnap = await getDocs(collection(db, "oralDefenseSchedules"));
+      const rows = [];
+      oralDefenseSnap.forEach((docX) => {
+        const data = docX.data();
+        const teamId = data?.teamId;
+        
+        // Only include schedule if the team is eligible (passed manuscript submission and due date passed)
+        if (eligibleTeams.has(teamId)) {
+          rows.push({
+            id: docX.id,
+            teamName: data?.teamName || "",
+            teamId: teamId,
+            date: data?.date || "",
+            timeStart: data?.timeStart || "",
+            timeEnd: data?.timeEnd || "",
+            panelists: Array.isArray(data?.panelists) ? data.panelists : [],
+            verdict: data?.verdict || "Pending",
+            createdAt: data?.createdAt,
+          });
+        }
+      });
+      
       rows.sort((a, b) => {
         const ad = a.date || "", bd = b.date || "";
         if (ad < bd) return -1;
@@ -242,96 +295,94 @@ export default function OralDefense() {
     }
   };
 
-  /* ===== PDF export (same header as TD; verdict fits) ===== */
-/* ===== PDF export (fits Verdict column) ===== */
-const handleExportPDF = () => {
-  const title = "Oral Defense Schedule";
-  const doc = new jsPDF({ unit: "pt", format: "a4" }); // portrait A4
-  const pageWidth = doc.internal.pageSize.getWidth();   // 595pt
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const marginX = 40;                                   // 40pt margins
-  const headerY = 46;
+  /* ===== PDF export (fits Verdict column) ===== */
+  const handleExportPDF = () => {
+    const title = "Oral Defense Schedule";
+    const doc = new jsPDF({ unit: "pt", format: "a4" }); // portrait A4
+    const pageWidth = doc.internal.pageSize.getWidth();   // 595pt
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const marginX = 40;                                   // 40pt margins
+    const headerY = 46;
 
-  const drawHeader = () => {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text("DOMINICAN COLLEGE OF TARLAC, INC.", pageWidth / 2, headerY, { align: "center" });
-    doc.setFont("helvetica", "normal");
-    doc.text("COLLEGE OF COMPUTER STUDIES", pageWidth / 2, headerY + 16, { align: "center" });
-    doc.setFontSize(10);
-    doc.text(
-      "McArthur Highway, Poblacion (Sto. Rosario), Capas, 2315 Tarlac, Philippines",
-      pageWidth / 2, headerY + 32, { align: "center" }
-    );
-    doc.text(
-      "Institutional Contact Nos.: +63938-918-4093    Website: dct.edu.ph",
-      pageWidth / 2, headerY + 48, { align: "center" }
-    );
-    doc.text(
-      "E-mail: domct_2315@yahoo.com.ph / domct_2315@dct.edu.ph",
-      pageWidth / 2, headerY + 64, { align: "center" }
-    );
+    const drawHeader = () => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text("DOMINICAN COLLEGE OF TARLAC, INC.", pageWidth / 2, headerY, { align: "center" });
+      doc.setFont("helvetica", "normal");
+      doc.text("COLLEGE OF COMPUTER STUDIES", pageWidth / 2, headerY + 16, { align: "center" });
+      doc.setFontSize(10);
+      doc.text(
+        "McArthur Highway, Poblacion (Sto. Rosario), Capas, 2315 Tarlac, Philippines",
+        pageWidth / 2, headerY + 32, { align: "center" }
+      );
+      doc.text(
+        "Institutional Contact Nos.: +63938-918-4093    Website: dct.edu.ph",
+        pageWidth / 2, headerY + 48, { align: "center" }
+      );
+      doc.text(
+        "E-mail: domct_2315@yahoo.com.ph / domct_2315@dct.edu.ph",
+        pageWidth / 2, headerY + 64, { align: "center" }
+      );
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.text(title, pageWidth / 2, headerY + 96, { align: "center" });
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text(title, pageWidth / 2, headerY + 96, { align: "center" });
 
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.text(`As of ${new Date().toLocaleDateString()}`, pageWidth / 2, headerY + 112, { align: "center" });
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text(`As of ${new Date().toLocaleDateString()}`, pageWidth / 2, headerY + 112, { align: "center" });
 
-    doc.setDrawColor(180);
-    doc.line(marginX, headerY + 122, pageWidth - marginX, headerY + 122);
+      doc.setDrawColor(180);
+      doc.line(marginX, headerY + 122, pageWidth - marginX, headerY + 122);
+    };
+
+    autoTable(doc, {
+      startY: headerY + 134,
+      head: [["NO", "Team", "Date", "Time", "Panelists", "Verdict"]],
+      body: filtered.map((s, i) => [
+        `${i + 1}.`,
+        s.teamName || "",
+        fmtDate(s.date) || "",
+        fmtTimeRange(s.timeStart, s.timeEnd) || "",
+        (s.panelists || []).join(", "),
+        s.verdict || "",
+      ]),
+      // Keep total column widths <= (pageWidth - margins) = 515pt
+      styles: {
+        fontSize: 9,
+        cellPadding: { top: 5, right: 4, bottom: 5, left: 4 },
+        overflow: "linebreak",
+      },
+      headStyles: {
+        fillColor: [245, 245, 245],
+        textColor: 60,
+        lineWidth: 0.4,
+        lineColor: [220, 220, 220],
+        fontStyle: "bold",
+      },
+      bodyStyles: { lineWidth: 0.3, lineColor: [235, 235, 235] },
+      columnStyles: {
+        0: { cellWidth: 35 },              // NO
+        1: { cellWidth: 150 },             // Team
+        2: { cellWidth: 85 },              // Date
+        3: { cellWidth: 95 },              // Time
+        4: { cellWidth: 80 },              // Panelists (wraps if long)
+        5: { cellWidth: 70, halign: "center" }, // Verdict (fits "Re-Defense")
+      },
+      margin: { left: marginX, right: marginX },
+      tableWidth: pageWidth - marginX * 2,
+      didDrawPage: () => {
+        drawHeader();
+        const str = `Page ${doc.internal.getNumberOfPages()}`;
+        doc.setFontSize(9);
+        doc.setTextColor(120);
+        doc.text(str, pageWidth - marginX, pageHeight - 24, { align: "right" });
+      },
+    });
+
+    const fname = `oral_defense_schedule_${new Date().toISOString().slice(0, 10)}.pdf`;
+    doc.save(fname);
   };
-
-  autoTable(doc, {
-    startY: headerY + 134,
-    head: [["NO", "Team", "Date", "Time", "Panelists", "Verdict"]],
-    body: filtered.map((s, i) => [
-      `${i + 1}.`,
-      s.teamName || "",
-      fmtDate(s.date) || "",
-      fmtTimeRange(s.timeStart, s.timeEnd) || "",
-      (s.panelists || []).join(", "),
-      s.verdict || "",
-    ]),
-    // Keep total column widths <= (pageWidth - margins) = 515pt
-    styles: {
-      fontSize: 9,
-      cellPadding: { top: 5, right: 4, bottom: 5, left: 4 },
-      overflow: "linebreak",
-    },
-    headStyles: {
-      fillColor: [245, 245, 245],
-      textColor: 60,
-      lineWidth: 0.4,
-      lineColor: [220, 220, 220],
-      fontStyle: "bold",
-    },
-    bodyStyles: { lineWidth: 0.3, lineColor: [235, 235, 235] },
-    columnStyles: {
-      0: { cellWidth: 35 },              // NO
-      1: { cellWidth: 150 },             // Team
-      2: { cellWidth: 85 },              // Date
-      3: { cellWidth: 95 },              // Time
-      4: { cellWidth: 80 },              // Panelists (wraps if long)
-      5: { cellWidth: 70, halign: "center" }, // Verdict (fits "Re-Defense")
-    },
-    margin: { left: marginX, right: marginX },
-    tableWidth: pageWidth - marginX * 2,
-    didDrawPage: () => {
-      drawHeader();
-      const str = `Page ${doc.internal.getNumberOfPages()}`;
-      doc.setFontSize(9);
-      doc.setTextColor(120);
-      doc.text(str, pageWidth - marginX, pageHeight - 24, { align: "right" });
-    },
-  });
-
-  const fname = `oral_defense_schedule_${new Date().toISOString().slice(0, 10)}.pdf`;
-  doc.save(fname);
-};
-
 
   // search filter (client-side)
   const filtered = useMemo(() => {
@@ -474,11 +525,13 @@ const handleExportPDF = () => {
               </tr>
             ) : schedules.length === 0 ? (
               <tr>
-                <td className="px-4 py-6 text-neutral-500" colSpan={7}>No schedules yet.</td>
+                <td className="px-4 py-6 text-neutral-500" colSpan={7}>
+                  No oral defense schedules found for teams that passed Manuscript Submission.
+                </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td className="px-4 py-6 text-neutral-500" colSpan={7}>No matches for “{queryText}”.</td>
+                <td className="px-4 py-6 text-neutral-500" colSpan={7}>No matches for "{queryText}".</td>
               </tr>
             ) : (
               filtered.map((s, idx) => {
@@ -590,6 +643,8 @@ const handleExportPDF = () => {
     </div>
   );
 }
+
+// ... Rest of the code (ScheduleDialog and ViewTeamDialog components remain the same)}
 
 /* ------- Edit Dialog (Create flow removed) ------- */
 function ScheduleDialog({

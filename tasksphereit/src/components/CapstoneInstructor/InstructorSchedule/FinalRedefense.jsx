@@ -1,4 +1,4 @@
-// src/components/CapstoneInstructor/InstructorSchedule/FinalDefense.jsx
+// src/components/CapstoneInstructor/InstructorSchedule/FinalRedefense.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -25,6 +25,7 @@ import {
   getDoc,
   updateDoc,
   deleteDoc,
+  addDoc,
   query,
   where,
 } from "firebase/firestore";
@@ -86,7 +87,7 @@ const Breadcrumbs = () => {
         Schedule
       </button>
       <ChevronRight size={16} className="text-neutral-400" />
-      <span className="text-[15px] font-semibold">Final Defense</span>
+      <span className="text-[15px] font-semibold">Final Re-Defense</span>
       <ChevronRight size={16} className="text-neutral-400" />
       <span className="text-[15px]">Scheduled Teams</span>
     </div>
@@ -114,7 +115,7 @@ const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props
   );
 };
 
-export default function FinalDefense() {
+export default function FinalRedefense() {
   const navigate = useNavigate();
   const [queryText, setQueryText] = useState("");
 
@@ -185,20 +186,20 @@ export default function FinalDefense() {
     };
   }, []);
 
-  // Fetch teams that passed Oral Defense (no time check needed since verdict indicates completion)
+  // Fetch teams that have "Re-Defense" verdict from Final Defense (no time check needed)
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        console.log("🔍 Loading eligible teams for Final Defense...");
+        console.log("🔍 Loading eligible teams for Final Re-Defense...");
         
-        // Load oral defense schedules first
-        const oralDefenseSnap = await getDocs(collection(db, "oralDefenseSchedules"));
+        // Load final defense schedules first
+        const finalDefenseSnap = await getDocs(collection(db, "finalDefenseSchedules"));
         const eligibleTeamIds = new Set();
         
-        console.log("📊 Oral Defense schedules found:", oralDefenseSnap.size);
+        console.log("📊 Final Defense schedules found:", finalDefenseSnap.size);
         
-        oralDefenseSnap.forEach((docX) => {
+        finalDefenseSnap.forEach((docX) => {
           const data = docX.data();
           const teamId = data?.teamId;
           const verdict = data?.verdict;
@@ -206,10 +207,10 @@ export default function FinalDefense() {
           
           console.log(`Team ${teamId} (${teamName}): verdict=${verdict}`);
           
-          // If verdict is "Passed", the oral defense is completed - no time check needed
-          if (teamId && verdict === "Passed") {
+          // If verdict is "Re-Defense", the final defense is completed - no time check needed
+          if (teamId && verdict === "Re-Defense") {
             eligibleTeamIds.add(teamId);
-            console.log(`✅ Team ${teamId} is eligible for Final Defense`);
+            console.log(`✅ Team ${teamId} is eligible for Final Re-Defense`);
           }
         });
 
@@ -230,7 +231,7 @@ export default function FinalDefense() {
         
         console.log("📋 Final team options:", teams);
       } catch (e) {
-        console.error("[FinalDefense] Failed to load eligible teams:", e);
+        console.error("[FinalRedefense] Failed to load eligible teams:", e);
       } finally {
         if (alive) setLoadingTeams(false);
       }
@@ -240,45 +241,39 @@ export default function FinalDefense() {
     };
   }, []);
 
-  // Load Schedules with Oral Defense filtering
+  // Load Schedules with Final Defense filtering for "Re-Defense" verdict
   const loadSchedules = async () => {
     setLoadingSchedules(true);
     try {
-      console.log("🔄 Loading Final Defense schedules...");
+      console.log("🔄 Loading Final Re-Defense schedules...");
       
-      // Create a map of team IDs that passed Oral Defense
-      const oralDefenseSnap = await getDocs(collection(db, "oralDefenseSchedules"));
-      const eligibleTeams = new Map();
-      
-      oralDefenseSnap.forEach((docX) => {
-        const data = docX.data();
-        const teamId = data?.teamId;
-        const teamName = data?.teamName;
-        const verdict = data?.verdict;
-        
-        if (teamId && teamName && verdict === "Passed") {
-          eligibleTeams.set(teamId, teamName);
-          console.log(`✅ Team ${teamName} (${teamId}) is eligible`);
-        }
-      });
-
-      console.log("🎯 Eligible teams for Final Defense:", Array.from(eligibleTeams.entries()));
-
-      // Load final defense schedules for eligible teams
+      // Create a map of team IDs that have "Re-Defense" verdict from Final Defense
       const finalDefenseSnap = await getDocs(collection(db, "finalDefenseSchedules"));
-      const rows = [];
-      
-      console.log("📋 Final Defense schedules found:", finalDefenseSnap.size);
+      const eligibleTeams = new Map();
       
       finalDefenseSnap.forEach((docX) => {
         const data = docX.data();
         const teamId = data?.teamId;
         const teamName = data?.teamName;
+        const verdict = data?.verdict;
         
-        console.log(`Processing Final Defense schedule for team ${teamId} (${teamName})`);
-        
-        if (eligibleTeams.has(teamId)) {
-          rows.push({
+        if (teamId && teamName && verdict === "Re-Defense") {
+          eligibleTeams.set(teamId, teamName);
+          console.log(`✅ Team ${teamName} (${teamId}) is eligible`);
+        }
+      });
+
+      console.log("🎯 Eligible teams for Final Re-Defense:", Array.from(eligibleTeams.entries()));
+
+      // Load final re-defense schedules for eligible teams
+      const finalRedefenseSnap = await getDocs(collection(db, "finalRedefenseSchedules"));
+      const existingSchedules = new Map();
+      
+      finalRedefenseSnap.forEach((docX) => {
+        const data = docX.data();
+        const teamId = data?.teamId;
+        if (teamId) {
+          existingSchedules.set(teamId, {
             id: docX.id,
             teamName: data?.teamName || "",
             teamId: teamId,
@@ -289,11 +284,46 @@ export default function FinalDefense() {
             verdict: data?.verdict || "Pending",
             createdAt: data?.createdAt,
           });
-          console.log(`✅ Added schedule for team ${teamName}`);
-        } else {
-          console.log(`❌ Skipped schedule for team ${teamName} - not eligible`);
         }
       });
+
+      console.log("📋 Existing Final Re-Defense schedules found:", existingSchedules.size);
+
+      // Create rows - include existing schedules OR create placeholder entries for eligible teams
+      const rows = [];
+      
+      for (const [teamId, teamName] of eligibleTeams) {
+        if (existingSchedules.has(teamId)) {
+          // Use existing schedule
+          rows.push(existingSchedules.get(teamId));
+          console.log(`✅ Using existing schedule for team ${teamName}`);
+        } else {
+          // Create a new schedule automatically for this eligible team
+          try {
+            console.log(`🆕 Creating new schedule for team ${teamName}`);
+            const newScheduleData = {
+              teamId,
+              teamName,
+              date: "",
+              timeStart: "",
+              timeEnd: "",
+              panelists: [],
+              verdict: "Pending",
+              createdAt: new Date(),
+            };
+            
+            const docRef = await addDoc(collection(db, "finalRedefenseSchedules"), newScheduleData);
+            
+            rows.push({
+              id: docRef.id,
+              ...newScheduleData
+            });
+            console.log(`✅ Created new schedule for team ${teamName}`);
+          } catch (error) {
+            console.error(`❌ Failed to create schedule for team ${teamName}:`, error);
+          }
+        }
+      }
       
       console.log("📄 Final rows to display:", rows);
       
@@ -327,7 +357,7 @@ export default function FinalDefense() {
           s.id === scheduleId ? { ...s, verdict: newVerdict } : s
         )
       );
-      await updateDoc(doc(db, "finalDefenseSchedules", scheduleId), {
+      await updateDoc(doc(db, "finalRedefenseSchedules", scheduleId), {
         verdict: newVerdict,
       });
     } catch (e) {
@@ -337,11 +367,11 @@ export default function FinalDefense() {
     }
   };
 
-  /* ===== PDF export (fits Verdict column) ===== */
+  /* ===== PDF export ===== */
   const handleExportPDF = () => {
-    const title = "Final Defense Schedule";
+    const title = "Final Re-Defense Schedule";
     const doc = new jsPDF({ unit: "pt", format: "a4" });
-    const pageWidth = doc.internal.pageSize.getWidth(); // ~595
+    const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const marginX = 40;
     const headerY = 46;
@@ -405,9 +435,9 @@ export default function FinalDefense() {
       body: filtered.map((s, i) => [
         `${i + 1}.`,
         s.teamName || "",
-        fmtDate(s.date) || "",
-        fmtTimeRange(s.timeStart, s.timeEnd) || "",
-        (s.panelists || []).join(", "),
+        fmtDate(s.date) || "—",
+        fmtTimeRange(s.timeStart, s.timeEnd) || "—",
+        (s.panelists || []).join(", ") || "—",
         s.verdict || "",
       ]),
       styles: {
@@ -423,14 +453,13 @@ export default function FinalDefense() {
         fontStyle: "bold",
       },
       bodyStyles: { lineWidth: 0.3, lineColor: [235, 235, 235] },
-      /* Total width = 35 + 150 + 85 + 95 + 80 + 70 = 515pt (fits 595-80 margins) */
       columnStyles: {
-        0: { cellWidth: 35 }, // NO
-        1: { cellWidth: 150 }, // Team
-        2: { cellWidth: 85 }, // Date
-        3: { cellWidth: 95 }, // Time
-        4: { cellWidth: 80 }, // Panelists (wraps)
-        5: { cellWidth: 70, halign: "center" }, // Verdict
+        0: { cellWidth: 35 },
+        1: { cellWidth: 150 },
+        2: { cellWidth: 85 },
+        3: { cellWidth: 95 },
+        4: { cellWidth: 80 },
+        5: { cellWidth: 70, halign: "center" },
       },
       margin: { left: marginX, right: marginX },
       tableWidth: pageWidth - marginX * 2,
@@ -443,7 +472,7 @@ export default function FinalDefense() {
       },
     });
 
-    const fname = `final_defense_schedule_${new Date()
+    const fname = `final_redefense_schedule_${new Date()
       .toISOString()
       .slice(0, 10)}.pdf`;
     doc.save(fname);
@@ -457,7 +486,7 @@ export default function FinalDefense() {
       [
         t.teamName,
         fmtDate(t.date),
-        fmtTimeRange(t.timeStart, t.timeEnd),
+        fmtTimeRange(s.timeStart, s.timeEnd),
         (t.panelists || []).join(", "),
         t.verdict,
       ]
@@ -493,7 +522,7 @@ export default function FinalDefense() {
     try {
       await Promise.all(
         Array.from(selected).map((id) =>
-          deleteDoc(doc(db, "finalDefenseSchedules", id))
+          deleteDoc(doc(db, "finalRedefenseSchedules", id))
         )
       );
       exitBulk();
@@ -605,7 +634,7 @@ export default function FinalDefense() {
             ) : schedules.length === 0 ? (
               <tr>
                 <td className="px-4 py-6 text-neutral-500" colSpan={7}>
-                  No final defense schedules found for teams that passed Oral Defense.
+                  No teams found with "Re-Defense" verdict from Final Defense.
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
@@ -622,7 +651,6 @@ export default function FinalDefense() {
                     key={s.id}
                     className={idx % 2 ? "bg-neutral-50/60" : "bg-white"}
                   >
-                    {/* first column: checkbox or row number */}
                     {bulkMode ? (
                       <td className="px-4 py-3">
                         <input
@@ -718,7 +746,7 @@ export default function FinalDefense() {
                               setMenuOpenId(null);
                             }}
                           >
-                            Edit
+                            Edit Schedule
                           </button>
                         </div>
                       )}
@@ -755,7 +783,7 @@ export default function FinalDefense() {
   );
 }
 
-/* ------- Edit Dialog (Create flow removed) ------- */
+/* ------- Edit Dialog ------- */
 function ScheduleDialog({
   initial = null,
   onClose,
@@ -799,7 +827,7 @@ function ScheduleDialog({
         panelists: Array.isArray(panelists) ? panelists : [],
       };
 
-      await updateDoc(doc(db, "finalDefenseSchedules", initial.id), payload);
+      await updateDoc(doc(db, "finalRedefenseSchedules", initial.id), payload);
 
       if (typeof onSaved === "function") onSaved();
       onClose();
@@ -839,28 +867,10 @@ function ScheduleDialog({
               {/* Assign Team */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Assign Team
+                  Team
                 </label>
-                <div className="relative">
-                  <select
-                    value={team}
-                    onChange={(e) => setTeam(e.target.value)}
-                    className="w-full appearance-none pr-8 pl-3 py-2 rounded-md border border-neutral-300 text-sm bg-white"
-                    disabled={loadingTeams}
-                  >
-                    <option value="">Select</option>
-                    {loadingTeams && <option>Loading…</option>}
-                    {!loadingTeams &&
-                      teamOptions.map((t) => (
-                        <option key={t.id} value={t.name}>
-                          {t.name}
-                        </option>
-                      ))}
-                  </select>
-                  <ChevronDown
-                    size={16}
-                    className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none"
-                  />
+                <div className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm">
+                  {initial?.teamName || "—"}
                 </div>
               </div>
 
@@ -991,15 +1001,15 @@ function ScheduleDialog({
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={!team || !(time && timeEnd && time < timeEnd)}
+                disabled={!(time && timeEnd && time < timeEnd)}
                 className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white ${
-                  !team || !(time && timeEnd && time < timeEnd)
+                  !(time && timeEnd && time < timeEnd)
                     ? "opacity-60 cursor-not-allowed"
                     : ""
                 }`}
                 style={{ backgroundColor: MAROON }}
               >
-                Save
+                Save Schedule
               </button>
             </div>
           </div>
