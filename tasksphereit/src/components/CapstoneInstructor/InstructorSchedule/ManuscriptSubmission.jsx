@@ -148,21 +148,44 @@ export default function ManuscriptSubmission() {
     };
   }, []);
 
-  // Fetch teams
+  // Fetch teams that passed title defense and date has passed
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const snap = await getDocs(collection(db, "teams"));
-        const teams = [];
-        snap.forEach((docX) => {
+        // Load title defense schedules first
+        const titleDefenseSnap = await getDocs(collection(db, "titleDefenseSchedules"));
+        const currentDateTime = new Date();
+        const eligibleTeamIds = new Set();
+        
+        titleDefenseSnap.forEach((docX) => {
           const data = docX.data();
-          if (data?.name) teams.push({ id: docX.id, name: data.name });
+          const teamId = data?.teamId;
+          const verdict = data?.verdict;
+          const defenseDate = data?.date;
+          const defenseTime = data?.timeEnd || data?.timeStart;
+          
+          if (teamId && verdict === "Passed" && defenseDate && defenseTime) {
+            const defenseDateTime = new Date(`${defenseDate}T${defenseTime}:00`);
+            if (defenseDateTime < currentDateTime) {
+              eligibleTeamIds.add(teamId);
+            }
+          }
+        });
+
+        // Now load teams but only include eligible ones
+        const teamsSnap = await getDocs(collection(db, "teams"));
+        const teams = [];
+        teamsSnap.forEach((docX) => {
+          const data = docX.data();
+          if (data?.name && eligibleTeamIds.has(docX.id)) {
+            teams.push({ id: docX.id, name: data.name });
+          }
         });
         teams.sort((a, b) => a.name.localeCompare(b.name));
         if (alive) setTeamOptions(teams);
       } catch (e) {
-        console.error("[Manuscripts] Failed to load teams:", e);
+        console.error("[Manuscripts] Failed to load eligible teams:", e);
       } finally {
         if (alive) setLoadingTeams(false);
       }
@@ -170,28 +193,60 @@ export default function ManuscriptSubmission() {
     return () => { alive = false; };
   }, []);
 
-  // Load manuscript submissions
+  // Load manuscript submissions with Title Defense filtering
   const loadRows = async () => {
     setLoadingRows(true);
     try {
-      const snap = await getDocs(collection(db, COLLECTION));
-      const arr = [];
-      snap.forEach((docX) => {
-        const d = docX.data();
-        arr.push({
-          id: docX.id,
-          teamId: d?.teamId || null,
-          team: d?.teamName || "",
-          title: d?.title || "",
-          date: d?.date || "",       // yyyy-mm-dd
-          time: d?.time || "",       // HH:MM
-          plag: Number(d?.plag ?? 0),
-          ai: Number(d?.ai ?? 0),
-          file: d?.file || "—",
-          verdict: d?.verdict || "Pending",
-          createdAt: d?.createdAt,
-        });
+      // First, load title defense schedules to check which teams passed and have scheduled dates passed
+      const titleDefenseSnap = await getDocs(collection(db, "titleDefenseSchedules"));
+      const currentDateTime = new Date();
+      
+      // Create a map of team IDs that are eligible for manuscript submission
+      const eligibleTeams = new Map();
+      
+      titleDefenseSnap.forEach((docX) => {
+        const data = docX.data();
+        const teamId = data?.teamId;
+        const teamName = data?.teamName;
+        const verdict = data?.verdict;
+        const defenseDate = data?.date;
+        const defenseTime = data?.timeEnd || data?.timeStart;
+        
+        if (teamId && teamName && verdict === "Passed" && defenseDate && defenseTime) {
+          // Check if the scheduled defense date/time has passed
+          const defenseDateTime = new Date(`${defenseDate}T${defenseTime}:00`);
+          if (defenseDateTime < currentDateTime) {
+            eligibleTeams.set(teamId, teamName);
+          }
+        }
       });
+
+      // Now load manuscript submissions, but only include those from eligible teams
+      const manuscriptSnap = await getDocs(collection(db, COLLECTION));
+      const arr = [];
+      
+      manuscriptSnap.forEach((docX) => {
+        const d = docX.data();
+        const teamId = d?.teamId;
+        
+        // Only include manuscript if the team is eligible (passed title defense and date passed)
+        if (eligibleTeams.has(teamId)) {
+          arr.push({
+            id: docX.id,
+            teamId: teamId,
+            team: d?.teamName || "",
+            title: d?.title || "",
+            date: d?.date || "",       // yyyy-mm-dd
+            time: d?.time || "",       // HH:MM
+            plag: Number(d?.plag ?? 0),
+            ai: Number(d?.ai ?? 0),
+            file: d?.file || "—",
+            verdict: d?.verdict || "Pending",
+            createdAt: d?.createdAt,
+          });
+        }
+      });
+      
       arr.sort((a, b) => {
         const ad = a.date || "", bd = b.date || "";
         if (ad < bd) return -1;
@@ -567,7 +622,9 @@ export default function ManuscriptSubmission() {
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-6 text-neutral-500" colSpan={10}>No matches for “{query}”.</td>
+                  <td className="px-4 py-6 text-neutral-500" colSpan={10}>
+                    {rows.length === 0 ? "No manuscript submissions found for teams that passed Title Defense." : "No matches for \"" + query + "\"."}
+                  </td>
                 </tr>
               ) : (
                 filtered.map((r, idx) => {

@@ -18,6 +18,7 @@ import TitleDefense from "./components/CapstoneInstructor/InstructorSchedule/Tit
 import ManuscriptSubmission from "./components/CapstoneInstructor/InstructorSchedule/ManuscriptSubmission.jsx";
 import OralDefense from "./components/CapstoneInstructor/InstructorSchedule/OralDefense.jsx";
 import FinalDefense from "./components/CapstoneInstructor/InstructorSchedule/FinalDefense.jsx";
+import FinalRedefense from "./components/CapstoneInstructor/InstructorSchedule/FinalRedefense.jsx";
 
 // Adviser
 import AdviserLayout from "./components/CapstoneAdviser/AdviserLayout.jsx";
@@ -87,6 +88,7 @@ export default function App() {
           <Route path="schedule/manuscript" element={<ManuscriptSubmission />} />
           <Route path="schedule/oral-defense" element={<OralDefense />} />
           <Route path="schedule/final-defense" element={<FinalDefense />} />
+          <Route path="schedule/final-redefense" element={<FinalRedefense />} />
         </Route>
 
         {/* Adviser section */}

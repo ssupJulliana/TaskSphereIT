@@ -151,31 +151,6 @@ export default function FinalDefense() {
     });
   };
 
-  // Load Teams
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const snap = await getDocs(collection(db, "teams"));
-        const teamsRows = [];
-        snap.forEach((docX) => {
-          const data = docX.data();
-          if (data?.name) teamsRows.push({ id: docX.id, name: data.name });
-        });
-        teamsRows.sort((a, b) => a.name.localeCompare(b.name));
-        if (!alive) return;
-        setTeamOptions(teamsRows);
-      } catch (e) {
-        console.error("Failed to load teams:", e);
-      } finally {
-        if (alive) setLoadingTeams(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
   // Load Advisers from users where role == "Adviser"
   useEffect(() => {
     let alive = true;
@@ -210,34 +185,129 @@ export default function FinalDefense() {
     };
   }, []);
 
-  // Load Schedules
+  // Fetch teams that passed Oral Defense (no time check needed since verdict indicates completion)
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        console.log("🔍 Loading eligible teams for Final Defense...");
+        
+        // Load oral defense schedules first
+        const oralDefenseSnap = await getDocs(collection(db, "oralDefenseSchedules"));
+        const eligibleTeamIds = new Set();
+        
+        console.log("📊 Oral Defense schedules found:", oralDefenseSnap.size);
+        
+        oralDefenseSnap.forEach((docX) => {
+          const data = docX.data();
+          const teamId = data?.teamId;
+          const verdict = data?.verdict;
+          const teamName = data?.teamName;
+          
+          console.log(`Team ${teamId} (${teamName}): verdict=${verdict}`);
+          
+          // If verdict is "Passed", the oral defense is completed - no time check needed
+          if (teamId && verdict === "Passed") {
+            eligibleTeamIds.add(teamId);
+            console.log(`✅ Team ${teamId} is eligible for Final Defense`);
+          }
+        });
+
+        console.log("🎯 Eligible team IDs:", Array.from(eligibleTeamIds));
+
+        // Now load teams but only include eligible ones
+        const teamsSnap = await getDocs(collection(db, "teams"));
+        const teams = [];
+        teamsSnap.forEach((docX) => {
+          const data = docX.data();
+          if (data?.name && eligibleTeamIds.has(docX.id)) {
+            teams.push({ id: docX.id, name: data.name });
+            console.log(`🏷️ Adding team: ${data.name} (${docX.id})`);
+          }
+        });
+        teams.sort((a, b) => a.name.localeCompare(b.name));
+        if (alive) setTeamOptions(teams);
+        
+        console.log("📋 Final team options:", teams);
+      } catch (e) {
+        console.error("[FinalDefense] Failed to load eligible teams:", e);
+      } finally {
+        if (alive) setLoadingTeams(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Load Schedules with Oral Defense filtering
   const loadSchedules = async () => {
     setLoadingSchedules(true);
     try {
-      const snap = await getDocs(collection(db, "finalDefenseSchedules"));
-      const rows = [];
-      snap.forEach((docX) => {
+      console.log("🔄 Loading Final Defense schedules...");
+      
+      // Create a map of team IDs that passed Oral Defense
+      const oralDefenseSnap = await getDocs(collection(db, "oralDefenseSchedules"));
+      const eligibleTeams = new Map();
+      
+      oralDefenseSnap.forEach((docX) => {
         const data = docX.data();
-        rows.push({
-          id: docX.id,
-          teamName: data?.teamName || "",
-          teamId: data?.teamId || null,
-          date: data?.date || "",
-          timeStart: data?.timeStart || "",
-          timeEnd: data?.timeEnd || "",
-          panelists: Array.isArray(data?.panelists) ? data.panelists : [],
-          verdict: data?.verdict || "Pending",
-          createdAt: data?.createdAt,
-        });
+        const teamId = data?.teamId;
+        const teamName = data?.teamName;
+        const verdict = data?.verdict;
+        
+        if (teamId && teamName && verdict === "Passed") {
+          eligibleTeams.set(teamId, teamName);
+          console.log(`✅ Team ${teamName} (${teamId}) is eligible`);
+        }
       });
+
+      console.log("🎯 Eligible teams for Final Defense:", Array.from(eligibleTeams.entries()));
+
+      // Load final defense schedules for eligible teams
+      const finalDefenseSnap = await getDocs(collection(db, "finalDefenseSchedules"));
+      const rows = [];
+      
+      console.log("📋 Final Defense schedules found:", finalDefenseSnap.size);
+      
+      finalDefenseSnap.forEach((docX) => {
+        const data = docX.data();
+        const teamId = data?.teamId;
+        const teamName = data?.teamName;
+        
+        console.log(`Processing Final Defense schedule for team ${teamId} (${teamName})`);
+        
+        if (eligibleTeams.has(teamId)) {
+          rows.push({
+            id: docX.id,
+            teamName: data?.teamName || "",
+            teamId: teamId,
+            date: data?.date || "",
+            timeStart: data?.timeStart || "",
+            timeEnd: data?.timeEnd || "",
+            panelists: Array.isArray(data?.panelists) ? data.panelists : [],
+            verdict: data?.verdict || "Pending",
+            createdAt: data?.createdAt,
+          });
+          console.log(`✅ Added schedule for team ${teamName}`);
+        } else {
+          console.log(`❌ Skipped schedule for team ${teamName} - not eligible`);
+        }
+      });
+      
+      console.log("📄 Final rows to display:", rows);
+      
+      // Sorting and setting state
       rows.sort((a, b) => {
-        const ad = a.date || "",
-          bd = b.date || "";
+        const ad = a.date || "", bd = b.date || "";
         if (ad < bd) return -1;
         if (ad > bd) return 1;
         return (a.timeStart || "").localeCompare(b.timeStart || "");
       });
+      
       setSchedules(rows);
+      console.log("🎉 Schedules state updated with", rows.length, "items");
+      
     } catch (e) {
       console.error("Failed to load schedules:", e);
     } finally {
@@ -410,6 +480,9 @@ export default function FinalDefense() {
     }
   };
 
+  // Debug log for table rendering
+  console.log("🎯 Table rendering - schedules:", schedules.length, "filtered:", filtered.length);
+
   return (
     <div className="">
       <Breadcrumbs />
@@ -507,13 +580,13 @@ export default function FinalDefense() {
             ) : schedules.length === 0 ? (
               <tr>
                 <td className="px-4 py-6 text-neutral-500" colSpan={7}>
-                  No schedules yet.
+                  No final defense schedules found for teams that passed Oral Defense.
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
                 <td className="px-4 py-6 text-neutral-500" colSpan={7}>
-                  No matches for “{queryText}”.
+                  No matches for "{queryText}".
                 </td>
               </tr>
             ) : (
