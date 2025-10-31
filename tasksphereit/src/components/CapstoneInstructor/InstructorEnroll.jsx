@@ -1,5 +1,6 @@
 // src/components/CapstoneInstructor/InstructorEnroll.jsx
 import React, { useState, useEffect, useMemo, useRef } from "react";
+
 import {
   Download,
   Upload,
@@ -10,6 +11,8 @@ import {
   Trash2,
   FileText,
   X,
+  Pencil,
+  MoreVertical,
 } from "lucide-react";
 
 import { db } from "../../config/firebase";
@@ -19,7 +22,11 @@ import {
   query,
   where,
   getDocs,
+  doc,
+  updateDoc,
 } from "firebase/firestore";
+
+// (no XLSX import — template download removed)
 
 import { parseExcelFile, validateExcelFile } from "../../assets/scripts/excel";
 import {
@@ -32,6 +39,11 @@ import {
 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+
+// ---- logos for PDF (DCT left, CCS right, TaskSphere footer-left) ----
+import DCTLOGO from "../../assets/imgs/pdf imgs/DCTLOGO.png";
+import CCSLOGO from "../../assets/imgs/pdf imgs/CCSLOGO.png";
+import TASKSPHERELOGO from "../../assets/imgs/pdf imgs/TASKSPHERELOGO.png";
 
 import ExcelModal from "../../assets/modals/excelModal.js";
 import AddUserModal from "../../assets/modals/addUserModal.jsx";
@@ -58,7 +70,7 @@ const InstructorEnroll = () => {
   const [selectedTab, setSelectedTab] = useState("Adviser");
   const [openAddUserModal, setOpenAddUserModal] = useState(false);
 
-  /* ---------------- Add user form ---------------- */
+  /* ---------------- Add/Edit user form ---------------- */
   const [form, setForm] = useState({
     email: "",
     lastName: "",
@@ -67,6 +79,7 @@ const InstructorEnroll = () => {
     idNumber: "",
     role: "Adviser",
   });
+  const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -94,6 +107,16 @@ const InstructorEnroll = () => {
     if (filterOpen) document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [filterOpen]);
+
+  /* ---------------- Row action menus (3 dots) ---------------- */
+  const [openRowMenu, setOpenRowMenu] = useState(null);
+  useEffect(() => {
+    const closeOnOutside = (e) => {
+      if (!e.target.closest('[data-row-menu-root="1"]')) setOpenRowMenu(null);
+    };
+    document.addEventListener("mousedown", closeOnOutside);
+    return () => document.removeEventListener("mousedown", closeOnOutside);
+  }, []);
 
   /* ---------------- Excel import ---------------- */
   const [importState, setImportState] = useState({
@@ -127,7 +150,10 @@ const InstructorEnroll = () => {
 
     try {
       setImportState((p) => ({ ...p, parsing: true, err: "" }));
-      const rows = await parseExcelFile(file, selectedTab === "Student" ? "Student" : "Adviser");
+      const rows = await parseExcelFile(
+        file,
+        selectedTab === "Student" ? "Student" : "Adviser"
+      );
       ExcelModal.show({
         rows,
         parsing: false,
@@ -136,7 +162,13 @@ const InstructorEnroll = () => {
         onFileChange: handleImportChange,
         onSave: saveImportedRows,
         onClose: () =>
-          setImportState({ open: false, rows: [], parsing: false, saving: false, err: "" }),
+          setImportState({
+            open: false,
+            rows: [],
+            parsing: false,
+            saving: false,
+            err: "",
+          }),
       });
     } catch (error) {
       ExcelModal.show({
@@ -162,18 +194,36 @@ const InstructorEnroll = () => {
     setImportState((p) => ({ ...p, saving: true, err: "" }));
     try {
       await saveImportedUsers(rows, selectedTab);
-      setImportState({ open: false, rows: [], parsing: false, saving: false, err: "" });
+      setImportState({
+        open: false,
+        rows: [],
+        parsing: false,
+        saving: false,
+        err: "",
+      });
     } catch (error) {
       setImportState((p) => ({ ...p, saving: false, err: error.message }));
     }
   };
 
-  /* ---------------- Create user ---------------- */
+  /* ---------------- Create / Update user ---------------- */
   const handleSaveUser = async () => {
     setError("");
     setSaving(true);
     try {
-      await createUser({ ...form });
+      if (editingId) {
+        const payload = {
+          email: form.email.trim(),
+          lastName: form.lastName.trim(),
+          firstName: form.firstName.trim(),
+          middleName: form.middleName.trim(),
+          idNumber: form.idNumber.trim(),
+          role: form.role,
+        };
+        await updateDoc(doc(db, "users", editingId), payload);
+      } else {
+        await createUser({ ...form });
+      }
       setForm({
         email: "",
         lastName: "",
@@ -182,12 +232,37 @@ const InstructorEnroll = () => {
         idNumber: "",
         role: selectedTab === "Adviser" ? "Adviser" : "Project Manager",
       });
+      setEditingId(null);
       setOpenAddUserModal(false);
     } catch (e) {
       setError(e.message);
     } finally {
       setSaving(false);
     }
+  };
+
+  const startEdit = (u) => {
+    setEditingId(u.id);
+    setForm({
+      email: u.email || "",
+      lastName: u.lastName || "",
+      firstName: u.firstName || "",
+      middleName: u.middleName || "",
+      idNumber: u.idNumber || "",
+      role:
+        selectedTab === "Adviser"
+          ? "Adviser"
+          : STUDENT_ROLES.includes(u.role)
+          ? u.role
+          : "Project Manager",
+    });
+    setOpenAddUserModal(true);
+  };
+
+  const deleteOne = async (id) => {
+    if (!confirm("Delete/Block this account?")) return;
+    await bulkDeleteUsers([id], users);
+    setSelectedIds((prev) => prev.filter((x) => x !== id));
   };
 
   /* ---------------- Firestore subscription ---------------- */
@@ -283,7 +358,9 @@ const InstructorEnroll = () => {
   const toggleOne = (id) =>
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const toggleAll = () =>
-    setSelectedIds((prev) => (prev.length === filteredUsers.length ? [] : filteredUsers.map((u) => u.id)));
+    setSelectedIds((prev) =>
+      prev.length === filteredUsers.length ? [] : filteredUsers.map((u) => u.id)
+    );
 
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0) return;
@@ -369,6 +446,11 @@ const InstructorEnroll = () => {
                 <Upload className="w-4 h-4" />
                 Import File
               </button>
+              {/* Static button only (no functionality yet) */}
+              <button className="cursor-pointer flex items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100">
+                <Download className="w-4 h-4" />
+                Download Template
+              </button>
             </div>
           )}
         </div>
@@ -390,6 +472,7 @@ const InstructorEnroll = () => {
                         ? f.role
                         : "Project Manager",
                   }));
+                  setEditingId(null);
                 }}
                 className={`cursor-pointer px-4 py-2 rounded-full text-sm font-medium ${
                   selectedTab === tab
@@ -559,27 +642,41 @@ const InstructorEnroll = () => {
                     <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">
                       <input
                         type="checkbox"
-                        checked={selectedIds.length === filteredUsers.length && filteredUsers.length > 0}
+                        checked={
+                          selectedIds.length === filteredUsers.length &&
+                          filteredUsers.length > 0
+                        }
                         onChange={toggleAll}
                       />
                     </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">ID Number</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">Last Name</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">First Name</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">Middle Initial</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">
+                      ID Number
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">
+                      Last Name
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">
+                      First Name
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">
+                      Middle Initial
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
 
                 <tbody className="divide-y divide-neutral-200">
                   {loadingList ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-6 text-center text-sm text-neutral-500">
+                      <td colSpan={6} className="px-4 py-6 text-center text-sm text-neutral-500">
                         Loading...
                       </td>
                     </tr>
                   ) : filteredUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-6 text-center text-sm text-neutral-500">
+                      <td colSpan={6} className="px-4 py-6 text-center text-sm text-neutral-500">
                         No users found.
                       </td>
                     </tr>
@@ -593,10 +690,66 @@ const InstructorEnroll = () => {
                             onChange={() => toggleOne(u.id)}
                           />
                         </td>
-                        <td className="px-4 py-3 text-sm text-neutral-700">{u.idNumber || ""}</td>
-                        <td className="px-4 py-3 text-sm text-neutral-700">{u.lastName || ""}</td>
-                        <td className="px-4 py-3 text-sm text-neutral-700">{u.firstName || ""}</td>
-                        <td className="px-4 py-3 text-sm text-neutral-700">{getMiddleInitial(u.middleName)}</td>
+                        <td className="px-4 py-3 text-sm text-neutral-700">
+                          {u.idNumber || ""}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-neutral-700">
+                          {u.lastName || ""}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-neutral-700">
+                          {u.firstName || ""}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-neutral-700">
+                          {getMiddleInitial(u.middleName)}
+                        </td>
+                        <td className="px-4 py-2">
+                          <div
+                            className="relative inline-block"
+                            data-row-menu-root="1"
+                          >
+                            <button
+                              onClick={() =>
+                                setOpenRowMenu((cur) => (cur === u.id ? null : u.id))
+                              }
+                              className="p-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100"
+                              title="More"
+                              aria-haspopup="menu"
+                              aria-expanded={openRowMenu === u.id}
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+
+                            {openRowMenu === u.id && (
+                              <div
+                                role="menu"
+                                className="absolute right-0 z-20 mt-1 w-40 rounded-xl border border-neutral-200 bg-white shadow-lg p-1"
+                              >
+                                <button
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setOpenRowMenu(null);
+                                    startEdit(u);
+                                  }}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg hover:bg-neutral-100"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                  Edit
+                                </button>
+                                <button
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setOpenRowMenu(null);
+                                    deleteOne(u.id);
+                                  }}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg hover:bg-red-50 text-red-600"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                  Delete
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -610,6 +763,7 @@ const InstructorEnroll = () => {
             <button
               type="button"
               onClick={() => {
+                setEditingId(null);
                 setForm((f) => ({
                   ...f,
                   role:
@@ -638,23 +792,26 @@ const InstructorEnroll = () => {
         </div>
       </main>
 
-      {/* Add User Modal */}
+      {/* Add / Edit User Modal */}
       <AddUserModal
         open={openAddUserModal}
         form={form}
         onChange={(key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
         handleSaveUser={handleSaveUser}
         saving={saving}
-        closeModal={() => setOpenAddUserModal(false)}
+        closeModal={() => {
+          setOpenAddUserModal(false);
+          setEditingId(null);
+          setError("");
+        }}
         error={error}
         roleOptions={selectedTab === "Student" ? STUDENT_ROLES : ["Adviser"]}
         lockRole={(selectedTab === "Student" ? STUDENT_ROLES : ["Adviser"]).length === 1}
+        isEditing={!!editingId}
       />
 
       {/* Export Credentials Modal */}
-      {exportOpen && (
-        <ExportCredentialsModal onClose={() => setExportOpen(false)} />
-      )}
+      {exportOpen && <ExportCredentialsModal onClose={() => setExportOpen(false)} />}
     </div>
   );
 };
@@ -668,11 +825,6 @@ function ExportCredentialsModal({ onClose }) {
   const [to, setTo] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-
-  const title =
-    audience === "Student"
-      ? "Capstone Student Credentials"
-      : "Capstone Adviser Credentials";
 
   // Try multiple field names commonly used to keep initial passwords
   const readPwdFromObject = (obj) => {
@@ -694,14 +846,11 @@ function ExportCredentialsModal({ onClose }) {
     return null;
   };
 
-  // Fallback lookups if password isn't on user doc:
-  //  - find a matching invite by email or uid and read any of the password keys above
   const fetchPasswordForUser = async (userDoc) => {
     const fromUser = readPwdFromObject(userDoc);
     if (fromUser) return fromUser;
 
     try {
-      // search invites by email (primary) then by uid
       if (userDoc?.email) {
         const qEmail = query(
           collection(db, "invites"),
@@ -721,9 +870,8 @@ function ExportCredentialsModal({ onClose }) {
           if (pwd) return pwd;
         }
       }
-    } catch (e) {
-      // ignore lookup error; we'll just show em dash
-      console.warn("Password lookup failed:", e);
+    } catch {
+      // ignore lookup error
     }
 
     return "—";
@@ -753,7 +901,6 @@ function ExportCredentialsModal({ onClose }) {
       return true;
     });
 
-    // sort by lastName, firstName
     rows.sort((a, b) => {
       const aL = (a.lastName || "").toLowerCase();
       const bL = (b.lastName || "").toLowerCase();
@@ -763,7 +910,6 @@ function ExportCredentialsModal({ onClose }) {
       return aF < bF ? -1 : aF > bF ? 1 : 0;
     });
 
-    // attach password for each user (from doc or invites)
     const withPw = [];
     for (const u of rows) {
       const pwd = await fetchPasswordForUser(u);
@@ -773,19 +919,55 @@ function ExportCredentialsModal({ onClose }) {
     return withPw;
   };
 
-  const makePdf = (rows) => {
+  const loadImage = (src) =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+
+  const makePdf = async (rows) => {
     const doc = new jsPDF({ unit: "pt", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const marginX = 40;
-    const headerY = 46;
+
+    let dctImg, ccsImg, tsImg;
+    try {
+      [dctImg, ccsImg, tsImg] = await Promise.all([
+        loadImage(DCTLOGO),
+        loadImage(CCSLOGO),
+        loadImage(TASKSPHERELOGO),
+      ]);
+    } catch {
+      // continue without images
+    }
 
     const drawHeader = () => {
+      const topY = 24;
+
+      if (dctImg) {
+        const sideW = 64;
+        const sideH = (dctImg.height / dctImg.width) * sideW;
+        doc.addImage(dctImg, "PNG", marginX, topY, sideW, sideH);
+      }
+      if (ccsImg) {
+        const sideW = 64;
+        const sideH = (ccsImg.height / ccsImg.width) * sideW;
+        doc.addImage(ccsImg, "PNG", pageWidth - marginX - sideW, topY, sideW, sideH);
+      }
+
+      const headerY = 92;
       doc.setFont("helvetica", "bold");
       doc.setFontSize(12);
-      doc.text("DOMINICAN COLLEGE OF TARLAC, INC.", pageWidth / 2, headerY, { align: "center" });
+      doc.text("DOMINICAN COLLEGE OF TARLAC, INC.", pageWidth / 2, headerY, {
+        align: "center",
+      });
       doc.setFont("helvetica", "normal");
-      doc.text("COLLEGE OF COMPUTER STUDIES", pageWidth / 2, headerY + 16, { align: "center" });
+      doc.text("COLLEGE OF COMPUTER STUDIES", pageWidth / 2, headerY + 16, {
+        align: "center",
+      });
       doc.setFontSize(10);
       doc.text(
         "McArthur Highway, Poblacion (Sto. Rosario), Capas, 2315 Tarlac, Philippines",
@@ -808,7 +990,15 @@ function ExportCredentialsModal({ onClose }) {
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(14);
-      doc.text(title, pageWidth / 2, headerY + 96, { align: "center" });
+      const titleY = headerY + 96;
+      doc.text(
+        audience === "Student"
+          ? "Capstone Student Credentials"
+          : "Capstone Adviser Credentials",
+        pageWidth / 2,
+        titleY,
+        { align: "center" }
+      );
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
@@ -819,13 +1009,30 @@ function ExportCredentialsModal({ onClose }) {
         dateLineParts.length > 0
           ? dateLineParts.join("   ")
           : `As of ${new Date().toLocaleDateString()}`;
-      doc.text(dateLine, pageWidth / 2, headerY + 112, { align: "center" });
+      doc.text(dateLine, pageWidth / 2, titleY + 16, { align: "center" });
 
       doc.setDrawColor(180);
-      doc.line(marginX, headerY + 122, pageWidth - marginX, headerY + 122);
+      doc.line(marginX, titleY + 26, pageWidth - marginX, titleY + 26);
+
+      return titleY + 38; // table start Y
     };
 
-    const tableYStart = headerY + 134;
+    const drawFooter = () => {
+      if (tsImg) {
+        const logoW = 72;
+        const logoH = (tsImg.height / tsImg.width) * logoW;
+        const x = marginX;
+        const y = pageHeight - 20 - logoH;
+        doc.addImage(tsImg, "PNG", x, y, logoW, logoH);
+      }
+
+      const str = `Page ${doc.internal.getNumberOfPages()}`;
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text(str, pageWidth - marginX, pageHeight - 14, { align: "right" });
+    };
+
+    const tableYStart = drawHeader();
 
     autoTable(doc, {
       startY: tableYStart,
@@ -834,7 +1041,7 @@ function ExportCredentialsModal({ onClose }) {
         `${i + 1}.`,
         fullNameOf(u),
         u.idNumber || "",
-        (u._password && typeof u._password === "string" ? u._password : "—"),
+        typeof u._password === "string" && u._password ? u._password : "—",
       ]),
       styles: { fontSize: 10, cellPadding: 6 },
       headStyles: {
@@ -851,19 +1058,18 @@ function ExportCredentialsModal({ onClose }) {
         2: { cellWidth: 120 },
         3: { cellWidth: 140 },
       },
-      margin: { left: marginX, right: marginX },
+      margin: { left: 40, right: 40, bottom: 64 },
       didDrawPage: () => {
         drawHeader();
-        const str = `Page ${doc.internal.getNumberOfPages()}`;
-        doc.setFontSize(9);
-        doc.setTextColor(120);
-        doc.text(str, pageWidth - marginX, pageHeight - 24, { align: "right" });
+        drawFooter();
       },
     });
 
-    const fnameSafe = title.toLowerCase().replace(/\s+/g, "_");
-    const dateStamp = new Date().toISOString().slice(0, 10);
-    doc.save(`${fnameSafe}_${dateStamp}.pdf`);
+    const fnameSafe =
+      (audience === "Student"
+        ? "capstone_student_credentials"
+        : "capstone_adviser_credentials") + "_" + new Date().toISOString().slice(0, 10);
+    doc.save(`${fnameSafe}.pdf`);
   };
 
   const onGenerate = async () => {
@@ -871,7 +1077,7 @@ function ExportCredentialsModal({ onClose }) {
       setBusy(true);
       setErr("");
       const rows = await fetchUsersForExport();
-      makePdf(rows);
+      await makePdf(rows);
       onClose();
     } catch (e) {
       console.error(e);
@@ -966,7 +1172,9 @@ function ExportCredentialsModal({ onClose }) {
               <button
                 onClick={onGenerate}
                 disabled={busy}
-                className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white ${busy ? "opacity-60 cursor-not-allowed" : ""}`}
+                className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white ${
+                  busy ? "opacity-60 cursor-not-allowed" : ""
+                }`}
                 style={{ backgroundColor: "#6A0F14" }}
               >
                 {busy ? "Generating…" : "Generate PDF"}
