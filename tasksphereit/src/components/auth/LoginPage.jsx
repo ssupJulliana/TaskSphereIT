@@ -12,7 +12,8 @@ import {
   signInWithEmailAndPassword,
   signOut,
   updatePassword,
-  onAuthStateChanged,
+  onAuthStateChanged, // auth guard
+
 } from "firebase/auth";
 import {
   collection,
