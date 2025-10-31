@@ -1,8 +1,11 @@
-// src/components/CapstoneInstructor/AddUserModal.jsx
-import React from "react";
-import { X, PlusCircle } from "lucide-react";
+import React, { useState } from "react";
+import { X } from "lucide-react";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "../../config/firebase";
+import { resetPasswordToDefault } from "../scripts/enroll";
+import Swal from "sweetalert2"; // Add this import
 
-const AddUserModal = ({
+const EditUserModal = ({
   open,
   form,
   onChange,
@@ -10,15 +13,89 @@ const AddUserModal = ({
   saving,
   closeModal,
   error,
-  // NEW: control which roles are allowed and whether to lock the field
   roleOptions = ["Adviser", "Project Manager", "Member"],
   lockRole = false,
+  isStudent = false,
+  mustChangePassword = false,
 }) => {
   if (!open) return null;
 
-  const singleRole = roleOptions.length === 1;
-  const showLockedRole = lockRole || singleRole;
-  const lockedRoleValue = singleRole ? roleOptions[0] : form.role;
+  const showLockedRole = lockRole || !isStudent;
+  const lockedRoleValue = form.role;
+
+  const [password, setPassword] = useState(form.password);
+  const [resetPassword, setResetPassword] = useState(false);
+
+  const handleResetPassword = () => {
+    setPassword("UserUser321");
+    setResetPassword(true);
+  };
+
+  const handleSave = async () => {
+    if (resetPassword) {
+      try {
+        if (!form.id) {
+          throw new Error("User ID is not available.");
+        }
+
+        console.log("Resetting password for user:", form.id);
+
+        await resetPasswordToDefault({ id: form.id });
+
+        const userRef = doc(db, "users", form.id);
+        await updateDoc(userRef, {
+          mustChangePassword: true,
+        });
+
+        console.log("Password reset successful");
+        setResetPassword(false);
+
+        // Show success alert
+        await Swal.fire({
+          icon: "success",
+          title: "Success!",
+          text: "User updated successfully",
+          timer: 1500,
+          showConfirmButton: false,
+        });
+
+        // Close modal after alert
+        closeModal();
+      } catch (error) {
+        console.error("Error resetting password:", error);
+
+        // Show error alert
+        Swal.fire({
+          icon: "error",
+          title: "Error",
+          text: error.message || "Failed to update user",
+          confirmButtonColor: "#6A0F14",
+        });
+      }
+    } else {
+      // Call the original save handler for other updates
+      try {
+        await handleSaveUser();
+
+        // Show success alert
+        await Swal.fire({
+          icon: "success",
+          title: "Success!",
+          text: "User updated successfully",
+          timer: 1500,
+          showConfirmButton: false,
+        });
+
+        // Close modal after alert
+        closeModal();
+      } catch (error) {
+        console.error("Error saving user:", error);
+      }
+    }
+  };
+
+  const shouldShowResetButton =
+    !mustChangePassword && password !== "UserUser321";
 
   return (
     <div
@@ -35,8 +112,7 @@ const AddUserModal = ({
         <div className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl border border-neutral-200">
           <div className="flex items-center justify-between px-6 py-4 border-b">
             <div className="flex items-center gap-2 text-[#6A0F14]">
-              <PlusCircle className="w-5 h-5" />
-              <h3 className="text-lg font-semibold">Add User</h3>
+              <h3 className="text-lg font-semibold">Edit User</h3>
             </div>
             <button
               className="p-2 rounded-full hover:bg-neutral-100"
@@ -48,6 +124,7 @@ const AddUserModal = ({
 
           <div className="px-6 py-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Email */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700">
                   Email Address
@@ -61,6 +138,7 @@ const AddUserModal = ({
                 />
               </div>
 
+              {/* Last Name */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700">
                   Last Name
@@ -74,6 +152,7 @@ const AddUserModal = ({
                 />
               </div>
 
+              {/* ID Number */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700">
                   ID Number
@@ -87,6 +166,7 @@ const AddUserModal = ({
                 />
               </div>
 
+              {/* Password */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700">
                   Password
@@ -94,11 +174,20 @@ const AddUserModal = ({
                 <input
                   type="text"
                   readOnly
-                  value="UserUser321"
+                  value={password}
                   className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-neutral-100 text-neutral-500"
                 />
+                {shouldShowResetButton && (
+                  <button
+                    onClick={handleResetPassword}
+                    className="mt-2 text-sm text-[#6A0F14] hover:text-[#5c0d12] focus:outline-none"
+                  >
+                    Reset to Default
+                  </button>
+                )}
               </div>
 
+              {/* First Name */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700">
                   First Name
@@ -112,36 +201,20 @@ const AddUserModal = ({
                 />
               </div>
 
-              {/* Role (dynamic) */}
+              {/* Role (read-only for both student and adviser) */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700">
                   Role
                 </label>
-
-                {showLockedRole ? (
-                  // Locked / single option — show read-only input for clarity
-                  <input
-                    type="text"
-                    readOnly
-                    value={lockedRoleValue}
-                    className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-neutral-100 text-neutral-700"
-                    title="Role is fixed for this tab"
-                  />
-                ) : (
-                  <select
-                    value={form.role}
-                    onChange={onChange("role")}
-                    className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
-                  >
-                    {roleOptions.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                )}
+                <input
+                  type="text"
+                  readOnly
+                  value={lockedRoleValue}
+                  className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-neutral-100 text-neutral-700"
+                />
               </div>
 
+              {/* Middle Name */}
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-neutral-700">
                   Middle Name
@@ -173,7 +246,7 @@ const AddUserModal = ({
             </button>
             <button
               className="px-6 py-2 rounded-full bg-[#6A0F14] text-sm font-medium text-white hover:bg-[#5c0d12] disabled:opacity-60"
-              onClick={handleSaveUser}
+              onClick={handleSave}
               disabled={
                 saving ||
                 !form.email.trim() ||
@@ -190,4 +263,4 @@ const AddUserModal = ({
   );
 };
 
-export default AddUserModal;
+export default EditUserModal;

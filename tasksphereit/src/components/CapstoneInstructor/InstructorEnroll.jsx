@@ -48,6 +48,8 @@ import TASKSPHERELOGO from "../../assets/imgs/pdf imgs/TASKSPHERELOGO.png";
 import ExcelModal from "../../assets/modals/excelModal.js";
 import AddUserModal from "../../assets/modals/addUserModal.jsx";
 
+import EditUserModal from "../../assets/modals/editUserModal.jsx";
+
 import { supabase } from "../../config/supabase.js";
 
 /* ---------- tabs & role mapping ---------- */
@@ -59,7 +61,7 @@ export const downloadTemplate = async () => {
   // For a PUBLIC bucket
   const { data } = supabase.storage
     .from("template")
-    .getPublicUrl("List-Template.xlsx");
+    .getPublicUrl("Template-list.xlsx");
   const url = data.publicUrl;
 
   const res = await fetch(url);
@@ -68,7 +70,7 @@ export const downloadTemplate = async () => {
   const blob = await res.blob();
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "List-Template.xlsx";
+  a.download = "Template-list.xlsx";
   document.body.appendChild(a);
   a.click();
   URL.revokeObjectURL(a.href);
@@ -92,9 +94,10 @@ const InstructorEnroll = () => {
   /* ---------------- Role & dialogs ---------------- */
   const [selectedTab, setSelectedTab] = useState("Adviser");
   const [openAddUserModal, setOpenAddUserModal] = useState(false);
+  const [openEditUserModal, setOpenEditUserModal] = useState(false);
 
-  /* ---------------- Add/Edit user form ---------------- */
   const [form, setForm] = useState({
+    id: "",
     email: "",
     lastName: "",
     firstName: "",
@@ -248,6 +251,7 @@ const InstructorEnroll = () => {
         await createUser({ ...form });
       }
       setForm({
+        id: "",
         email: "",
         lastName: "",
         firstName: "",
@@ -259,6 +263,7 @@ const InstructorEnroll = () => {
       setOpenAddUserModal(false);
     } catch (e) {
       setError(e.message);
+      throw e; // Re-throw to be caught by modal
     } finally {
       setSaving(false);
     }
@@ -267,19 +272,16 @@ const InstructorEnroll = () => {
   const startEdit = (u) => {
     setEditingId(u.id);
     setForm({
+      id: u.id,
       email: u.email || "",
       lastName: u.lastName || "",
       firstName: u.firstName || "",
       middleName: u.middleName || "",
       idNumber: u.idNumber || "",
-      role:
-        selectedTab === "Adviser"
-          ? "Adviser"
-          : STUDENT_ROLES.includes(u.role)
-          ? u.role
-          : "Project Manager",
+      role: u.role || "Adviser",
+      password: u.mustChangePassword ? "UserUser321" : "********",
     });
-    setOpenAddUserModal(true);
+    setOpenEditUserModal(true);
   };
 
   const deleteOne = async (id) => {
@@ -842,7 +844,7 @@ const InstructorEnroll = () => {
         </div>
       </main>
 
-      {/* Add / Edit User Modal */}
+      {/* Add  */}
       <AddUserModal
         open={openAddUserModal}
         form={form}
@@ -863,6 +865,25 @@ const InstructorEnroll = () => {
         isEditing={!!editingId}
       />
 
+      <EditUserModal
+        open={openEditUserModal}
+        form={form}
+        onChange={(key) => (e) =>
+          setForm((f) => ({ ...f, [key]: e.target.value }))}
+        handleSaveUser={handleSaveUser}
+        saving={saving}
+        closeModal={() => {
+          setOpenEditUserModal(false);
+          setEditingId(null);
+          setError("");
+        }}
+        error={error}
+        roleOptions={selectedTab === "Student" ? STUDENT_ROLES : ["Adviser"]}
+        lockRole={
+          (selectedTab === "Student" ? STUDENT_ROLES : ["Adviser"]).length === 1
+        }
+      />
+
       {/* Export Credentials Modal */}
       {exportOpen && (
         <ExportCredentialsModal onClose={() => setExportOpen(false)} />
@@ -875,64 +896,20 @@ export default InstructorEnroll;
 
 /* ===================== Export Modal (inline) ===================== */
 function ExportCredentialsModal({ onClose }) {
-  const [audience, setAudience] = useState("Student"); // "Student" | "Adviser"
+  const [audience, setAudience] = useState("Student");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
-  // Try multiple field names commonly used to keep initial passwords
-  const readPwdFromObject = (obj) => {
-    if (!obj) return null;
-    const keys = [
-      "plainPassword",
-      "password",
-      "tempPassword",
-      "generatedPassword",
-      "defaultPassword",
-      "initialPassword",
-      "rawPassword",
-      "pwd",
-    ];
-    for (const k of keys) {
-      const v = obj[k];
-      if (typeof v === "string" && v.trim()) return v.trim();
+  // Modified to check mustChangePassword flag
+  const getPasswordForUser = (userDoc) => {
+    // If mustChangePassword is true, show the default password
+    if (userDoc.mustChangePassword === true) {
+      return "UserUser321";
     }
-    return null;
-  };
-
-  const fetchPasswordForUser = async (userDoc) => {
-    const fromUser = readPwdFromObject(userDoc);
-    if (fromUser) return fromUser;
-
-    try {
-      if (userDoc?.email) {
-        const qEmail = query(
-          collection(db, "invites"),
-          where("email", "==", (userDoc.email || "").trim())
-        );
-        const s1 = await getDocs(qEmail);
-        if (!s1.empty) {
-          const pwd = readPwdFromObject(s1.docs[0].data());
-          if (pwd) return pwd;
-        }
-      }
-      if (userDoc?.uid) {
-        const qUid = query(
-          collection(db, "invites"),
-          where("uid", "==", userDoc.uid)
-        );
-        const s2 = await getDocs(qUid);
-        if (!s2.empty) {
-          const pwd = readPwdFromObject(s2.docs[0].data());
-          if (pwd) return pwd;
-        }
-      }
-    } catch {
-      // ignore lookup error
-    }
-
-    return "—";
+    // Otherwise show asterisks
+    return "********";
   };
 
   const fetchUsersForExport = async () => {
@@ -971,11 +948,11 @@ function ExportCredentialsModal({ onClose }) {
       return aF < bF ? -1 : aF > bF ? 1 : 0;
     });
 
-    const withPw = [];
-    for (const u of rows) {
-      const pwd = await fetchPasswordForUser(u);
-      withPw.push({ ...u, _password: pwd });
-    }
+    // Add password to each user based on mustChangePassword flag
+    const withPw = rows.map((u) => ({
+      ...u,
+      _password: getPasswordForUser(u),
+    }));
 
     return withPw;
   };
@@ -1109,7 +1086,7 @@ function ExportCredentialsModal({ onClose }) {
         `${i + 1}.`,
         fullNameOf(u),
         u.idNumber || "",
-        typeof u._password === "string" && u._password ? u._password : "—",
+        u._password || "—",
       ]),
       styles: { fontSize: 10, cellPadding: 6 },
       headStyles: {
@@ -1205,30 +1182,6 @@ function ExportCredentialsModal({ onClose }) {
                     Advisers
                   </label>
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">
-                  Created From
-                </label>
-                <input
-                  type="date"
-                  value={from}
-                  onChange={(e) => setFrom(e.target.value)}
-                  className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">
-                  Created To
-                </label>
-                <input
-                  type="date"
-                  value={to}
-                  onChange={(e) => setTo(e.target.value)}
-                  className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-                />
               </div>
             </div>
 
