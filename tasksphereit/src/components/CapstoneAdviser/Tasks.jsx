@@ -102,11 +102,13 @@ export default function AdviserTasks() {
 
   /* -------- derived -------- */
   const collectionName =
-    category === "final"
-      ? "finalDefenseTasks"
-      : category === "oral"
-      ? "oralDefenseTasks"
-      : null;
+  category === "final"
+    ? "finalDefenseTasks"
+    : category === "oral"
+    ? "oralDefenseTasks"
+    : category === "finalRedefense"
+    ? "finalRedefenseTasks"
+    : null;
 
   /* ================== Effects ================== */
 
@@ -375,32 +377,45 @@ export default function AdviserTasks() {
   };
 
   /* ================== Render ================== */
-
+  <span className="font-semibold">
+  {category === "oral" 
+    ? "Oral Defense" 
+    : category === "final" 
+    ? "Final Defense" 
+    : "Final Re-Defense"}
+</span>
   if (!category) {
-    return (
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <ClipboardList className="w-5 h-5" />
-          <h2 className="text-lg font-semibold">Tasks</h2>
-        </div>
-        <div className="h-[2px] w-full" style={{ backgroundColor: MAROON }} />
-        <div className="flex flex-wrap gap-4">
-          <CategoryCard title="Oral Defense" onClick={() => setCategory("oral")} />
-          <CategoryCard title="Final Defense" onClick={() => setCategory("final")} />
-        </div>
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <ClipboardList className="w-5 h-5" />
+        <h2 className="text-lg font-semibold">Tasks</h2>
       </div>
-    );
-  }
+      <div className="h-[2px] w-full" style={{ backgroundColor: MAROON }} />
+      <div className="flex flex-wrap gap-4">
+        <CategoryCard title="Oral Defense" onClick={() => setCategory("oral")} />
+        <CategoryCard title="Final Defense" onClick={() => setCategory("final")} />
+        <CategoryCard title="Final Re-Defense" onClick={() => setCategory("finalRedefense")} />
+      </div>
+    </div>
+  );
+}
 
   return (
     <div className="space-y-4">
       {/* header trail */}
       <div className="flex items-center gap-2">
-        <ClipboardList className="w-5 h-5" />
-        <h2 className="text-lg font-semibold">Tasks</h2>
-        <Caret className="w-4 h-4 text-neutral-500" />
-        <span className="font-semibold">{category === "oral" ? "Oral Defense" : "Final Defense"}</span>
-      </div>
+  <ClipboardList className="w-5 h-5" />
+  <h2 className="text-lg font-semibold">Tasks</h2>
+  <Caret className="w-4 h-4 text-neutral-500" />
+  <span className="font-semibold">
+    {category === "oral" 
+      ? "Oral Defense" 
+      : category === "final" 
+      ? "Final Defense" 
+      : "Final Re-Defense"}
+  </span>
+</div>
       <div className="h-[2px] w-full" style={{ backgroundColor: MAROON }} />
 
       {/* toolbar */}

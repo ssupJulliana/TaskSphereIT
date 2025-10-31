@@ -12,7 +12,11 @@ import {
   signInWithEmailAndPassword,
   signOut,
   updatePassword,
+
   onAuthStateChanged, // auth guard
+
+  onAuthStateChanged,
+
 } from "firebase/auth";
 import {
   collection,
@@ -28,7 +32,7 @@ const DEFAULT_PASSWORD = "UserUser321";
 
 const LoginPage = () => {
   const [showPwd, setShowPwd] = useState(false);
-  const [email, setEmail] = useState("");
+  const [loginId, setLoginId] = useState(""); // Can be email OR idNumber
   const [pwd, setPwd] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -70,7 +74,7 @@ const LoginPage = () => {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       try {
-        if (!u) return; // not signed in -> allow login page
+        if (!u) return;
 
         // find profile doc by uid
         const usersRef = collection(db, "users");
@@ -78,7 +82,6 @@ const LoginPage = () => {
         const snap = await getDocs(byUid);
 
         if (snap.empty) {
-          // signed in but no profile, sign out and stay on login
           await signOut(auth);
           return;
         }
@@ -113,37 +116,72 @@ const LoginPage = () => {
   }, [navigate]);
   /* ========================================================================== */
 
+  const findUserByEmailOrIdNumber = async (identifier) => {
+    const usersRef = collection(db, "users");
+    const trimmedId = identifier.trim();
+    
+    // Try by email first
+    const byEmail = query(usersRef, where("email", "==", trimmedId), limit(1));
+    const emailSnap = await getDocs(byEmail);
+    
+    if (!emailSnap.empty) {
+      return emailSnap.docs[0];
+    }
+    
+    // Try by idNumber if email not found
+    const byIdNumber = query(usersRef, where("idNumber", "==", trimmedId), limit(1));
+    const idNumberSnap = await getDocs(byIdNumber);
+    
+    if (!idNumberSnap.empty) {
+      return idNumberSnap.docs[0];
+    }
+    
+    return null;
+  };
+
   const handleSignIn = async (e) => {
     e.preventDefault();
     setErr("");
     setLoading(true);
 
     try {
-      const emailTrim = email.trim();
-      const cred = await signInWithEmailAndPassword(auth, emailTrim, pwd);
-
-      // --- find user profile (prefer by uid, fallback by email) ---
-      const usersRef = collection(db, "users");
-      const byUid = query(usersRef, where("uid", "==", cred.user.uid), limit(1));
-      const uidSnap = await getDocs(byUid);
-
-      let profileDoc = null;
-      if (!uidSnap.empty) {
-        profileDoc = uidSnap.docs[0];
-      } else {
-        const byEmail = query(usersRef, where("email", "==", emailTrim), limit(1));
-        const emailSnap = await getDocs(byEmail);
-        if (!emailSnap.empty) profileDoc = emailSnap.docs[0];
+      const identifier = loginId.trim();
+      
+      if (!identifier) {
+        setErr("Please enter your email or ID number.");
+        setLoading(false);
+        return;
       }
 
+      // Find user profile by email OR idNumber
+      const profileDoc = await findUserByEmailOrIdNumber(identifier);
+      
       if (!profileDoc) {
-        await signOut(auth);
-        setErr("Account profile not found.");
+        setErr("Account not found. Please check your email/ID number.");
         setLoading(false);
         return;
       }
 
       const profile = profileDoc.data();
+      const userEmail = profile.email; // Get the actual email for Firebase Auth
+
+      if (!userEmail) {
+        setErr("Invalid account configuration. Please contact administrator.");
+        setLoading(false);
+        return;
+      }
+
+      // Sign in with the actual email from Firestore + provided password
+      const cred = await signInWithEmailAndPassword(auth, userEmail, pwd);
+
+      // Verify the signed-in user matches the profile we found
+      if (cred.user.uid !== profile.uid) {
+        await signOut(auth);
+        setErr("Account mismatch. Please try again.");
+        setLoading(false);
+        return;
+      }
+
       const role = profile.role || null;
       const currentActivateStatus = profile.activate;
 
@@ -172,7 +210,7 @@ const LoginPage = () => {
       if (profile.isTosAccepted !== true) {
         navigate("/terms-of-service", {
           replace: true,
-          state: { from: routeForRole(role) }, // where to go after acceptance
+          state: { from: routeForRole(role) },
         });
         setLoading(false);
         return;
@@ -190,6 +228,7 @@ const LoginPage = () => {
       // (Only for already-accepted users) your original Instructor activation logic
       if (role === "Instructor" && currentActivateStatus === "inactive") {
         try {
+          const usersRef = collection(db, "users");
           const activeInstructorQuery = query(
             usersRef,
             where("activate", "==", "active"),
@@ -222,7 +261,7 @@ const LoginPage = () => {
       let msg = "Sign-in failed. Please check your credentials.";
       if (e2.code === "auth/invalid-email") msg = "Invalid email address.";
       else if (e2.code === "auth/user-not-found" || e2.code === "auth/wrong-password")
-        msg = "Incorrect email or password.";
+        msg = "Incorrect email/ID number or password.";
       else if (e2.code === "auth/too-many-requests")
         msg = "Too many attempts. Try again later.";
       setErr(msg);
@@ -251,13 +290,15 @@ const LoginPage = () => {
 
             <form onSubmit={handleSignIn} className="mt-8 space-y-5">
               <div>
-                <label className="block text-sm font-medium text-neutral-700">Email Address</label>
+                <label className="block text-sm font-medium text-neutral-700">
+                  Email or ID Number
+                </label>
                 <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@example.com"
-                  autoComplete="email"
+                  type="text"
+                  value={loginId}
+                  onChange={(e) => setLoginId(e.target.value)}
+                  placeholder="name@example.com or 2081221155180"
+                  autoComplete="username"
                   className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/50"
                 />
               </div>
@@ -303,7 +344,7 @@ const LoginPage = () => {
 
               <button
                 type="submit"
-                disabled={loading || !email.trim() || !pwd.trim()}
+                disabled={loading || !loginId.trim() || !pwd.trim()}
                 className="mt-2 w-48 mx-auto block rounded-full px-6 py-3 text-white font-medium hover:opacity-95 active:scale-[.99] bg-[#6A0F14] disabled:opacity-60"
               >
                 {loading ? "Signing in..." : "Sign In"}
