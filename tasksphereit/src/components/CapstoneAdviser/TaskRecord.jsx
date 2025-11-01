@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+// src/components/.../TaskRecord.jsx
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ClipboardList,
   CalendarDays,
@@ -11,38 +12,37 @@ import {
   MoreVertical,
 } from "lucide-react";
 
+/* ===== Firebase ===== */
+import { auth, db } from "../../config/firebase";
+import {
+  collection,
+  onSnapshot,
+  query,
+  where,
+  orderBy,
+} from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
+
 const MAROON = "#6A0F14";
 
-/* --------------------------- Demo data --------------------------- */
+/* --------------------------- Categories --------------------------- */
 const CATEGORIES = [
-  { id: "oral", title: "Oral Defense" },
-  { id: "final", title: "Final Defense" },
-];
-
-const PAGE1_ROWS = [
-  { no: 1, assigned: "Bernardo, Et Al", task: "Refine: Chapter 2", subtask: "Related Theories", elements: "—", created: "10/11/2025", due: "10/18/2025" },
-  { no: 2, assigned: "Mendoza, Et Al", task: "Prepare: Chapter 2", subtask: "Related Theories", elements: "—", created: "10/14/2025", due: "10/20/2025" },
-  { no: 3, assigned: "Aguas, Et Al", task: "Prepare: Chapter 3", subtask: "Methodology",       elements: "—", created: "10/15/2025", due: "10/22/2025" },
-];
-
-const PAGE2_ROWS = [
-  { no: 1, time: "8:00 AM", completed: "10/25/2025", revision: "2nd Revision", status: "Completed", methodology: "Agile",                phase: "Design"  },
-  { no: 2, time: "8:00 AM", completed: "10/25/2025", revision: "1st Revision", status: "Completed", methodology: "Extreme Programming", phase: "Planing" },
-  { no: 3, time: "8:00 AM", completed: "10/25/2025", revision: "No Revision",  status: "Completed", methodology: "Prototyping",         phase: "Design"  },
+  { id: "oral", title: "Oral Defense", coll: "oralDefenseTasks" },
+  { id: "final", title: "Final Defense", coll: "finalDefenseTasks" },
+  { id: "finalRedefense", title: "Final Re-defense", coll: "finalRedefenseTasks" },
 ];
 
 /* --------------------------- UI helpers -------------------------- */
 const Card = ({ title, onClick }) => (
   <button
     onClick={onClick}
-    className=" cursor-pointer relative w-56 h-44 text-left bg-white border border-neutral-200 rounded-2xl shadow-[0_6px_12px_rgba(0,0,0,0.12)] overflow-hidden hover:translate-y-[-2px] transition-transform"
+    className="cursor-pointer relative w-56 h-44 text-left bg-white border border-neutral-200 rounded-2xl shadow-[0_6px_12px_rgba(0,0,0,0.12)] overflow-hidden hover:translate-y-[-2px] transition-transform"
   >
-    {/* left + bottom maroon accents */}
     <div className="absolute left-0 top-0 h-full w-8" style={{ backgroundColor: MAROON }} />
     <div className="absolute bottom-0 left-0 right-0 h-5" style={{ backgroundColor: MAROON }} />
     <div className="pl-12 pr-4 pt-6">
       <CalendarDays className="w-12 h-12 text-neutral-900" />
-      <p className="mt-3 font-medium"> {title} </p>
+      <p className="mt-3 font-medium">{title}</p>
     </div>
   </button>
 );
@@ -84,7 +84,6 @@ const Toolbar = ({ onBack, onCreate, onPage, page }) => (
       </button>
     </div>
 
-    {/* page toggles */}
     <div className="w-full md:w-auto md:ml-2">
       <div className="inline-flex rounded-lg border border-neutral-300 overflow-hidden">
         <button
@@ -110,7 +109,8 @@ const TableShell = ({ children }) => (
   </div>
 );
 
-const Page1Table = ({ rows }) => (
+/* --------------------------- Tables --------------------------- */
+const Page1Table = ({ rows, loading }) => (
   <TableShell>
     <table className="w-full text-sm">
       <thead>
@@ -125,33 +125,35 @@ const Page1Table = ({ rows }) => (
         </tr>
       </thead>
       <tbody>
-        {rows.map((r) => (
-          <tr key={r.no} className="border-t border-neutral-200">
-            <td className="py-3 pl-6 pr-3">{r.no}.</td>
-            <td className="py-3 pr-3">{r.assigned}</td>
-            <td className="py-3 pr-3">{r.task}</td>
-            <td className="py-3 pr-3">{r.subtask}</td>
-            <td className="py-3 pr-3">{r.elements}</td>
-            <td className="py-3 pr-3">{r.created}</td>
-            <td className="py-3 pr-6">{r.due}</td>
-          </tr>
-        ))}
+        {loading ? (
+          <tr><td colSpan={7} className="py-8 text-center text-neutral-500">Loading…</td></tr>
+        ) : rows.length === 0 ? (
+          <tr><td colSpan={7} className="py-8 text-center text-neutral-500">No completed tasks.</td></tr>
+        ) : (
+          rows.map((r) => (
+            <tr key={r._key} className="border-t border-neutral-200">
+              <td className="py-3 pl-6 pr-3">{r.no}.</td>
+              <td className="py-3 pr-3">{r.assigned}</td>
+              <td className="py-3 pr-3">{r.task}</td>
+              <td className="py-3 pr-3">{r.subtask}</td>
+              <td className="py-3 pr-3">{r.elements}</td>
+              <td className="py-3 pr-3">{r.created}</td>
+              <td className="py-3 pr-6">{r.due}</td>
+            </tr>
+          ))
+        )}
       </tbody>
     </table>
   </TableShell>
 );
 
-const StatusBadge = ({ status }) => {
-  // Completed badge (purple) as in the screenshot
-  const styles = "bg-[#9B59B6] text-white";
-  return (
-    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs ${styles}`}>
-      {status}
-    </span>
-  );
-};
+const StatusBadge = ({ status }) => (
+  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs bg-[#9B59B6] text-white">
+    {status}
+  </span>
+);
 
-const Page2Table = ({ rows }) => (
+const Page2Table = ({ rows, loading }) => (
   <TableShell>
     <table className="w-full text-sm">
       <thead>
@@ -167,27 +169,33 @@ const Page2Table = ({ rows }) => (
         </tr>
       </thead>
       <tbody>
-        {rows.map((r) => (
-          <tr key={r.no} className="border-t border-neutral-200">
-            <td className="py-3 pl-6 pr-3">{r.no}.</td>
-            <td className="py-3 pr-3">{r.time}</td>
-            <td className="py-3 pr-3">{r.completed}</td>
-            <td className="py-3 pr-3">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md border border-neutral-300">
-                {r.revision}
-                <ChevronRight className="w-4 h-4 text-neutral-500" />
-              </div>
-            </td>
-            <td className="py-3 pr-3"><StatusBadge status={r.status} /></td>
-            <td className="py-3 pr-3">{r.methodology}</td>
-            <td className="py-3 pr-3">{r.phase}</td>
-            <td className="py-3 pr-6">
-              <button className="p-1 rounded hover:bg-neutral-100">
-                <MoreVertical className="w-5 h-5" />
-              </button>
-            </td>
-          </tr>
-        ))}
+        {loading ? (
+          <tr><td colSpan={8} className="py-8 text-center text-neutral-500">Loading…</td></tr>
+        ) : rows.length === 0 ? (
+          <tr><td colSpan={8} className="py-8 text-center text-neutral-500">No completed tasks.</td></tr>
+        ) : (
+          rows.map((r) => (
+            <tr key={r._key} className="border-t border-neutral-200">
+              <td className="py-3 pl-6 pr-3">{r.no}.</td>
+              <td className="py-3 pr-3">{r.time}</td>
+              <td className="py-3 pr-3">{r.completed}</td>
+              <td className="py-3 pr-3">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md border border-neutral-300">
+                  {r.revision}
+                  <ChevronRight className="w-4 h-4 text-neutral-500" />
+                </div>
+              </td>
+              <td className="py-3 pr-3"><StatusBadge status="Completed" /></td>
+              <td className="py-3 pr-3">{r.methodology}</td>
+              <td className="py-3 pr-3">{r.phase}</td>
+              <td className="py-3 pr-6">
+                <button className="p-1 rounded hover:bg-neutral-100">
+                  <MoreVertical className="w-5 h-5" />
+                </button>
+              </td>
+            </tr>
+          ))
+        )}
       </tbody>
     </table>
   </TableShell>
@@ -195,38 +203,173 @@ const Page2Table = ({ rows }) => (
 
 /* ------------------------------ MAIN ------------------------------ */
 const TaskRecord = () => {
-  const [view, setView] = useState("grid");     // 'grid' | 'detail'
-  const [category, setCategory] = useState(null);
-  const [page, setPage] = useState(1);          // 1 | 2
+  const [view, setView] = useState("grid");      // 'grid' | 'detail'
+  const [category, setCategory] = useState(null); // 'oral' | 'final' | 'finalRedefense'
+  const [page, setPage] = useState(1);           // 1 | 2
 
+  const [meUid, setMeUid] = useState("");
+  const [teams, setTeams] = useState([]);
+  const [loadingTeams, setLoadingTeams] = useState(false);
+
+  const [loadingTasks, setLoadingTasks] = useState(false);
+  const [records, setRecords] = useState([]); // normalized completed tasks for current category
+
+  /* -------- identify current user -------- */
+  useEffect(() => {
+    const stop = onAuthStateChanged(auth, (u) => {
+      const uid = u?.uid || localStorage.getItem("uid") || "";
+      setMeUid(uid);
+    });
+    return () => stop();
+  }, []);
+
+  /* -------- fetch teams of this adviser -------- */
+  useEffect(() => {
+    if (!meUid) return;
+    setLoadingTeams(true);
+    const stop = onSnapshot(
+      query(collection(db, "teams"), where("adviser.uid", "==", meUid)),
+      (snap) => {
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setTeams(list);
+        setLoadingTeams(false);
+      },
+      () => setLoadingTeams(false)
+    );
+    return () => stop();
+  }, [meUid]);
+
+  /* -------- fetch completed tasks for the selected category -------- */
+  useEffect(() => {
+    if (view !== "detail" || !category) return;
+    if (loadingTeams) return;
+
+    const cat = CATEGORIES.find((c) => c.id === category);
+    if (!cat) return;
+
+    const teamIds = teams.map((t) => t.id);
+    if (teamIds.length === 0) {
+      setRecords([]);
+      return;
+    }
+
+    // chunk helper for batched IN queries
+    const chunk = (arr, n = 10) =>
+      Array.from({ length: Math.ceil(arr.length / n) }, (_, i) =>
+        arr.slice(i * n, i * n + n)
+      );
+
+    setLoadingTasks(true);
+    const buffer = new Map(); // `${id}` -> normalized task
+    const unsubs = [];
+
+    const normalize = (d) => {
+      const x = d.data();
+      const t = x.team || {};
+      const teamId = t.id || x.teamId || "no-team";
+      const teamName = t.name || teams.find((tt) => tt.id === teamId)?.name || "No Team";
+
+      const created =
+        typeof x.createdAt?.toDate === "function" ? x.createdAt.toDate() : null;
+      const createdDisplay = created ? created.toLocaleDateString() : "—";
+
+      const dueDate = x.dueDate || null;
+      const dueTime = x.dueTime || null;
+      const dueDisplay = dueDate || "—";
+
+      const completed =
+        typeof x.completedAt?.toDate === "function" ? x.completedAt.toDate() : null;
+      const completedDisplay = completed ? completed.toLocaleDateString() : "—";
+
+      return {
+        _key: `${d.id}`,
+        teamName,
+        task: x.task || x.chapter || "Task",
+        subtask: x.subtask || "—",
+        elements: x.elements || "—",
+        created: createdDisplay,
+        due: dueDisplay,
+        time: dueTime || "—",
+        completed: completedDisplay,
+        revision: x.revision || "No Revision",
+        methodology: x.methodology || "—",
+        phase: x.phase || "—",
+      };
+    };
+
+    const attach = (fieldName) => {
+      chunk(teamIds).forEach((ids) => {
+        const qy = query(
+          collection(db, cat.coll),
+          where("status", "==", "Completed"),
+          where(fieldName, "in", ids),
+          orderBy("updatedAt", "desc") // harmless if missing; helps when present
+        );
+        const stop = onSnapshot(
+          qy,
+          (snap) => {
+            snap.docs.forEach((d) => buffer.set(d.id, normalize(d)));
+            const rows = Array.from(buffer.values())
+              .sort((a, b) => (a.completed > b.completed ? -1 : 1))
+              .map((r, i) => ({ ...r, no: i + 1, assigned: r.teamName }));
+            setRecords(rows);
+            setLoadingTasks(false);
+          },
+          () => setLoadingTasks(false)
+        );
+        unsubs.push(stop);
+      });
+    };
+
+    // support both shapes (team.id & teamId)
+    attach("team.id");
+    attach("teamId");
+
+    return () => unsubs.forEach((u) => u && u());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, category, teams, loadingTeams]);
+
+  /* -------- derive the two table views from records -------- */
+  const page1Rows = useMemo(() => records, [records]);
+  const page2Rows = useMemo(
+    () =>
+      records.map((r) => ({
+        ...r,
+        status: "Completed",
+      })),
+    [records]
+  );
+
+  /* -------- render -------- */
   if (view === "detail" && category) {
     const current = CATEGORIES.find((c) => c.id === category);
-
     return (
       <div className="space-y-4">
-        {/* header + rule */}
         <div className="flex items-center gap-2">
           <ClipboardList className="w-5 h-5" />
           <h2 className="text-lg font-semibold">Tasks Record</h2>
           <ChevronRight className="w-4 h-4 text-neutral-500" />
-          <span className="font-semibold">{current.title}</span>
+          <span className="font-semibold">{current?.title}</span>
         </div>
         <div className="h-[2px] w-full" style={{ backgroundColor: MAROON }} />
 
-        {/* toolbar */}
         <Toolbar
           onBack={() => {
             setView("grid");
             setPage(1);
+            setRecords([]);
           }}
-          onCreate={() => {/* open create flow if you add it later */}}
+          onCreate={() => {}}
           onPage={(p) => setPage(p)}
           page={page}
         />
 
-        {/* table pages */}
         <div className="mt-3">
-          {page === 1 ? <Page1Table rows={PAGE1_ROWS} /> : <Page2Table rows={PAGE2_ROWS} />}
+          {page === 1 ? (
+            <Page1Table rows={page1Rows} loading={loadingTasks || loadingTeams} />
+          ) : (
+            <Page2Table rows={page2Rows} loading={loadingTasks || loadingTeams} />
+          )}
         </div>
       </div>
     );
