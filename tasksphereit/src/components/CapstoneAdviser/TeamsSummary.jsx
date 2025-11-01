@@ -1,83 +1,24 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Users, ChevronRight, ChevronLeft, FileText } from "lucide-react";
 
-/* ----------------------- SAMPLE DATA ----------------------- */
-const TEAMS = [
-  {
-    id: "fittrack",
-    name: "FitTrack",
-    membersShort: "Aguas, Et Al",
-    members: [
-      { name: "Addriliane G Mendoza", role: "Project Manager" },
-      { name: "Harzwel Zhen B Lacson", role: "Member" },
-      { name: "Julliana N Castaneda", role: "Member" },
-      { name: "Alejandro C Faustino", role: "Member" },
-      { name: "Justine Pare", role: "Member" },
-      { name: "John Reagan S Pinpin", role: "Member" },
-    ],
-    progress: { todo: 4, inprogress: 3, review: 2, done: 6, missed: 1 },
-    tasks: [
-      {
-        no: 1,
-        task: "Revise:",
-        subtask: "Chapter 1",
-        elements: "Introduction",
-        dueDate: "Jan 25, 2025",
-        time: "8:00 AM",
-        revisions: "No Revisions",
-      },
-      {
-        no: 2,
-        task: "Prepare:",
-        subtask: "Chapter 2",
-        elements: "—",
-        dueDate: "Jan 30, 2025",
-        time: "8:00 AM",
-        revisions: "No Revisions",
-      },
-      {
-        no: 3,
-        task: "Prepare:",
-        subtask: "Chapter 3",
-        elements: "—",
-        dueDate: "Feb 05, 2025",
-        time: "8:00 AM",
-        revisions: "No Revisions",
-      },
-    ],
-  },
-  {
-    id: "foodfind",
-    name: "FoodFind",
-    membersShort: "Bernardo, Et Al",
-    members: [
-      { name: "Clyden Austin Bernardo", role: "Project Manager" },
-      { name: "Member 2", role: "Member" },
-      { name: "Member 3", role: "Member" },
-      { name: "Member 4", role: "Member" },
-    ],
-    progress: { todo: 6, inprogress: 2, review: 1, done: 4, missed: 0 },
-    tasks: [],
-  },
-  {
-    id: "tasksphere",
-    name: "TaskSphere IT",
-    membersShort: "Mendoza, Et Al",
-    members: [
-      { name: "Project Manager Name", role: "Project Manager" },
-      { name: "Member A", role: "Member" },
-      { name: "Member B", role: "Member" },
-      { name: "Member C", role: "Member" },
-    ],
-    progress: { todo: 3, inprogress: 2, review: 1, done: 5, missed: 1 },
-    tasks: [],
-  },
-];
+/* ===== Firebase ===== */
+import { auth, db } from "../../config/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore";
 
 /* ---------------------- SMALL HELPERS ---------------------- */
 const cardBase =
   "bg-white border border-neutral-200 rounded-2xl shadow-[0_4px_10px_rgba(0,0,0,0.08)] overflow-hidden hover:translate-y-[-2px] transition-transform";
 const maroon = "#6A0F14";
+
+const emptyProgress = { todo: 0, inprogress: 0, review: 0, done: 0, missed: 0 };
 
 /** Builds stroke segments for an SVG donut */
 function useDonutSegments(progress) {
@@ -107,11 +48,45 @@ function useDonutSegments(progress) {
     });
 
     const completion =
-      (progress.done || 0) / total > 0 ? Math.round(((progress.done || 0) / total) * 100) : 0;
+      (progress.done || 0) / total > 0
+        ? Math.round(((progress.done || 0) / total) * 100)
+        : 0;
 
     return { segments, completion, total, parts };
   }, [progress]);
 }
+
+/* ----------------------- formatting helpers ----------------------- */
+const isTs = (v) => v && typeof v === "object" && typeof v.toDate === "function";
+
+const fmtDate = (v) => {
+  try {
+    const d = isTs(v) ? v.toDate() : new Date(v);
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  } catch {
+    return "—";
+  }
+};
+
+const fmtTime = (v) => {
+  if (!v) return "—";
+  // accept "08:00", Date/Timestamp, or ISO
+  try {
+    if (typeof v === "string" && /^\d{1,2}:\d{2}(\s?[AP]M)?$/i.test(v)) return v;
+    const d = isTs(v) ? v.toDate() : new Date(v);
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  } catch {
+    return "—";
+  }
+};
+
+const fmtTimeRange = (start, end) => {
+  if (!start && !end) return "—";
+  if (start && end) return `${fmtTime(start)}–${fmtTime(end)}`;
+  return fmtTime(start || end);
+};
 
 /* ----------------------- UI SUBPARTS ----------------------- */
 function TeamCard({ team, onClick }) {
@@ -127,18 +102,22 @@ function TeamCard({ team, onClick }) {
           <Users className="w-10 h-10" />
         </div>
         <div className="text-center">
-          <p className="font-medium text-neutral-800">{team.name}</p>
-          <p className="mt-4 text-sm font-medium text-neutral-700">{team.membersShort}</p>
+          {/* ONLY the team name */}
+          <p className="font-medium text-neutral-800">{team.name || "—"}</p>
+          {/* Title line (or "--") */}
+          <p className="mt-1 text-[13px] text-neutral-600">
+            <span className="font-semibold">Title:</span>{" "}
+            {team.systemTitle || "--"}
+          </p>
         </div>
       </div>
-      {/* bottom accent bar */}
       <div className="h-5" style={{ backgroundColor: maroon }} />
     </button>
   );
 }
 
 function Donut({ progress }) {
-  const { segments, completion } = useDonutSegments(progress);
+  const { segments, completion } = useDonutSegments(progress || emptyProgress);
   const size = 220;
   const stroke = 22;
   const r = (size - stroke) / 2;
@@ -159,9 +138,7 @@ function Donut({ progress }) {
             className="shrink-0"
             style={{ transform: "rotate(-90deg)" }}
           >
-            {/* background track */}
             <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#eee" strokeWidth={stroke} />
-            {/* segments */}
             {segments.map((s) => (
               <circle
                 key={s.key}
@@ -176,7 +153,6 @@ function Donut({ progress }) {
                 strokeLinecap="butt"
               />
             ))}
-            {/* center label (upright) */}
             <foreignObject
               x={size * 0.25}
               y={size * 0.33}
@@ -190,7 +166,6 @@ function Donut({ progress }) {
             </foreignObject>
           </svg>
 
-          {/* Legend */}
           <div className="grid gap-2 text-sm">
             {segments.map((s) => (
               <div key={s.key} className="flex items-center gap-2">
@@ -221,12 +196,19 @@ function MembersTable({ members }) {
             </thead>
             <tbody>
               {members.map((m, i) => (
-                <tr key={m.name} className="border-t border-neutral-200">
+                <tr key={`${m.name}-${i}`} className="border-t border-neutral-200">
                   <td className="py-2 pr-3">{i + 1}.</td>
                   <td className="py-2 pr-3">{m.name}</td>
                   <td className="py-2 pr-3">{m.role}</td>
                 </tr>
               ))}
+              {members.length === 0 && (
+                <tr className="border-t border-neutral-200">
+                  <td className="py-6 pr-3 text-neutral-500" colSpan={3}>
+                    No members.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -235,7 +217,7 @@ function MembersTable({ members }) {
   );
 }
 
-function TasksTable({ tasks }) {
+function TasksTable({ tasks, loading }) {
   return (
     <div className={`${cardBase}`}>
       <div className="p-5">
@@ -255,28 +237,35 @@ function TasksTable({ tasks }) {
               </tr>
             </thead>
             <tbody>
-              {tasks.map((t) => (
-                <tr key={t.no} className="border-t border-neutral-200">
-                  <td className="py-2 pr-3">{t.no}.</td>
-                  <td className="py-2 pr-3">{t.task}</td>
-                  <td className="py-2 pr-3">{t.subtask}</td>
-                  <td className="py-2 pr-3">{t.elements}</td>
-                  <td className="py-2 pr-3">{t.dueDate}</td>
-                  <td className="py-2 pr-3">{t.time}</td>
-                  <td className="py-2 pr-3">{t.revisions}</td>
-                  <td className="py-2 pr-3">
-                    <button className="cursor-pointer inline-flex items-center gap-1 px-2 py-1 rounded border border-neutral-300 hover:bg-neutral-100">
-                      <FileText className="w-4 h-4" /> View
-                    </button>
+              {loading ? (
+                <tr className="border-t border-neutral-200">
+                  <td className="py-6 pr-3 text-neutral-500" colSpan={8}>
+                    Loading tasks…
                   </td>
                 </tr>
-              ))}
-              {tasks.length === 0 && (
+              ) : tasks.length === 0 ? (
                 <tr className="border-t border-neutral-200">
                   <td className="py-6 pr-3 text-neutral-500" colSpan={8}>
                     No tasks yet.
                   </td>
                 </tr>
+              ) : (
+                tasks.map((t, i) => (
+                  <tr key={`${t._id || t.no}-${i}`} className="border-t border-neutral-200">
+                    <td className="py-2 pr-3">{i + 1}.</td>
+                    <td className="py-2 pr-3">{t.task}</td>
+                    <td className="py-2 pr-3">{t.subtask}</td>
+                    <td className="py-2 pr-3">{t.elements}</td>
+                    <td className="py-2 pr-3">{t.dueDate}</td>
+                    <td className="py-2 pr-3">{t.time}</td>
+                    <td className="py-2 pr-3">{t.revisions}</td>
+                    <td className="py-2 pr-3">
+                      <button className="cursor-pointer inline-flex items-center gap-1 px-2 py-1 rounded border border-neutral-300 hover:bg-neutral-100">
+                        <FileText className="w-4 h-4" /> View
+                      </button>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
@@ -288,21 +277,193 @@ function TasksTable({ tasks }) {
 
 /* ----------------------- MAIN COMPONENT ----------------------- */
 const TeamsSummary = () => {
+  const [uid, setUid] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [teams, setTeams] = useState([]); // [{id, name, systemTitle, members, progress}]
   const [selected, setSelected] = useState(null);
 
+  // new: tasks for the selected team
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [teamTasks, setTeamTasks] = useState([]);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => setUid(u?.uid || ""));
+    return () => unsub();
+  }, []);
+
+  // load advised teams + their titles and teamName (preferred)
+  useEffect(() => {
+    if (!uid) return;
+    let alive = true;
+
+    (async () => {
+      setLoading(true);
+      try {
+        const teamsRef = collection(db, "teams");
+
+        // primary: adviser.uid
+        let snap = await getDocs(query(teamsRef, where("adviser.uid", "==", uid)));
+        let docs = snap.docs;
+
+        // fallback: adviserUid
+        if (docs.length === 0) {
+          const alt = await getDocs(query(teamsRef, where("adviserUid", "==", uid)));
+          docs = alt.docs;
+        }
+
+        const enriched = await Promise.all(
+          docs.map(async (d) => {
+            const data = d.data() || {};
+            const teamId = d.id;
+
+            // Prefer teamName from teamSystemTitles/{teamId}, else teams/{id}.name
+            let systemTitle = "";
+            let nameFromTitleDoc = "";
+            try {
+              const titleDoc = await getDoc(doc(db, "teamSystemTitles", teamId));
+              if (titleDoc.exists()) {
+                const tdata = titleDoc.data() || {};
+                systemTitle = tdata.systemTitle || "";
+                nameFromTitleDoc = (tdata.teamName || "").trim();
+              }
+            } catch {/* ignore */}
+
+            const finalName = nameFromTitleDoc || (data.name || "Unnamed Team");
+
+            const memberNames = Array.isArray(data.memberNames) ? data.memberNames : [];
+            const managerName = data?.manager?.fullName || data?.managerName || "";
+            const members = [
+              ...(managerName ? [{ name: managerName, role: "Project Manager" }] : []),
+              ...memberNames.map((n) => ({ name: n, role: "Member" })),
+            ];
+
+            return {
+              id: teamId,
+              name: finalName,
+              systemTitle: systemTitle || "",
+              members,
+              progress: data.progress || emptyProgress,
+            };
+          })
+        );
+
+        if (alive) setTeams(enriched);
+      } catch (e) {
+        console.error("Failed to load advised teams:", e);
+        if (alive) setTeams([]);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [uid]);
+
+  /* ---------- NEW: fetch team tasks when a team is opened ---------- */
+  // --- replace the whole useEffect that loads tasks with this one ---
+useEffect(() => {
+  if (!selected) return;
+  const team = teams.find((t) => t.id === selected);
+  if (!team) return;
+
+  let alive = true;
+
+  const isTs = (v) => v && typeof v === "object" && typeof v.toDate === "function";
+  const fmtDate = (v) => {
+    try {
+      const d = isTs(v) ? v.toDate() : new Date(v);
+      return Number.isNaN(d.getTime())
+        ? "—"
+        : d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    } catch { return "—"; }
+  };
+  const fmtTime = (v) => {
+    try {
+      if (!v) return "—";
+      if (typeof v === "string") return v;
+      const d = isTs(v) ? v.toDate() : new Date(v);
+      return Number.isNaN(d.getTime())
+        ? "—"
+        : d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    } catch { return "—"; }
+  };
+
+  const normalize = (d, col) => ({
+    _id: d.id || d.uid,
+    task: d.task || (col === "oralDefenseTasks" ? "Oral Defense" : "Final Defense"),
+    subtask: d.subtask || d.subTask || d.phase || "—",
+    elements: d.elements || d.element || d.type || "—", // your doc shows `type: "Discussion & Review"`
+    dueDate: fmtDate(d.dueDate || d.due || d.date),
+    time: fmtTime(d.dueTime || d.time),
+    revisions: d.revision || d.revisions || d.revisionCount || "—",
+  });
+
+  const fetchCol = async (colName) => {
+    const out = [];
+    // by team.id (correct path for your schema)
+    try {
+      const s1 = await getDocs(query(collection(db, colName), where("team.id", "==", team.id)));
+      s1.forEach((snap) => {
+        const d = { id: snap.id, ...snap.data() };
+        if ((d.taskManager || "") === "Adviser") out.push(normalize(d, colName));
+      });
+    } catch (e) { console.warn(`Query by team.id failed for ${colName}:`, e); }
+
+    // fallback by team.name
+    try {
+      const s2 = await getDocs(query(collection(db, colName), where("team.name", "==", team.name)));
+      s2.forEach((snap) => {
+        const d = { id: snap.id, ...snap.data() };
+        if ((d.taskManager || "") === "Adviser") {
+          if (!out.some((x) => x._id === snap.id)) out.push(normalize(d, colName));
+        }
+      });
+    } catch (e) { console.warn(`Query by team.name failed for ${colName}:`, e); }
+
+    return out;
+  };
+
+  (async () => {
+    setTasksLoading(true);
+    try {
+      const oral = await fetchCol("oralDefenseTasks");
+      const fin  = await fetchCol("finalDefenseTasks");
+      if (alive) setTeamTasks([...oral, ...fin]);
+    } catch (e) {
+      console.error("Failed loading team tasks:", e);
+      if (alive) setTeamTasks([]);
+    } finally {
+      if (alive) setTasksLoading(false);
+    }
+  })();
+
+  return () => { alive = false; };
+}, [selected, teams]);
+
+
   if (selected) {
-    const team = TEAMS.find((t) => t.id === selected);
+    const team = teams.find((t) => t.id === selected);
 
     return (
       <div className="space-y-5">
-        {/* Breadcrumb + title */}
+        {/* Breadcrumb + title (use team name) */}
         <div className="flex items-center gap-2 text-sm">
           <Users className="w-4 h-4" />
           <span className="font-medium">Teams Summary</span>
           <ChevronRight className="w-4 h-4 text-neutral-500" />
-          <span className="font-semibold">{team.membersShort}</span>
+          <span className="font-semibold">{team?.name || "—"}</span>
         </div>
         <div className="h-[2px] w-full" style={{ backgroundColor: maroon }} />
+
+        {/* team name + system title line */}
+        <div className="text-sm">
+          <span className="font-semibold">Team:</span> {team?.name || "—"}{" "}
+          <span className="mx-3 text-neutral-300">|</span>
+          <span className="font-semibold">System Title:</span>{" "}
+          {team?.systemTitle || "--"}
+        </div>
 
         {/* Back */}
         <button
@@ -316,12 +477,12 @@ const TeamsSummary = () => {
 
         {/* Top row: members + donut */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <MembersTable members={team.members} />
-          <Donut progress={team.progress} />
+          <MembersTable members={team?.members || []} />
+          <Donut progress={team?.progress || emptyProgress} />
         </div>
 
-        {/* Tasks */}
-        <TasksTable tasks={team.tasks} />
+        {/* Tasks (from oralDefenseTasks + finalDefenseTasks, taskManager=Adviser) */}
+        <TasksTable tasks={teamTasks} loading={tasksLoading} />
       </div>
     );
   }
@@ -335,11 +496,23 @@ const TeamsSummary = () => {
       </div>
       <div className="h-[2px] w-full" style={{ backgroundColor: maroon }} />
 
-      <div className="flex flex-wrap gap-4">
-        {TEAMS.map((team) => (
-          <TeamCard key={team.id} team={team} onClick={() => setSelected(team.id)} />
-        ))}
-      </div>
+      {loading ? (
+        <div className="text-sm text-neutral-500 px-1 py-6">Loading teams…</div>
+      ) : teams.length === 0 ? (
+        <div className="text-sm text-neutral-500 px-1 py-6">
+          No teams under your advisory.
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-4">
+          {teams.map((team) => (
+            <TeamCard
+              key={team.id}
+              team={team}
+              onClick={() => setSelected(team.id)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 };

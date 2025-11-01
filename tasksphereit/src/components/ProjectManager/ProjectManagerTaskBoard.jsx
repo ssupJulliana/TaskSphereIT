@@ -1,156 +1,639 @@
 // src/components/ProjectManager/ProjectManagerTaskBoard.jsx
-import React, { useMemo, useState } from "react";
-import { Search, Image as ImageIcon, Paperclip, ClipboardList } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  LayoutList,
+  StickyNote,
+  ChevronRight,
+  ChevronLeft,
+  Paperclip,
+  Send,
+  MessageSquareText,
+  Loader2,
+} from "lucide-react";
+
+/* ===== Firebase ===== */
+import { auth, db } from "../../config/firebase";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  where,
+  limit,
+  updateDoc,
+} from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 
 const MAROON = "#6A0F14";
 
+/* ========================== Helpers ========================== */
 const COLUMNS = [
-  { key: "todo",       title: "To Do",       header: "#E6B645", strip: "#D1A236" },
-  { key: "inprogress", title: "In Progress", header: "#8AA43A", strip: "#789132" },
-  { key: "review",     title: "To Review",   header: "#5D8BBF", strip: "#4D79A8" },
-  { key: "missed",     title: "Missed",      header: "#C62828", strip: "#B71C1C" },
+  { id: "todo", title: "To Do", color: "#F5B700" },
+  { id: "inprogress", title: "In Progress", color: "#7C9C3B" },
+  { id: "review", title: "To Review", color: "#6FA8DC" },
+  { id: "missed", title: "Missed Task", color: "#D11A2A" },
 ];
 
-/* --- sample data (replace with Firestore later) --- */
-const RAW = [
-  { id: "t1", status: "todo",       assignee: "Mendoza, Et Al",    chapter: "Chapter 4", subtask: "—",             phase: "Implementation", revision: "No Revision", date: "Feb 25, 2025", hasImg: true,  hasAttach: false },
-  { id: "t2", status: "todo",       assignee: "Addrialene Mendoza", chapter: "Chapter 3", subtask: "Implementation", phase: "Implementation", revision: "No Revision", date: "Feb 15, 2025", hasImg: false, hasAttach: false },
-  { id: "t3", status: "todo",       assignee: "Justine Pare",       chapter: "Chapter 3", subtask: "Implementation", phase: "Implementation", revision: "No Revision", date: "Feb 13, 2025", hasImg: false, hasAttach: true },
-  { id: "t4", status: "inprogress", assignee: "Mendoza, Et Al",    chapter: "Chapter 3", subtask: "—",             phase: "Implementation", revision: "No Revision", date: "Feb 20, 2025", hasImg: true,  hasAttach: true },
-  { id: "t5", status: "inprogress", assignee: "Alejandro Faustino", chapter: "Chapter 3", subtask: "Development",   phase: "Implementation", revision: "No Revision", date: "Feb  9, 2025", hasImg: false, hasAttach: false },
-  { id: "t6", status: "inprogress", assignee: "John Reagan Pinpin", chapter: "Chapter 3", subtask: "Implementation", phase: "Implementation", revision: "No Revision", date: "Feb 11, 2025", hasImg: false, hasAttach: false },
-  { id: "t7", status: "review",     assignee: "Julliana Castaneda", chapter: "Chapter 3", subtask: "Implementation", phase: "Implementation", revision: "No Revision", date: "Feb  7, 2025", hasImg: true,  hasAttach: true },
-];
+const STATUS_TO_COLUMN = {
+  "To Do": "todo",
+  "In Progress": "inprogress",
+  "To Review": "review",
+  Completed: "todo",
+};
 
-const PillDate = ({ date }) => (
-  <div className="flex items-center gap-2 text-[12px] font-medium px-2 py-1 rounded-md border border-neutral-300">
-    <span className="inline-block w-2 h-2 rounded-full bg-red-600" />
-    {date}
-  </div>
-);
+const cardShell =
+  "bg-white border border-neutral-200 rounded-lg shadow-sm hover:shadow transition-shadow";
 
-const Card = ({ item, stripColor }) => (
-  <div className="relative rounded-xl bg-white shadow-md border border-neutral-200 px-3 py-3">
-    {/* left colored strip */}
-    <div
-      className="absolute left-0 top-0 h-full w-[8px] rounded-l-xl"
-      style={{ backgroundColor: stripColor }}
-    />
-    {/* content */}
-    <div className="ml-2">
-      <div className="flex items-start justify-between gap-3">
-        <div className="font-semibold text-[14px] text-neutral-800">{item.assignee}</div>
-        <div className="flex items-center gap-2 text-neutral-500">
-          {item.hasImg && <ImageIcon className="w-4 h-4" />}
-          {item.hasAttach && <Paperclip className="w-4 h-4" />}
-        </div>
-      </div>
+const safeName = (u) =>
+  [u?.firstName, u?.middleName ? `${u.middleName[0]}.` : null, u?.lastName]
+    .filter(Boolean)
+    .join(" ") || "Unknown";
 
-      <div className="mt-2 text-[13px] text-neutral-700 leading-tight">
-        <div>{item.chapter}</div>
-        {item.subtask && <div>{item.subtask}</div>}
-        <div>{item.phase}</div>
-        <div className="text-neutral-500">{item.revision}</div>
-      </div>
-
-      <div className="mt-3">
-        <PillDate date={item.date} />
-      </div>
-    </div>
-  </div>
-);
-
-function Column({ title, headerColor, stripColor, items }) {
+/* ======================= Reusable UI ========================= */
+function Column({ title, color, children }) {
   return (
-    <div className="flex-1 min-w-[260px]">
-      {/* header */}
+    <div className="flex flex-col w-[280px] bg-white border border-neutral-200 rounded-xl shadow">
       <div
-        className="rounded-t-xl px-4 py-3 text-white font-semibold shadow-sm"
-        style={{ backgroundColor: headerColor }}
+        className="px-4 py-3 rounded-t-xl text-white text-sm font-semibold"
+        style={{ backgroundColor: color }}
       >
         {title}
       </div>
+      <div className="flex-1 min-h-0">
+        <div className="h-full overflow-y-auto px-3 py-3 space-y-3">{children}</div>
+      </div>
+    </div>
+  );
+}
 
-      {/* body */}
-      <div className="rounded-b-xl border border-neutral-200 border-t-0 bg-white/70 px-3 py-3 min-h-[460px] shadow">
-        <div className="flex flex-col gap-3">
-          {items.map((it) => (
-            <Card key={it.id} item={it} stripColor={stripColor} />
-          ))}
-          {items.length === 0 && (
-            <div className="h-[380px] rounded-lg border border-dashed border-neutral-300 bg-white/60" />
-          )}
+function KanbanCard({ data, onOpen }) {
+  return (
+    <div className={cardShell}>
+      <div className="p-3">
+        <div className="flex items-start justify-between">
+          <div className="font-semibold text-sm">{data.teamName || "No Team"}</div>
+          <button
+            onClick={() => onOpen(data)}
+            className="p-1 rounded hover:bg-neutral-100 cursor-pointer"
+            aria-label="Open detail"
+            title="Open"
+          >
+            <StickyNote className="w-4 h-4 text-neutral-600" />
+          </button>
+        </div>
+
+        <div className="mt-2 text-sm">
+          <div className="text-neutral-800">{data.task || data.chapter || "Task"}</div>
+          <div className="text-neutral-500">{data.revision || "No Revision"}</div>
+        </div>
+
+        <div className="mt-3 text-xs text-neutral-700 flex items-center gap-2">
+          <span
+            className={`w-2 h-2 rounded-full ${
+              data._colId === "missed" ? "bg-red-500" : "bg-neutral-400"
+            } inline-block`}
+          />
+          <span className="px-2 py-1 rounded border border-neutral-200 bg-neutral-50">
+            {data.dueDisplay || "No due date"}
+          </span>
         </div>
       </div>
     </div>
   );
 }
 
-export default function ProjectManagerTaskBoard() {
-  const [q, setQ] = useState("");
-
-  const filtered = useMemo(() => {
-    if (!q.trim()) return RAW;
-    const s = q.toLowerCase();
-    return RAW.filter(
-      (x) =>
-        x.assignee.toLowerCase().includes(s) ||
-        x.chapter.toLowerCase().includes(s) ||
-        (x.subtask || "").toLowerCase().includes(s) ||
-        x.phase.toLowerCase().includes(s) ||
-        x.revision.toLowerCase().includes(s) ||
-        x.date.toLowerCase().includes(s)
-    );
-  }, [q]);
-
-  const byStatus = useMemo(
-    () => ({
-      todo: filtered.filter((x) => x.status === "todo"),
-      inprogress: filtered.filter((x) => x.status === "inprogress"),
-      review: filtered.filter((x) => x.status === "review"),
-      missed: filtered.filter((x) => x.status === "missed"),
-    }),
-    [filtered]
+/* ====================== Detail + Chat ======================== */
+function Field({ label, value }) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <div className="text-neutral-500">{label}</div>
+      <div className="font-medium text-neutral-800">{value || "—"}</div>
+    </div>
   );
+}
+
+function ChatBubble({ m, meUid, onEdit, onDelete, editingId, setEditingId }) {
+  const mine = m.sender?.uid === meUid;
+  const [editText, setEditText] = useState(m.text);
+  const base =
+    "max-w-[80%] px-3 py-2 rounded-lg text-sm leading-snug shadow border border-neutral-200";
+  const isEditing = editingId === m.id && mine;
+
+  return (
+    <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+      <div
+        className={`${base} ${mine ? "bg-[#F9F5F4]" : "bg-white"}`}
+        title={m.createdAt?.toDate?.() ? m.createdAt.toDate().toLocaleString() : ""}
+      >
+        <div className="text-xs text-neutral-500 mb-1">
+          {m.role || m.sender?.name || "Someone"}
+          {m.editedAt?.toDate?.() && <span className="ml-1">(edited)</span>}
+        </div>
+
+        {isEditing ? (
+          <>
+            <textarea
+              className="w-full text-sm border border-neutral-300 rounded p-2"
+              rows={3}
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+            />
+            <div className="mt-2 text-xs flex gap-3">
+              <button
+                onClick={() => {
+                  onEdit(m.id, editText);
+                  setEditingId(null);
+                }}
+                className="text-[#6A0F14] font-medium"
+              >
+                Save
+              </button>
+              <button onClick={() => setEditingId(null)} className="text-neutral-500">
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="text-neutral-800 whitespace-pre-wrap">
+              {m.text || <span className="italic text-neutral-500">[no text]</span>}
+            </div>
+            {mine && !m.__optimistic && (
+              <div className="mt-1 text-xs text-neutral-500 flex gap-4">
+                <button onClick={() => setEditingId(m.id)} className="hover:underline cursor-pointer">
+                  Edit
+                </button>
+                <button onClick={() => onDelete(m.id)} className="hover:underline cursor-pointer">
+                  Delete
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DetailView({ me, card, onBack }) {
+  const meUid = me?.uid;
+  const [messages, setMessages] = useState([]);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const listRef = useRef(null);
+
+  // Stable thread key (legacy-compatible)
+  const threadKey = useMemo(() => {
+    const tId = card.teamId || "no-team";
+    return `${card._collection}:${card.id}:${tId}`;
+  }, [card._collection, card.id, card.teamId]);
+
+  useEffect(() => {
+    const qy = query(
+      collection(db, "chats"),
+      where("threadKey", "==", threadKey),
+      orderBy("createdAt", "asc")
+    );
+    let stop = onSnapshot(qy, (snap) => {
+      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setMessages(rows);
+      requestAnimationFrame(() => {
+        if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+      });
+    });
+    return () => {
+      if (typeof stop === "function") stop();
+    };
+  }, [threadKey]);
+
+  const send = async () => {
+    const text = draft.trim();
+    if (!text || sending) return;
+    setSending(true);
+
+    const optimistic = {
+      id: `tmp-${Date.now()}`,
+      text,
+      role: me?.role || "Project Manager",
+      sender: { uid: meUid, name: me?.name || "Unknown", photoURL: me?.photoURL || null },
+      teamId: card.teamId || null,
+      teamName: card.teamName || null,
+      taskId: card.id,
+      taskTitle: card.task || card.chapter || "Task",
+      taskCollection: card._collection,
+      threadKey,
+      createdAt: { toDate: () => new Date() },
+      __optimistic: true,
+      type: "message",
+    };
+    setMessages((prev) => [...prev, optimistic]);
+    setDraft("");
+
+    try {
+      await addDoc(collection(db, "chats"), {
+        text,
+        role: me?.role || "Project Manager",
+        sender: { uid: meUid || null, name: me?.name || "Unknown", photoURL: me?.photoURL || null },
+        teamId: card.teamId || null,
+        teamName: card.teamName || null,
+        taskId: card.id,
+        taskTitle: card.task || card.chapter || "Task",
+        taskCollection: card._collection,
+        threadKey,
+        createdAt: serverTimestamp(),
+        type: "message",
+      });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const editMessage = async (id, newText) => {
+    const text = (newText || "").trim();
+    if (!text) return;
+    await updateDoc(doc(db, "chats", id), { text, editedAt: serverTimestamp() });
+  };
+
+  const deleteMessage = async (id) => {
+    await deleteDoc(doc(db, "chats", id));
+  };
+
+  const computedActivity = useMemo(() => {
+    const items = [];
+    if (card._colId === "missed") items.push({ id: "miss", text: "Task is overdue (Missed Task)." });
+    if (card.status) items.push({ id: "st", text: `Current status: ${card.status}` });
+    messages
+      .filter((m) => m.type === "activity")
+      .forEach((m) => items.push({ id: m.id, text: m.text || `Activity by ${m.role || "system"}` }));
+    return items;
+  }, [card._colId, card.status, messages]);
 
   return (
     <div className="space-y-4">
-      {/* ===== Title + underline (match ProjectManagerTasks header) ===== */}
-      <div className="space-y-2">
-        <div
-          className="flex items-center gap-2 text-[18px] font-semibold"
-          style={{ color: MAROON }}
+      <div className="flex items-center gap-2">
+        <LayoutList className="w-5 h-5" />
+        <span className="font-semibold">Task Board</span>
+        <ChevronRight className="w-4 h-4 text-neutral-500" />
+        <span className="font-semibold">{card.teamName}</span>
+      </div>
+      <div className="h-[2px] w-full" style={{ backgroundColor: MAROON }} />
+
+      <button
+        onClick={onBack}
+        className="cursor-pointer inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100"
+      >
+        <ChevronLeft className="w-4 h-4" />
+        Back to Board
+      </button>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-white border border-neutral-200 rounded-xl shadow p-4">
+          <div className="flex items-center justify-between">
+            <div className="text-lg font-semibold">{card.task || card.chapter || "Task"}</div>
+            <span
+              className="text-sm font-semibold px-3 py-1 rounded-full text-white"
+              style={{
+                backgroundColor:
+                  card._colId === "missed"
+                    ? "#D11A2A"
+                    : card.status === "To Review"
+                    ? "#6FA8DC"
+                    : card.status === "In Progress"
+                    ? "#7C9C3B"
+                    : card.status === "Completed"
+                    ? MAROON
+                    : "#F5B700",
+              }}
+            >
+              {card._colId === "missed" ? "Missed Task" : card.status || "To Do"}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-y-2 gap-x-6 mt-4 text-sm">
+            <Field label="Team" value={card.teamName} />
+            <Field label="Task Type" value={card.type} />
+            <Field label="Methodology" value={card.methodology} />
+            <Field label="Project Phase" value={card.phase} />
+            <Field label="Revision NO" value={card.revision} />
+            <Field label="Date Created" value={card.createdDisplay} />
+            <Field label="Due Date" value={card.dueDisplay} />
+            <Field label="Time" value={card.time || "—"} />
+          </div>
+
+          <div className="mt-6">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <MessageSquareText className="w-4 h-4" />
+              Activity
+            </div>
+            <ul className="mt-2 space-y-1 text-sm text-neutral-700">
+              {computedActivity.length === 0 ? (
+                <li className="text-neutral-500">No activity yet.</li>
+              ) : (
+                computedActivity.map((a) => <li key={a.id}>• {a.text}</li>)
+              )}
+            </ul>
+          </div>
+        </div>
+
+        <div className="bg-white border border-neutral-200 rounded-xl shadow p-0 overflow-hidden relative">
+          <div className="px-4 pt-3">
+            <div className="flex gap-6 text-sm">
+              <div className="pb-2 font-medium border-b-2 border-neutral-800">Conversation</div>
+            </div>
+          </div>
+          <div className="h-[1px] bg-neutral-200" />
+          <div className="p-4">
+            <div className="rounded-lg border border-neutral-300 overflow-hidden">
+              <div className="px-3 py-2 border-b border-neutral-200 text-sm font-medium">
+                {me?.name || "You"} <span className="text-neutral-500">({me?.role})</span>
+              </div>
+              <div className="p-3 relative">
+                <textarea
+                  rows={3}
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder="Write a message…"
+                  className="w-full resize-none outline-none text-sm"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      send();
+                    }
+                  }}
+                />
+                <div className="flex items-center gap-2 absolute right-3 bottom-3">
+                  <button
+                    className="p-1.5 rounded hover:bg-neutral-100 cursor-not-allowed opacity-50"
+                    title="Attach (coming soon)"
+                    disabled
+                  >
+                    <Paperclip className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={send}
+                    disabled={sending}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-white cursor-pointer disabled:opacity-60"
+                    style={{ backgroundColor: MAROON }}
+                  >
+                    {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    {sending ? "Sending…" : "Send"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div ref={listRef} className="px-4 pb-4 max-h-[360px] overflow-y-auto space-y-3">
+            {messages.length === 0 ? (
+              <div className="text-sm text-neutral-600">No messages yet. Start the conversation above.</div>
+            ) : (
+              messages.map((m) => (
+                <ChatBubble
+                  key={m.id || m._localId || m.createdAt?.seconds || Math.random()}
+                  m={m}
+                  meUid={meUid}
+                  onEdit={editMessage}
+                  onDelete={deleteMessage}
+                  editingId={editingId}
+                  setEditingId={setEditingId}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================ Main ============================ */
+export default function ProjectManagerTaskBoard() {
+  const [me, setMe] = useState(null); // { uid, name, role, photoURL }
+  const [teams, setTeams] = useState([]);
+  const [cards, setCards] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [managerTab, setManagerTab] = useState("Adviser"); // "Adviser" | "Project Manager"
+
+  // Identify user
+  useEffect(() => {
+    const stop = onAuthStateChanged(auth, async (u) => {
+      const uid = u?.uid || localStorage.getItem("uid") || "";
+      if (!uid) return setMe(null);
+
+      let profile = null;
+      try {
+        const qUser = query(collection(db, "users"), where("uid", "==", uid), limit(1));
+        const snap = await getDocs(qUser);
+        if (!snap.empty) profile = snap.docs[0].data();
+      } catch (_) {}
+
+      setMe({
+        uid,
+        name: safeName(profile),
+        role: profile?.role || "Project Manager",
+        photoURL: profile?.photoURL || null,
+      });
+    });
+    return () => stop();
+  }, []);
+
+  // Load my teams (support both projectManager.uid and legacy manager.uid)
+  useEffect(() => {
+    if (!me?.uid) return;
+
+    const merges = new Map();
+    const apply = (snap) => {
+      snap.docs.forEach((d) => merges.set(d.id, { id: d.id, ...d.data() }));
+      setTeams(Array.from(merges.values()));
+    };
+
+    const stopA = onSnapshot(
+      query(collection(db, "teams"), where("projectManager.uid", "==", me.uid)),
+      apply
+    );
+    const stopB = onSnapshot(query(collection(db, "teams"), where("manager.uid", "==", me.uid)), apply);
+
+    return () => {
+      if (typeof stopA === "function") stopA();
+      if (typeof stopB === "function") stopB();
+    };
+  }, [me?.uid]);
+
+  // Subscribe tasks for my teams; **union** two subset queries to avoid flicker
+  const unsubsRef = useRef([]);
+  useEffect(() => {
+    // cleanup old listeners
+    unsubsRef.current.forEach((u) => typeof u === "function" && u());
+    unsubsRef.current = [];
+
+    if (teams.length === 0) {
+      setCards([]);
+      return;
+    }
+
+    const teamIds = teams.map((t) => t.id);
+    const chunks = (arr, n = 10) =>
+      Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));
+
+    // keep separate subset maps per collection (A: team.id, B: teamId)
+    const store = {
+      oralDefenseTasks: { A: new Map(), B: new Map() },
+      finalDefenseTasks: { A: new Map(), B: new Map() },
+    };
+
+    const normalize = (collectionName, d) => {
+      const x = d.data();
+      const t = x.team || {};
+      const teamId = t.id || x.teamId || "no-team";
+      const teamName = t.name || teams.find((tt) => tt.id === teamId)?.name || "No Team";
+
+      const created = typeof x.createdAt?.toDate === "function" ? x.createdAt.toDate() : null;
+      const createdDisplay = created ? created.toLocaleDateString() : "—";
+
+      const dueDate = x.dueDate || null;
+      const time = x.dueTime || null;
+      const dueDisplay = dueDate || "—";
+      const dueAtMs = x.dueAtMs ?? (dueDate && time ? new Date(`${dueDate}T${time}:00`).getTime() : null);
+
+      let colId = STATUS_TO_COLUMN[x.status || "To Do"] || "todo";
+      const now = Date.now();
+      const isOverdue = !!dueAtMs && dueAtMs < now && (x.status || "To Do") !== "Completed";
+      if (isOverdue) colId = "missed";
+
+      return {
+        id: d.id,
+        _collection: collectionName,
+        _colId: colId,
+        teamId,
+        teamName,
+        task: x.task || x.chapter || "Task",
+        chapter: x.chapter || null,
+        type: x.type || null,
+        methodology: x.methodology || null,
+        phase: x.phase || null,
+        revision: x.revision || "No Revision",
+        status: x.status || "To Do",
+        time: time || "—",
+        dueDisplay,
+        createdDisplay,
+        dueAtMs: dueAtMs || null,
+      };
+    };
+
+    const publish = () => {
+      const unionMap = new Map();
+      for (const coll of ["oralDefenseTasks", "finalDefenseTasks"]) {
+        for (const subset of ["A", "B"]) {
+          store[coll][subset].forEach((val, key) => unionMap.set(`${coll}:${key}`, val));
+        }
+      }
+      setCards(Array.from(unionMap.values()));
+    };
+
+    const attach = (collectionName) => {
+      chunks(teamIds, 10).forEach((ids) => {
+        // team.id subset (A)
+        const qa = query(
+          collection(db, collectionName),
+          where("taskManager", "==", managerTab),
+          where("team.id", "in", ids)
+        );
+        const ua = onSnapshot(qa, (snap) => {
+          const next = new Map();
+          snap.docs.forEach((d) => next.set(d.id, normalize(collectionName, d)));
+          store[collectionName].A = next;
+          publish();
+        });
+
+        // teamId subset (B)
+        const qb = query(
+          collection(db, collectionName),
+          where("taskManager", "==", managerTab),
+          where("teamId", "in", ids)
+        );
+        const ub = onSnapshot(qb, (snap) => {
+          const next = new Map();
+          snap.docs.forEach((d) => next.set(d.id, normalize(collectionName, d)));
+          store[collectionName].B = next;
+          publish();
+        });
+
+        unsubsRef.current.push(ua, ub);
+      });
+    };
+
+    attach("oralDefenseTasks");
+    attach("finalDefenseTasks");
+
+    return () => {
+      unsubsRef.current.forEach((u) => typeof u === "function" && u());
+      unsubsRef.current = [];
+    };
+  }, [teams, managerTab]);
+
+  // group by column
+  const grouped = useMemo(() => {
+    const map = Object.fromEntries(COLUMNS.map((c) => [c.id, []]));
+    for (const c of cards) map[c._colId]?.push(c);
+    return map;
+  }, [cards]);
+
+  if (selected) {
+    return <DetailView me={me} card={selected} onBack={() => setSelected(null)} />;
+  }
+
+  return (
+    <div className="space-y-4 min-h-0">
+      <div className="flex items-center gap-2">
+        <LayoutList className="w-5 h-5" />
+        <h2 className="text-lg font-semibold">Task Board</h2>
+      </div>
+      <div className="h-[2px] w-full" style={{ backgroundColor: MAROON }} />
+
+      {/* Tabs for taskManager filter */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setManagerTab("Adviser")}
+          className={`px-3 py-1.5 text-sm rounded-md border ${
+            managerTab === "Adviser" ? "bg-neutral-100 border-neutral-300 font-semibold" : "border-neutral-300"
+          }`}
         >
-          <ClipboardList className="w-5 h-5" />
-          <span>Tasks</span>
-        </div>
-        <div className="h-[3px] w-full" style={{ backgroundColor: MAROON }} />
+          Adviser Tasks
+        </button>
+        <button
+          onClick={() => setManagerTab("Project Manager")}
+          className={`px-3 py-1.5 text-sm rounded-md border ${
+            managerTab === "Project Manager" ? "bg-neutral-100 border-neutral-300 font-semibold" : "border-neutral-300"
+          }`}
+        >
+          Project Manager Tasks
+        </button>
       </div>
 
-      {/* Search */}
-      <div className="w-full max-w-[280px]">
-        <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search"
-            className="w-full pl-9 pr-3 py-2 rounded-md border border-neutral-300 text-sm outline-none focus:ring-2 focus:ring-neutral-300"
-          />
+      <div className="min-h-[520px] max-h-[70vh]">
+        <div className="h-full grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {COLUMNS.map((col) => (
+            <Column key={col.id} title={col.title} color={col.color}>
+              {grouped[col.id].length === 0 ? (
+                <div className="text-sm text-neutral-500">No tasks.</div>
+              ) : (
+                grouped[col.id].map((card) => (
+                  <KanbanCard
+                    key={`${card._collection}:${card.id}`}
+                    data={card}
+                    onOpen={setSelected}
+                  />
+                ))
+              )}
+            </Column>
+          ))}
         </div>
-      </div>
-
-      {/* Columns */}
-      <div className="flex gap-5">
-        {COLUMNS.map((c) => (
-          <Column
-            key={c.key}
-            title={c.title}
-            headerColor={c.header}
-            stripColor={c.strip}
-            items={byStatus[c.key] || []}
-          />
-        ))}
       </div>
     </div>
   );

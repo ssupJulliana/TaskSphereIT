@@ -1,6 +1,21 @@
 // src/components/ProjectManager/ProjectManagerDashboard.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Users, CalendarDays, Clock, ChevronLeft, ChevronRight } from "lucide-react";
+
+/* === Firebase === */
+import { auth, db } from "../../config/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore";
+
+/* === Modal that saves to teamSystemTitles === */
+import ProjectManagerTitleModal from "./ProjectManagerTitleModal";
 
 const MAROON = "#6A0F14";
 
@@ -373,6 +388,72 @@ const CalendarCard = () => {
 
 // ---- main ---------------------------------------------------------------
 const ProjectManagerDashboard = () => {
+  /* ===== Title gate (Passed => require title) ===== */
+  const [pmUid, setPmUid] = useState("");
+  const [modalTeam, setModalTeam] = useState(null); // { id, name }
+  const [titleGateChecked, setTitleGateChecked] = useState(false);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setPmUid(u?.uid || "");
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!pmUid || titleGateChecked) return;
+
+    (async () => {
+      try {
+        // 1) Find the PM's teams. Primary shape: manager.uid; fallback: managerUid.
+        const teamsRef = collection(db, "teams");
+        let teamsSnap = await getDocs(query(teamsRef, where("manager.uid", "==", pmUid)));
+        let pmTeams = teamsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+
+        if (pmTeams.length === 0) {
+          const altSnap = await getDocs(query(teamsRef, where("managerUid", "==", pmUid)));
+          pmTeams = altSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+        }
+
+        if (pmTeams.length === 0) {
+          setTitleGateChecked(true);
+          return;
+        }
+
+        // 2) For each team, require title if:
+        //    - titleDefenseSchedules has verdict "Passed"
+        //    - teamSystemTitles does NOT exist
+        for (const t of pmTeams) {
+          const teamId = t.id;
+
+          const passSnap = await getDocs(
+            query(
+              collection(db, "titleDefenseSchedules"),
+              where("teamId", "==", teamId),
+              where("verdict", "==", "Passed")
+            )
+          );
+          const hasPassed = passSnap.size > 0;
+          if (!hasPassed) continue;
+
+          const titleDoc = await getDoc(doc(db, "teamSystemTitles", teamId));
+          const hasTitle = titleDoc.exists() && !!titleDoc.data()?.systemTitle;
+
+          if (!hasTitle) {
+            setModalTeam({ id: teamId, name: t.name || "Unnamed Team" });
+            setTitleGateChecked(true);
+            return; // show 1 modal only
+          }
+        }
+
+        setTitleGateChecked(true);
+      } catch (e) {
+        console.error("Title gate check failed:", e);
+        setTitleGateChecked(true);
+      }
+    })();
+  }, [pmUid, titleGateChecked]);
+
   return (
     <div className="space-y-8">
       {/* UPCOMING */}
@@ -506,6 +587,17 @@ const ProjectManagerDashboard = () => {
         </h3>
         <CalendarCard />
       </section>
+
+      {/* === Title requirement modal (opens when Passed & no title yet) === */}
+      {modalTeam && (
+        <ProjectManagerTitleModal
+          open
+          teamId={modalTeam.id}
+          teamName={modalTeam.name}
+          pm={{ uid: pmUid, name: "Project Manager" }}
+          onSaved={() => setModalTeam(null)}
+        />
+      )}
     </div>
   );
 };
