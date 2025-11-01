@@ -1,45 +1,17 @@
 // src/components/CapstoneMember/MemberEvents.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import {
-  ClipboardList,
-  BookOpenCheck,
-  Presentation,
-  GraduationCap,
-} from "lucide-react";
+import { ClipboardList, BookOpenCheck, Presentation, GraduationCap } from "lucide-react";
+import { getEventsForUser } from "../../services/events";
 
 const MAROON = "#6A0F14";
 
-import { getEventsForUser } from "../../services/events";
-
-function to12h(t) {
+const to12h = (t) => {
   if (!t) return "";
   const [H, M] = String(t).split(":").map(Number);
   const ampm = H >= 12 ? "PM" : "AM";
   const hh = ((H + 11) % 12) + 1;
   return `${hh}:${String(M || 0).padStart(2, "0")} ${ampm}`;
-}
-
-/* ---------- tiny ui helpers ---------- */
-const SectionTitle = ({ icon: Icon, children }) => (
-  <div className="flex items-center gap-2 mb-2">
-    <Icon className="w-5 h-5" color={MAROON} />
-    <h2 className="text-[17px] font-semibold" style={{ color: MAROON }}>
-      {children}
-    </h2>
-  </div>
-);
-
-const Pill = ({ tone = "neutral", children }) => {
-  const styles =
-    tone === "success"
-      ? "bg-[#88A94B] text-white"
-      : "border border-neutral-300 text-neutral-700";
-  return (
-    <span className={`px-3 py-1 rounded-full text-xs inline-flex ${styles}`}>
-      {children}
-    </span>
-  );
 };
 
 const CardTable = ({ children }) => (
@@ -50,18 +22,22 @@ const CardTable = ({ children }) => (
   </div>
 );
 
-function MemberEvents() {
+const Pill = ({ children }) => (
+  <span className="px-3 py-1 rounded-full text-xs inline-flex border border-neutral-300 text-neutral-700">{children}</span>
+);
+
+export default function MemberEvents() {
   const [rows, setRows] = useState({ titleDefense: [], manuscript: [], oralDefense: [], finalDefense: [], finalRedefense: [] });
   const [loading, setLoading] = useState(true);
   const [searchParams, setSearchParams] = useSearchParams();
-  const initView = (searchParams.get("view") || "menu").toLowerCase();
-  const [view, setView] = useState(initView);
+  const [view, setView] = useState((searchParams.get("view") || "menu").toLowerCase());
+  const [defTab, setDefTab] = useState((searchParams.get("tab") || "title").toLowerCase());
 
   useEffect(() => {
     let alive = true;
     (async () => {
-      setLoading(true);
       try {
+        setLoading(true);
         const uid = localStorage.getItem("uid");
         const res = await getEventsForUser(uid);
         if (alive) setRows(res);
@@ -78,12 +54,20 @@ function MemberEvents() {
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
     if (view === "menu") next.delete("view"); else next.set("view", view);
+    if (view === "defenses") next.set("tab", defTab); else next.delete("tab");
     setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view]);
+  }, [view, defTab]);
 
-  const hasFinal = useMemo(() => rows.finalDefense.length > 0, [rows.finalDefense.length]);
-  const hasReFinal = useMemo(() => rows.finalRedefense.length > 0, [rows.finalRedefense.length]);
+  const Header = (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 text-[18px] font-semibold" style={{ color: MAROON }}>
+        <ClipboardList className="w-5 h-5" />
+        <span>Events</span>
+      </div>
+      <div className="h-[3px] w-full" style={{ backgroundColor: MAROON }} />
+    </div>
+  );
 
   const CategoryCard = ({ title, icon: Icon, onClick }) => (
     <button onClick={onClick} className="w-[220px] h-[120px] rounded-xl border border-neutral-200 bg-white shadow hover:shadow-md text-left overflow-hidden">
@@ -97,21 +81,8 @@ function MemberEvents() {
     </button>
   );
 
-  const Header = (
-    <div className="space-y-2">
-      <div
-        className="flex items-center gap-2 text-[18px] font-semibold"
-        style={{ color: MAROON }}
-      >
-        <ClipboardList className="w-5 h-5" />
-        <span>Events</span>
-      </div>
-      <div className="h-[3px] w-full" style={{ backgroundColor: MAROON }} />
-    </div>
-  );
-
-  return (
-    view === "menu" ? (
+  if (view === "menu") {
+    return (
       <div className="space-y-4">
         {Header}
         <div className="flex gap-4">
@@ -119,47 +90,19 @@ function MemberEvents() {
           <CategoryCard title="Capstone Defenses" icon={Presentation} onClick={() => setView("defenses")} />
         </div>
       </div>
-    ) : (
+    );
+  }
+
+  return (
     <div className="space-y-4">
-      {/* ===== Header ===== */}
       {Header}
 
-      {/* ===== Content ===== */}
-      <div className="flex-1 min-w-0 max-w-full overflow-hidden space-y-8">
-        {/* Title Defense */}
+      {view === "manuscript" && (
         <section>
-          <SectionTitle icon={ClipboardList}>Title Defense</SectionTitle>
-          <CardTable>
-            <thead>
-              <tr className="bg-neutral-50/80 text-neutral-600">
-                <th className="text-left py-2 pl-6 pr-3">NO</th>
-                <th className="text-left py-2 pr-3">Team</th>
-                <th className="text-left py-2 pr-3">Date</th>
-                <th className="text-left py-2 pr-3">Time</th>
-                <th className="text-left py-2 pr-3">Panelist</th>
-                <th className="text-left py-2 pr-6">Verdict</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(loading ? [] : rows.titleDefense).map((r, idx) => (
-                <tr key={`td-${r.id}`} className="border-t border-neutral-200">
-                  <td className="py-2 pl-6 pr-3">{idx + 1}.</td>
-                  <td className="py-2 pr-3">{r.teamName}</td>
-                  <td className="py-2 pr-3">{r.date}</td>
-                  <td className="py-2 pr-3">{r.timeStart ? to12h(r.timeStart) : ""}</td>
-                  <td className="py-2 pr-3">{Array.isArray(r.panelists) ? r.panelists.join(", ") : ""}</td>
-                  <td className="py-2 pr-6">
-                    <Pill>{r.verdict}</Pill>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </CardTable>
-        </section>
-
-        {/* Manuscript Results */}
-        <section>
-          <SectionTitle icon={BookOpenCheck}>Manuscript Results</SectionTitle>
+          <div className="flex items-center gap-2 mb-2">
+            <BookOpenCheck className="w-5 h-5" color={MAROON} />
+            <h2 className="text-[17px] font-semibold" style={{ color: MAROON }}>Manuscript Results</h2>
+          </div>
           <CardTable>
             <thead>
               <tr className="bg-neutral-50/80 text-neutral-600">
@@ -185,133 +128,182 @@ function MemberEvents() {
                   <td className="py-2 pr-3">{`${r.plag ?? 0}%`}</td>
                   <td className="py-2 pr-3">{`${r.ai ?? 0}%`}</td>
                   <td className="py-2 pr-3">{r.file ? "Yes" : "No"}</td>
-                  <td className="py-2 pr-6">
-                    <Pill tone="success">{r.verdict}</Pill>
-                  </td>
+                  <td className="py-2 pr-6"><Pill>{r.verdict}</Pill></td>
                 </tr>
               ))}
             </tbody>
           </CardTable>
         </section>
+      )}
 
-        {/* Oral Defense */}
-        <section>
-          <SectionTitle icon={Presentation}>Oral Defense</SectionTitle>
-          <CardTable>
-            <thead>
-              <tr className="bg-neutral-50/80 text-neutral-600">
-                <th className="text-left py-2 pl-6 pr-3">NO</th>
-                <th className="text-left py-2 pr-3">Team</th>
-                <th className="text-left py-2 pr-3">Title</th>
-                <th className="text-left py-2 pr-3">Date</th>
-                <th className="text-left py-2 pr-3">Time</th>
-                <th className="text-left py-2 pr-3">Panelist</th>
-                <th className="text-left py-2 pr-6">Verdict</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(loading ? [] : rows.oralDefense).map((r, idx) => (
-                <tr key={`od-${r.id}`} className="border-t border-neutral-200">
-                  <td className="py-2 pl-6 pr-3">{idx + 1}.</td>
-                  <td className="py-2 pr-3">{r.teamName}</td>
-                  <td className="py-2 pr-3">{r.title}</td>
-                  <td className="py-2 pr-3">{r.date}</td>
-                  <td className="py-2 pr-3">{r.timeStart ? to12h(r.timeStart) : ""}</td>
-                  <td className="py-2 pr-3">{Array.isArray(r.panelists) ? r.panelists.join(", ") : ""}</td>
-                  <td className="py-2 pr-6">
-                    <Pill>{r.verdict}</Pill>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </CardTable>
-        </section>
+      {view === "defenses" && (
+        <>
+          <div className="flex gap-2 mb-3">
+            {[
+              { key: "title", label: "Title Defense" },
+              { key: "oral", label: "Oral Defense" },
+              { key: "final", label: "Final Defense" },
+              { key: "redef", label: "Final Re-Defense" },
+            ].map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setDefTab(t.key)}
+                className={`px-3 py-1.5 rounded-md text-sm border ${defTab===t.key ? 'text-white' : 'text-neutral-700'}`}
+                style={defTab===t.key?{backgroundColor:MAROON}:{}}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
 
-        {/* Final Defense */}
-        <section>
-          <SectionTitle icon={GraduationCap}>Final Defense</SectionTitle>
-          <CardTable>
-            <thead>
-              <tr className="bg-neutral-50/80 text-neutral-600">
-                <th className="text-left py-2 pl-6 pr-3">NO</th>
-                <th className="text-left py-2 pr-3">Team</th>
-                <th className="text-left py-2 pr-3">Title</th>
-                <th className="text-left py-2 pr-3">Date</th>
-                <th className="text-left py-2 pr-3">Time</th>
-                <th className="text-left py-2 pr-3">Panelist</th>
-                <th className="text-left py-2 pr-6">Verdict</th>
-              </tr>
-            </thead>
-            <tbody>
-              {hasFinal ? (
-                rows.finalDefense.map((r, idx) => (
-                  <tr key={`fd-${r.id}`} className="border-t border-neutral-200">
-                    <td className="py-2 pl-6 pr-3">{idx + 1}.</td>
-                    <td className="py-2 pr-3">{r.teamName}</td>
-                    <td className="py-2 pr-3">{r.title}</td>
-                    <td className="py-2 pr-3">{r.date}</td>
-                    <td className="py-2 pr-3">{r.timeStart ? to12h(r.timeStart) : ""}</td>
-                    <td className="py-2 pr-3">{Array.isArray(r.panelists) ? r.panelists.join(", ") : ""}</td>
-                    <td className="py-2 pr-6">
-                      <Pill>{r.verdict || "Pending"}</Pill>
-                    </td>
+          {defTab === "title" && (
+            <section>
+              <div className="flex items-center gap-2 mb-2">
+                <ClipboardList className="w-5 h-5" color={MAROON} />
+                <h2 className="text-[17px] font-semibold" style={{ color: MAROON }}>Title Defense</h2>
+              </div>
+              <CardTable>
+                <thead>
+                  <tr className="bg-neutral-50/80 text-neutral-600">
+                    <th className="text-left py-2 pl-6 pr-3">NO</th>
+                    <th className="text-left py-2 pr-3">Team</th>
+                    <th className="text-left py-2 pr-3">Date</th>
+                    <th className="text-left py-2 pr-3">Time</th>
+                    <th className="text-left py-2 pr-3">Panelist</th>
+                    <th className="text-left py-2 pr-6">Verdict</th>
                   </tr>
-                ))
-              ) : (
-                <tr className="border-t border-neutral-200">
-                  <td className="py-6 text-center text-neutral-500" colSpan={7}>
-                    No final defense items yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </CardTable>
-        </section>
+                </thead>
+                <tbody>
+                  {(loading ? [] : rows.titleDefense).map((r, idx) => (
+                    <tr key={`td-${r.id}`} className="border-t border-neutral-200">
+                      <td className="py-2 pl-6 pr-3">{idx + 1}.</td>
+                      <td className="py-2 pr-3">{r.teamName}</td>
+                      <td className="py-2 pr-3">{r.date}</td>
+                      <td className="py-2 pr-3">{r.timeStart ? to12h(r.timeStart) : ""}</td>
+                      <td className="py-2 pr-3">{Array.isArray(r.panelists) ? r.panelists.join(", ") : ""}</td>
+                      <td className="py-2 pr-6"><Pill>{r.verdict}</Pill></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </CardTable>
+            </section>
+          )}
 
-        {/* Final Re-Defense */}
-        <section>
-          <SectionTitle icon={GraduationCap}>Final Re-Defense</SectionTitle>
-          <CardTable>
-            <thead>
-              <tr className="bg-neutral-50/80 text-neutral-600">
-                <th className="text-left py-2 pl-6 pr-3">NO</th>
-                <th className="text-left py-2 pr-3">Team</th>
-                <th className="text-left py-2 pr-3">Title</th>
-                <th className="text-left py-2 pr-3">Date</th>
-                <th className="text-left py-2 pr-3">Time</th>
-                <th className="text-left py-2 pr-3">Panelist</th>
-                <th className="text-left py-2 pr-6">Verdict</th>
-              </tr>
-            </thead>
-            <tbody>
-              {hasReFinal ? (
-                rows.finalRedefense.map((r, idx) => (
-                  <tr key={`frd-${r.id}`} className="border-t border-neutral-200">
-                    <td className="py-2 pl-6 pr-3">{idx + 1}.</td>
-                    <td className="py-2 pr-3">{r.teamName}</td>
-                    <td className="py-2 pr-3">{r.title}</td>
-                    <td className="py-2 pr-3">{r.date}</td>
-                    <td className="py-2 pr-3">{r.timeStart ? to12h(r.timeStart) : ""}</td>
-                    <td className="py-2 pr-3">{Array.isArray(r.panelists) ? r.panelists.join(", ") : ""}</td>
-                    <td className="py-2 pr-6">
-                      <Pill>{r.verdict || "Pending"}</Pill>
-                    </td>
+          {defTab === "oral" && (
+            <section>
+              <div className="flex items-center gap-2 mb-2">
+                <Presentation className="w-5 h-5" color={MAROON} />
+                <h2 className="text-[17px] font-semibold" style={{ color: MAROON }}>Oral Defense</h2>
+              </div>
+              <CardTable>
+                <thead>
+                  <tr className="bg-neutral-50/80 text-neutral-600">
+                    <th className="text-left py-2 pl-6 pr-3">NO</th>
+                    <th className="text-left py-2 pr-3">Team</th>
+                    <th className="text-left py-2 pr-3">Title</th>
+                    <th className="text-left py-2 pr-3">Date</th>
+                    <th className="text-left py-2 pr-3">Time</th>
+                    <th className="text-left py-2 pr-3">Panelist</th>
+                    <th className="text-left py-2 pr-6">Verdict</th>
                   </tr>
-                ))
-              ) : (
-                <tr className="border-t border-neutral-200">
-                  <td className="py-6 text-center text-neutral-500" colSpan={7}>
-                    No final re-defense items yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </CardTable>
-        </section>
-      </div>
+                </thead>
+                <tbody>
+                  {(loading ? [] : rows.oralDefense).map((r, idx) => (
+                    <tr key={`od-${r.id}`} className="border-t border-neutral-200">
+                      <td className="py-2 pl-6 pr-3">{idx + 1}.</td>
+                      <td className="py-2 pr-3">{r.teamName}</td>
+                      <td className="py-2 pr-3">{r.title}</td>
+                      <td className="py-2 pr-3">{r.date}</td>
+                      <td className="py-2 pr-3">{r.timeStart ? to12h(r.timeStart) : ""}</td>
+                      <td className="py-2 pr-3">{Array.isArray(r.panelists) ? r.panelists.join(", ") : ""}</td>
+                      <td className="py-2 pr-6"><Pill>{r.verdict}</Pill></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </CardTable>
+            </section>
+          )}
+
+          {defTab === "final" && (
+            <section>
+              <div className="flex items-center gap-2 mb-2">
+                <GraduationCap className="w-5 h-5" color={MAROON} />
+                <h2 className="text-[17px] font-semibold" style={{ color: MAROON }}>Final Defense</h2>
+              </div>
+              <CardTable>
+                <thead>
+                  <tr className="bg-neutral-50/80 text-neutral-600">
+                    <th className="text-left py-2 pl-6 pr-3">NO</th>
+                    <th className="text-left py-2 pr-3">Team</th>
+                    <th className="text-left py-2 pr-3">Title</th>
+                    <th className="text-left py-2 pr-3">Date</th>
+                    <th className="text-left py-2 pr-3">Time</th>
+                    <th className="text-left py-2 pr-3">Panelist</th>
+                    <th className="text-left py-2 pr-6">Verdict</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(rows.finalDefense || []).length ? (
+                    rows.finalDefense.map((r, idx) => (
+                      <tr key={`fd-${r.id}`} className="border-t border-neutral-200">
+                        <td className="py-2 pl-6 pr-3">{idx + 1}.</td>
+                        <td className="py-2 pr-3">{r.teamName}</td>
+                        <td className="py-2 pr-3">{r.title}</td>
+                        <td className="py-2 pr-3">{r.date}</td>
+                        <td className="py-2 pr-3">{r.timeStart ? to12h(r.timeStart) : ""}</td>
+                        <td className="py-2 pr-3">{Array.isArray(r.panelists) ? r.panelists.join(", ") : ""}</td>
+                        <td className="py-2 pr-6"><Pill>{r.verdict || "Pending"}</Pill></td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr className="border-t border-neutral-200"><td className="py-6 text-center text-neutral-500" colSpan={7}>No final defense items yet.</td></tr>
+                  )}
+                </tbody>
+              </CardTable>
+            </section>
+          )}
+
+          {defTab === "redef" && (
+            <section>
+              <div className="flex items-center gap-2 mb-2">
+                <GraduationCap className="w-5 h-5" color={MAROON} />
+                <h2 className="text-[17px] font-semibold" style={{ color: MAROON }}>Final Re-Defense</h2>
+              </div>
+              <CardTable>
+                <thead>
+                  <tr className="bg-neutral-50/80 text-neutral-600">
+                    <th className="text-left py-2 pl-6 pr-3">NO</th>
+                    <th className="text-left py-2 pr-3">Team</th>
+                    <th className="text-left py-2 pr-3">Title</th>
+                    <th className="text-left py-2 pr-3">Date</th>
+                    <th className="text-left py-2 pr-3">Time</th>
+                    <th className="text-left py-2 pr-3">Panelist</th>
+                    <th className="text-left py-2 pr-6">Verdict</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(rows.finalRedefense || []).length ? (
+                    rows.finalRedefense.map((r, idx) => (
+                      <tr key={`frd-${r.id}`} className="border-t border-neutral-200">
+                        <td className="py-2 pl-6 pr-3">{idx + 1}.</td>
+                        <td className="py-2 pr-3">{r.teamName}</td>
+                        <td className="py-2 pr-3">{r.title}</td>
+                        <td className="py-2 pr-3">{r.date}</td>
+                        <td className="py-2 pr-3">{r.timeStart ? to12h(r.timeStart) : ""}</td>
+                        <td className="py-2 pr-3">{Array.isArray(r.panelists) ? r.panelists.join(", ") : ""}</td>
+                        <td className="py-2 pr-6"><Pill>{r.verdict || "Pending"}</Pill></td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr className="border-t border-neutral-200"><td className="py-6 text-center text-neutral-500" colSpan={7}>No final re-defense items yet.</td></tr>
+                  )}
+                </tbody>
+              </CardTable>
+            </section>
+          )}
+        </>
+      )}
     </div>
-    )
   );
 }
 
-export default MemberEvents;
