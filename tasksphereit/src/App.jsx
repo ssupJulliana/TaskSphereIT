@@ -30,6 +30,8 @@ import TeamsSummary from "./components/CapstoneAdviser/TeamsSummary.jsx";
 import Events from "./components/CapstoneAdviser/Events.jsx";
 import Notes from "./components/Notes.jsx";
 import Notifications from "./components/CapstoneAdviser/Notifications.jsx";
+import ProjectManagerNotifications from "./components/ProjectManager/ProjectManagerNotifications.jsx";
+import MemberNotifications from "./components/CapstoneMember/MemberNotifications.jsx";
 import Profile from "./components/CapstoneAdviser/Profile.jsx";
 
 // Member
@@ -112,6 +114,7 @@ export default function App() {
           <Route path="tasks-board" element={<ProjectManagerTaskBoard />} />
           <Route path="tasks-record" element={<ProjectManagerAdviserTaskRecord />} />
           <Route path="events" element={<ProjectManagerEvents />} />
+          <Route path="notifications" element={<ProjectManagerNotifications />} />
           <Route path="tasks" element={<ProjectManagerTasks />} />
           <Route path="notes" element={<Notes />} />
         </Route>
@@ -125,6 +128,7 @@ export default function App() {
           <Route path="tasks-board" element={<MemberTasksBoard />} />
           <Route path="tasks-record" element={<MemberTasksRecord />} />
           <Route path="events" element={<MemberEvents />} />
+          <Route path="notifications" element={<MemberNotifications />} />
           <Route path="notes" element={<Notes />} />
         </Route>
 

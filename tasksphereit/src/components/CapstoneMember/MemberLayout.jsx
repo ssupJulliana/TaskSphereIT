@@ -5,6 +5,7 @@ import TaskSphereLogo from "../../assets/imgs/TaskSphereLogo.png";
 import MemberHeader from "./MemberHeader";
 import MemberFooter from "./MemberFooter";
 import MemberProfile from "./MemberProfile";
+import NotificationBanner from "../common/NotificationBanner";
 
 import { auth } from "../../config/firebase";
 import { signOut } from "firebase/auth";
@@ -116,6 +117,7 @@ import {
         <MemberHeader onOpenProfile={() => setShowProfile(true)} />
 
         <main className="flex-1 min-h-0 overflow-y-auto px-4 py-6 md:px-8">
+          <NotificationBanner role="Member" />
           <Outlet />
         </main>
 

@@ -121,9 +121,17 @@ export async function getAdviserEvents() {
   ]);
 
   // Map titles for oral/final if missing
-  const teamIds = Array.from(new Set([...
-    titleRows, ...manusRows, ...oralRows, ...finalRows, ...reFinalRows
-  ].map((r) => r.teamId).filter(Boolean)));
+  const teamIds = Array.from(
+    new Set([
+      ...titleRows,
+      ...manusRows,
+      ...oralRows,
+      ...finalRows,
+      ...reFinalRows,
+    ]
+      .map((r) => r.teamId)
+      .filter(Boolean))
+  );
   const titlesMap = await getTeamTitlesMap(teamIds);
 
   const withTitle = (rows) => rows.map((r) => ({ ...r, title: r.title || titlesMap.get(r.teamId) || "" }));
@@ -179,4 +187,3 @@ export async function updateScheduleVerdict(collectionKey, docId, verdict) {
   if (!col) throw new Error("Invalid schedule collection key");
   await updateDoc(doc(db, col, docId), { verdict });
 }
-
