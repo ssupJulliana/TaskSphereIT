@@ -30,6 +30,7 @@ import {
   updateDoc,
   deleteDoc,
 } from "firebase/firestore";
+import { notifyTeamSchedule } from "../../../services/notifications";
 
 /* ===== PDF ===== */
 import jsPDF from "jspdf";
@@ -791,6 +792,16 @@ function CreateOrEditDialog({
           createdAt: serverTimestamp(),
         });
       }
+
+      // Notify team subscribers
+      await notifyTeamSchedule({
+        kind: "Manuscript Submission",
+        teamId: payload.teamId,
+        teamName: payload.teamName,
+        date: payload.date,
+        timeStart: payload.time,
+        timeEnd: "",
+      });
 
       if (typeof onSaved === "function") onSaved();
       onClose();

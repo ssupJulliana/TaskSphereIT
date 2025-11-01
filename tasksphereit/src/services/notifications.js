@@ -100,3 +100,63 @@ export function subscribeNotifications({ uid, role, teamIds = [] }, cb) {
   return () => unsubs.forEach((u) => u && u());
 }
 
+// Convenience helper: post three notifications (PM, Adviser, Member)
+// when an instructor sets/updates a schedule for a team.
+// kind: 'Title Defense' | 'Manuscript Submission' | 'Oral Defense' | 'Final Defense' | 'Final Re-Defense'
+export async function notifyTeamSchedule({ kind, teamId, teamName, date, timeStart, timeEnd }) {
+  try {
+    const teamIds = teamId ? [teamId] : [];
+    const to12h = (t) => {
+      if (!t) return "";
+      const [H, M] = String(t).split(":").map(Number);
+      if (Number.isNaN(H) || Number.isNaN(M)) return "";
+      const ampm = H >= 12 ? "PM" : "AM";
+      const hh = ((H + 11) % 12) + 1;
+      return `${hh}:${String(M).padStart(2, "0")} ${ampm}`;
+    };
+    const humanDate = (() => {
+      if (!date) return "";
+      const [y, m, d] = String(date).split("-").map(Number);
+      const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      if (!y || !m || !d) return String(date);
+      return `${months[(m || 1) - 1]} ${Number(d || 1)}, ${y}`;
+    })();
+    const timeRange = (() => {
+      const a = to12h(timeStart);
+      const b = to12h(timeEnd);
+      if (a && b) return `${a} - ${b}`;
+      return a || b || "";
+    })();
+
+    const title = `${kind} scheduled`;
+    const bodyParts = [];
+    if (teamName) bodyParts.push(teamName);
+    if (humanDate) bodyParts.push(humanDate);
+    if (timeRange) bodyParts.push(timeRange);
+    const body = bodyParts.join(" • ");
+
+    const entries = [
+      { role: "Project Manager", link: "/projectmanager/events" },
+      { role: "Adviser", link: "/adviser/events" },
+      { role: "Member", link: "/member/events" },
+    ];
+
+    await Promise.all(
+      entries.map((e) =>
+        addDoc(collection(db, COL), {
+          title,
+          body,
+          link: e.link,
+          recipients: [],
+          teamIds,
+          role: e.role,
+          readBy: [],
+          createdAt: serverTimestamp(),
+        })
+      )
+    );
+  } catch (err) {
+    // Non-blocking
+    console.error("notifyTeamSchedule failed:", err);
+  }
+}
