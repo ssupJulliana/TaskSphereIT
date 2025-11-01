@@ -45,7 +45,20 @@ const MAROON = "#6A0F14";
 const COLLECTION = "manuscriptSubmissions";
 
 /* ---------- small helpers ---------- */
-const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 const fmtDateHuman = (yyyy_mm_dd) => {
   if (!yyyy_mm_dd) return "";
   const [y, m, d] = yyyy_mm_dd.split("-").map(Number);
@@ -60,14 +73,22 @@ const to12h = (t) => {
 };
 
 /* ---------- your button (unchanged style) ---------- */
-const Btn = ({ children, variant = "solid", icon: Icon, className = "", ...props }) => {
+const Btn = ({
+  children,
+  variant = "solid",
+  icon: Icon,
+  className = "",
+  ...props
+}) => {
   const base =
     "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium cursor-pointer " +
-    "focus:outline-none focus:ring-2 focus:ring-neutral-200 " + className;
+    "focus:outline-none focus:ring-2 focus:ring-neutral-200 " +
+    className;
   const cls =
     variant === "solid"
       ? base + " text-white"
-      : base + " border border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50";
+      : base +
+        " border border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50";
   const style = variant === "solid" ? { backgroundColor: MAROON } : undefined;
   return (
     <button {...props} className={cls} style={style}>
@@ -86,7 +107,9 @@ const VerdictPill = ({ verdict }) => {
       ? "bg-[#F59E0B] text-white"
       : "bg-[#9CA3AF] text-white"; // Pending
   return (
-    <span className={`inline-flex items-center px-3 py-1 rounded-md text-xs font-semibold ${styles}`}>
+    <span
+      className={`inline-flex items-center px-3 py-1 rounded-md text-xs font-semibold ${styles}`}
+    >
       {verdict}
     </span>
   );
@@ -131,7 +154,10 @@ export default function ManuscriptSubmission() {
   /* ===== Bulk delete ===== */
   const [bulkMode, setBulkMode] = useState(false);
   const [selected, setSelected] = useState(new Set());
-  const exitBulk = () => { setBulkMode(false); setSelected(new Set()); };
+  const exitBulk = () => {
+    setBulkMode(false);
+    setSelected(new Set());
+  };
 
   // close menu on outside click / ESC
   useEffect(() => {
@@ -155,19 +181,23 @@ export default function ManuscriptSubmission() {
     (async () => {
       try {
         // Load title defense schedules first
-        const titleDefenseSnap = await getDocs(collection(db, "titleDefenseSchedules"));
+        const titleDefenseSnap = await getDocs(
+          collection(db, "titleDefenseSchedules")
+        );
         const currentDateTime = new Date();
         const eligibleTeamIds = new Set();
-        
+
         titleDefenseSnap.forEach((docX) => {
           const data = docX.data();
           const teamId = data?.teamId;
           const verdict = data?.verdict;
           const defenseDate = data?.date;
           const defenseTime = data?.timeEnd || data?.timeStart;
-          
+
           if (teamId && verdict === "Passed" && defenseDate && defenseTime) {
-            const defenseDateTime = new Date(`${defenseDate}T${defenseTime}:00`);
+            const defenseDateTime = new Date(
+              `${defenseDate}T${defenseTime}:00`
+            );
             if (defenseDateTime < currentDateTime) {
               eligibleTeamIds.add(teamId);
             }
@@ -191,7 +221,9 @@ export default function ManuscriptSubmission() {
         if (alive) setLoadingTeams(false);
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
   // Load manuscript submissions with Title Defense filtering
@@ -199,12 +231,14 @@ export default function ManuscriptSubmission() {
     setLoadingRows(true);
     try {
       // First, load title defense schedules to check which teams passed and have scheduled dates passed
-      const titleDefenseSnap = await getDocs(collection(db, "titleDefenseSchedules"));
+      const titleDefenseSnap = await getDocs(
+        collection(db, "titleDefenseSchedules")
+      );
       const currentDateTime = new Date();
-      
+
       // Create a map of team IDs that are eligible for manuscript submission
       const eligibleTeams = new Map();
-      
+
       titleDefenseSnap.forEach((docX) => {
         const data = docX.data();
         const teamId = data?.teamId;
@@ -212,8 +246,14 @@ export default function ManuscriptSubmission() {
         const verdict = data?.verdict;
         const defenseDate = data?.date;
         const defenseTime = data?.timeEnd || data?.timeStart;
-        
-        if (teamId && teamName && verdict === "Passed" && defenseDate && defenseTime) {
+
+        if (
+          teamId &&
+          teamName &&
+          verdict === "Passed" &&
+          defenseDate &&
+          defenseTime
+        ) {
           // Check if the scheduled defense date/time has passed
           const defenseDateTime = new Date(`${defenseDate}T${defenseTime}:00`);
           if (defenseDateTime < currentDateTime) {
@@ -225,11 +265,11 @@ export default function ManuscriptSubmission() {
       // Now load manuscript submissions, but only include those from eligible teams
       const manuscriptSnap = await getDocs(collection(db, COLLECTION));
       const arr = [];
-      
+
       manuscriptSnap.forEach((docX) => {
         const d = docX.data();
         const teamId = d?.teamId;
-        
+
         // Only include manuscript if the team is eligible (passed title defense and date passed)
         if (eligibleTeams.has(teamId)) {
           arr.push({
@@ -237,8 +277,8 @@ export default function ManuscriptSubmission() {
             teamId: teamId,
             team: d?.teamName || "",
             title: d?.title || "",
-            date: d?.date || "",       // yyyy-mm-dd
-            time: d?.time || "",       // HH:MM
+            date: d?.date || "", // yyyy-mm-dd
+            time: d?.time || "", // HH:MM
             plag: Number(d?.plag ?? 0),
             ai: Number(d?.ai ?? 0),
             file: d?.file || "—",
@@ -247,9 +287,10 @@ export default function ManuscriptSubmission() {
           });
         }
       });
-      
+
       arr.sort((a, b) => {
-        const ad = a.date || "", bd = b.date || "";
+        const ad = a.date || "",
+          bd = b.date || "";
         if (ad < bd) return -1;
         if (ad > bd) return 1;
         return (a.time || "").localeCompare(b.time || "");
@@ -330,15 +371,26 @@ export default function ManuscriptSubmission() {
       if (ccsImg) {
         const sideW = 64;
         const sideH = (ccsImg.height / ccsImg.width) * sideW;
-        doc.addImage(ccsImg, "PNG", pageWidth - marginX - sideW, topY, sideW, sideH);
+        doc.addImage(
+          ccsImg,
+          "PNG",
+          pageWidth - marginX - sideW,
+          topY,
+          sideW,
+          sideH
+        );
       }
 
       const headerY = 92;
       doc.setFont("helvetica", "bold");
       doc.setFontSize(12);
-      doc.text("DOMINICAN COLLEGE OF TARLAC, INC.", pageWidth / 2, headerY, { align: "center" });
+      doc.text("DOMINICAN COLLEGE OF TARLAC, INC.", pageWidth / 2, headerY, {
+        align: "center",
+      });
       doc.setFont("helvetica", "normal");
-      doc.text("COLLEGE OF COMPUTER STUDIES", pageWidth / 2, headerY + 16, { align: "center" });
+      doc.text("COLLEGE OF COMPUTER STUDIES", pageWidth / 2, headerY + 16, {
+        align: "center",
+      });
       doc.setFontSize(10);
       doc.text(
         "McArthur Highway, Poblacion (Sto. Rosario), Capas, 2315 Tarlac, Philippines",
@@ -366,9 +418,14 @@ export default function ManuscriptSubmission() {
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
-      doc.text(`As of ${new Date().toLocaleDateString()}`, pageWidth / 2, titleY + 16, {
-        align: "center",
-      });
+      doc.text(
+        `As of ${new Date().toLocaleDateString()}`,
+        pageWidth / 2,
+        titleY + 16,
+        {
+          align: "center",
+        }
+      );
 
       doc.setDrawColor(180);
       doc.line(marginX, titleY + 26, pageWidth - marginX, titleY + 26);
@@ -396,15 +453,14 @@ export default function ManuscriptSubmission() {
     // proportional column widths (sum = printable width)
     const contentWidth = pageWidth - marginX * 2;
     const W = {
-      no:   0.06 * contentWidth,
+      no: 0.06 * contentWidth,
       team: 0.18 * contentWidth,
-      title:0.24 * contentWidth,
-      date: 0.10 * contentWidth,
-      time: 0.10 * contentWidth,
-      plag: 0.07 * contentWidth,
-      ai:   0.06 * contentWidth,
-      file: 0.11 * contentWidth,
-      ver:  0.08 * contentWidth,
+      title: 0.24 * contentWidth,
+      date: 0.1 * contentWidth,
+      time: 0.1 * contentWidth,
+      plag: 0.12 * contentWidth,
+      ai: 0.06 * contentWidth,
+      ver: 0.08 * contentWidth,
     };
 
     const verdictColor = (v) => {
@@ -413,11 +469,22 @@ export default function ManuscriptSubmission() {
       if (s === "recheck") return [217, 168, 30];
       return [106, 15, 20]; // Pending/others
     };
-    const pctColor = (n) => (Number(n) <= 10 ? [34,139,34] : [180,35,24]);
+    const pctColor = (n) => (Number(n) <= 10 ? [34, 139, 34] : [180, 35, 24]);
 
     autoTable(doc, {
       startY: tableYStart,
-      head: [["NO", "Team", "Title", "Due Date", "Time", "Plag.", "AI", "File Uploaded", "Verdict"]],
+      head: [
+        [
+          "NO",
+          "Team",
+          "Title",
+          "Due Date",
+          "Time",
+          "Plagiarism",
+          "AI",
+          "Verdict",
+        ],
+      ],
       body: filtered.map((r, i) => [
         `${i + 1}.`,
         r.team || "—",
@@ -458,17 +525,20 @@ export default function ManuscriptSubmission() {
       tableWidth: contentWidth,
       didParseCell: (data) => {
         if (data.section === "body") {
-          if (data.column.index === 8) { // verdict
+          if (data.column.index === 8) {
+            // verdict
             data.cell.styles.textColor = verdictColor(data.cell.text?.[0]);
             data.cell.styles.fontStyle = "bold";
           }
-          if (data.column.index === 5) { // plag
-            const val = (data.cell.text?.[0] || "").replace("%","").trim();
+          if (data.column.index === 5) {
+            // plag
+            const val = (data.cell.text?.[0] || "").replace("%", "").trim();
             data.cell.styles.textColor = pctColor(val);
             data.cell.styles.fontStyle = "bold";
           }
-          if (data.column.index === 6) { // ai
-            const val = (data.cell.text?.[0] || "").replace("%","").trim();
+          if (data.column.index === 6) {
+            // ai
+            const val = (data.cell.text?.[0] || "").replace("%", "").trim();
             data.cell.styles.textColor = pctColor(val);
             data.cell.styles.fontStyle = "bold";
           }
@@ -480,7 +550,9 @@ export default function ManuscriptSubmission() {
       },
     });
 
-    doc.save(`manuscript_submissions_${new Date().toISOString().slice(0, 10)}.pdf`);
+    doc.save(
+      `manuscript_submissions_${new Date().toISOString().slice(0, 10)}.pdf`
+    );
   };
 
   // bulk helpers
@@ -492,7 +564,8 @@ export default function ManuscriptSubmission() {
     });
   };
   const allVisibleIds = useMemo(() => filtered.map((r) => r.id), [filtered]);
-  const allSelected = selected.size > 0 && allVisibleIds.every((id) => selected.has(id));
+  const allSelected =
+    selected.size > 0 && allVisibleIds.every((id) => selected.has(id));
   const toggleSelectAll = () => {
     setSelected((prev) => (allSelected ? new Set() : new Set(allVisibleIds)));
   };
@@ -508,7 +581,9 @@ export default function ManuscriptSubmission() {
       alert("Select at least one submission to delete.");
       return;
     }
-    const ok = window.confirm(`Delete ${selected.size} selected submission(s)? This cannot be undone.`);
+    const ok = window.confirm(
+      `Delete ${selected.size} selected submission(s)? This cannot be undone.`
+    );
     if (!ok) return;
 
     try {
@@ -535,14 +610,18 @@ export default function ManuscriptSubmission() {
   };
 
   // cell color helper for ≤10% = green
-  const pctClass = (n) => (Number(n) <= 10 ? "text-[#6BA34D]" : "text-[#E45454]");
+  const pctClass = (n) =>
+    Number(n) <= 10 ? "text-[#6BA34D]" : "text-[#E45454]";
 
   return (
     <div className="">
       {/* breadcrumb + maroon divider */}
       <Breadcrumbs />
       <div className="mt-2 h-[2px] w-full bg-neutral-200">
-        <div className="h-[2px]" style={{ backgroundColor: MAROON, width: 320 }} />
+        <div
+          className="h-[2px]"
+          style={{ backgroundColor: MAROON, width: 320 }}
+        />
       </div>
 
       {/* actions row */}
@@ -559,7 +638,9 @@ export default function ManuscriptSubmission() {
           >
             Back to Schedule
           </Btn>
-          <Btn icon={Download} variant="outline" onClick={handleExportPDF}>Export PDF</Btn>
+          <Btn icon={Download} variant="outline" onClick={handleExportPDF}>
+            Export PDF
+          </Btn>
         </div>
       </div>
 
@@ -575,11 +656,16 @@ export default function ManuscriptSubmission() {
               onChange={(e) => setQuery(e.target.value)}
               className="pl-10 pr-3 py-2 w-72 rounded-md border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-300"
             />
-            <Search size={16} className="absolute left-3 top-2.5 text-neutral-400" />
+            <Search
+              size={16}
+              className="absolute left-3 top-2.5 text-neutral-400"
+            />
           </div>
 
           <div className="flex items-center gap-2 pb-2">
-            <Btn icon={Filter} variant="outline" className="!px-2">Filters</Btn>
+            <Btn icon={Filter} variant="outline" className="!px-2">
+              Filters
+            </Btn>
           </div>
         </div>
 
@@ -604,10 +690,14 @@ export default function ManuscriptSubmission() {
                 <th className="text-left px-4 py-3">Team</th>
                 <th className="text-left px-4 py-3">Title</th>
                 <th className="text-left px-4 py-3">
-                  <div className="inline-flex items-center gap-2"><CalIcon size={16} /> Due Date</div>
+                  <div className="inline-flex items-center gap-2">
+                    <CalIcon size={16} /> Due Date
+                  </div>
                 </th>
                 <th className="text-left px-4 py-3">
-                  <div className="inline-flex items-center gap-2"><Clock size={16} /> Time</div>
+                  <div className="inline-flex items-center gap-2">
+                    <Clock size={16} /> Time
+                  </div>
                 </th>
                 <th className="text-left px-4 py-3">Plagiarism</th>
                 <th className="text-left px-4 py-3">AI</th>
@@ -619,19 +709,26 @@ export default function ManuscriptSubmission() {
             <tbody>
               {loadingRows ? (
                 <tr>
-                  <td className="px-4 py-8 text-neutral-500" colSpan={10}>Loading manuscript submissions…</td>
+                  <td className="px-4 py-8 text-neutral-500" colSpan={10}>
+                    Loading manuscript submissions…
+                  </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
                   <td className="px-4 py-6 text-neutral-500" colSpan={10}>
-                    {rows.length === 0 ? "No manuscript submissions found for teams that passed Title Defense." : "No matches for \"" + query + "\"."}
+                    {rows.length === 0
+                      ? "No manuscript submissions found for teams that passed Title Defense."
+                      : 'No matches for "' + query + '".'}
                   </td>
                 </tr>
               ) : (
                 filtered.map((r, idx) => {
                   const isChecked = selected.has(r.id);
                   return (
-                    <tr key={r.id} className={idx % 2 ? "bg-neutral-50/60" : "bg-white"}>
+                    <tr
+                      key={r.id}
+                      className={idx % 2 ? "bg-neutral-50/60" : "bg-white"}
+                    >
                       {bulkMode ? (
                         <td className="px-4 py-3">
                           <input
@@ -643,37 +740,70 @@ export default function ManuscriptSubmission() {
                           />
                         </td>
                       ) : (
-                        <td className="px-4 py-3 text-neutral-600">{idx + 1}.</td>
+                        <td className="px-4 py-3 text-neutral-600">
+                          {idx + 1}.
+                        </td>
                       )}
 
-                      <td className="px-4 py-3 font-medium text-neutral-800">{r.team}</td>
-                      <td className="px-4 py-3 text-neutral-800">{r.title || "—"}</td>
-                      <td className="px-4 py-3 text-neutral-700">{fmtDateHuman(r.date) || "—"}</td>
-                      <td className="px-4 py-3 text-neutral-700">{to12h(r.time) || "—"}</td>
-                      <td className={`px-4 py-3 font-semibold ${pctClass(r.plag)}`}>{r.plag}%</td>
-                      <td className={`px-4 py-3 font-semibold ${pctClass(r.ai)}`}>{r.ai}%</td>
-                      <td className="px-4 py-3 text-neutral-700">{r.file || "—"}</td>
+                      <td className="px-4 py-3 font-medium text-neutral-800">
+                        {r.team}
+                      </td>
+                      <td className="px-4 py-3 text-neutral-800">
+                        {r.title || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-neutral-700">
+                        {fmtDateHuman(r.date) || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-neutral-700">
+                        {to12h(r.time) || "—"}
+                      </td>
+                      <td
+                        className={`px-4 py-3 font-semibold ${pctClass(
+                          r.plag
+                        )}`}
+                      >
+                        {r.plag}%
+                      </td>
+                      <td
+                        className={`px-4 py-3 font-semibold ${pctClass(r.ai)}`}
+                      >
+                        {r.ai}%
+                      </td>
+                      <td className="px-4 py-3 text-neutral-700">
+                        {r.file || "—"}
+                      </td>
                       <td className="px-4 py-3">
                         <div className="relative inline-flex items-center">
                           <select
                             value={r.verdict || "Pending"}
-                            onChange={(e) => handleChangeVerdict(r.id, e.target.value)}
+                            onChange={(e) =>
+                              handleChangeVerdict(r.id, e.target.value)
+                            }
                             disabled={bulkMode}
-                            className={`appearance-none pr-8 pl-3 py-1.5 rounded-md border text-sm ${bulkMode ? "opacity-60 cursor-not-allowed" : ""}`}
+                            className={`appearance-none pr-8 pl-3 py-1.5 rounded-md border text-sm ${
+                              bulkMode ? "opacity-60 cursor-not-allowed" : ""
+                            }`}
                             style={{ borderColor: MAROON, color: "#111827" }}
                           >
                             <option>Pending</option>
                             <option>Recheck</option>
                             <option>Passed</option>
                           </select>
-                          <ChevronDown size={16} className="absolute right-2 pointer-events-none text-neutral-500" />
+                          <ChevronDown
+                            size={16}
+                            className="absolute right-2 pointer-events-none text-neutral-500"
+                          />
                         </div>
                       </td>
                       <td className="px-2 py-3">
                         <button
                           data-menu-root
                           disabled={bulkMode}
-                          className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${bulkMode ? "opacity-40 cursor-not-allowed" : "hover:bg-neutral-100"}`}
+                          className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${
+                            bulkMode
+                              ? "opacity-40 cursor-not-allowed"
+                              : "hover:bg-neutral-100"
+                          }`}
                           onClick={(e) => onOpenMenu(r.id, e)}
                         >
                           <MoreVertical size={18} />
@@ -686,13 +816,19 @@ export default function ManuscriptSubmission() {
                           >
                             <button
                               className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
-                              onClick={() => { setViewRow(r); setMenuOpenId(null); }}
+                              onClick={() => {
+                                setViewRow(r);
+                                setMenuOpenId(null);
+                              }}
                             >
                               View
                             </button>
                             <button
                               className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
-                              onClick={() => { setEditRow(r); setMenuOpenId(null); }}
+                              onClick={() => {
+                                setEditRow(r);
+                                setMenuOpenId(null);
+                              }}
                             >
                               Edit
                             </button>
@@ -731,10 +867,7 @@ export default function ManuscriptSubmission() {
         />
       )}
       {viewRow && (
-        <ViewTeamDialog
-          row={viewRow}
-          onClose={() => setViewRow(null)}
-        />
+        <ViewTeamDialog row={viewRow} onClose={() => setViewRow(null)} />
       )}
     </div>
   );
@@ -753,8 +886,11 @@ function CreateOrEditDialog({
 
   // Get the current date and time
   const currentDate = new Date();
-  const currentDateString = currentDate.toISOString().split('T')[0]; // YYYY-MM-DD
-  const currentTimeString = currentDate.toTimeString().split(' ')[0].slice(0, 5); // HH:MM
+  const currentDateString = currentDate.toISOString().split("T")[0]; // YYYY-MM-DD
+  const currentTimeString = currentDate
+    .toTimeString()
+    .split(" ")[0]
+    .slice(0, 5); // HH:MM
 
   // Set defaults if empty
   const [teamName, setTeamName] = useState(initial?.team || "");
@@ -806,7 +942,12 @@ function CreateOrEditDialog({
       if (typeof onSaved === "function") onSaved();
       onClose();
     } catch (e) {
-      console.error(isEdit ? "[Manuscripts] Update failed:" : "[Manuscripts] Create failed:", e);
+      console.error(
+        isEdit
+          ? "[Manuscripts] Update failed:"
+          : "[Manuscripts] Create failed:",
+        e
+      );
       alert("Operation failed. See console for details.");
     }
   };
@@ -821,7 +962,10 @@ function CreateOrEditDialog({
         <div className="rounded-2xl bg-white border border-neutral-200 shadow-2xl">
           {/* header */}
           <div className="flex items-center justify-between px-5 pt-4">
-            <div className="text-[16px] font-semibold" style={{ color: MAROON }}>
+            <div
+              className="text-[16px] font-semibold"
+              style={{ color: MAROON }}
+            >
               {isEdit ? "Edit Submission" : "Create Submission"}
             </div>
             <button
@@ -832,7 +976,10 @@ function CreateOrEditDialog({
             </button>
           </div>
           <div className="mt-3 h-[2px] w-full bg-neutral-200">
-            <div className="h-[2px]" style={{ backgroundColor: MAROON, width: isEdit ? 150 : 160 }} />
+            <div
+              className="h-[2px]"
+              style={{ backgroundColor: MAROON, width: isEdit ? 150 : 160 }}
+            />
           </div>
 
           {/* body */}
@@ -840,7 +987,9 @@ function CreateOrEditDialog({
             <div className="grid grid-cols-2 gap-5">
               {/* Team */}
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-neutral-700 mb-2">Assign Team</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Assign Team
+                </label>
                 <div className="relative">
                   <select
                     value={teamName}
@@ -857,13 +1006,18 @@ function CreateOrEditDialog({
                         </option>
                       ))}
                   </select>
-                  <ChevronDown size={16} className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none" />
+                  <ChevronDown
+                    size={16}
+                    className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none"
+                  />
                 </div>
               </div>
 
               {/* Title */}
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-neutral-700 mb-2">Manuscript Title</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Manuscript Title
+                </label>
                 <input
                   type="text"
                   value={title}
@@ -875,7 +1029,9 @@ function CreateOrEditDialog({
 
               {/* Date / Time */}
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">Due Date</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Due Date
+                </label>
                 <div className="relative">
                   <input
                     type="date"
@@ -883,11 +1039,16 @@ function CreateOrEditDialog({
                     onChange={(e) => setDate(e.target.value)}
                     className="w-full pr-10 pl-3 py-2 rounded-md border border-neutral-300 text-sm"
                   />
-                  <Calendar size={16} className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none" />
+                  <Calendar
+                    size={16}
+                    className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none"
+                  />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">Time</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Time
+                </label>
                 <div className="relative">
                   <input
                     type="time"
@@ -895,13 +1056,18 @@ function CreateOrEditDialog({
                     onChange={(e) => setTime(e.target.value)}
                     className="w-full pr-10 pl-3 py-2 rounded-md border border-neutral-300 text-sm"
                   />
-                  <Clock size={16} className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none" />
+                  <Clock
+                    size={16}
+                    className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none"
+                  />
                 </div>
               </div>
 
               {/* Plag / AI */}
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">Plagiarism %</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Plagiarism %
+                </label>
                 <input
                   type="number"
                   min="0"
@@ -911,7 +1077,9 @@ function CreateOrEditDialog({
                 />
               </div>
               <div>
-                <label className="block text sm font-medium text-neutral-700 mb-2">AI %</label>
+                <label className="block text sm font-medium text-neutral-700 mb-2">
+                  AI %
+                </label>
                 <input
                   type="number"
                   min="0"
@@ -923,7 +1091,9 @@ function CreateOrEditDialog({
 
               {/* File name (read-only note) */}
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-neutral-700 mb-2">File Uploaded (name)</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  File Uploaded (name)
+                </label>
                 <div className="w-full pl-3 pr-3 py-2 rounded-md border border-neutral-200 bg-neutral-50 text-sm text-neutral-500">
                   — (handled by uploader)
                 </div>
@@ -941,7 +1111,9 @@ function CreateOrEditDialog({
               <button
                 onClick={handleSubmit}
                 disabled={disabled}
-                className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
+                className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white ${
+                  disabled ? "opacity-60 cursor-not-allowed" : ""
+                }`}
                 style={{ backgroundColor: MAROON }}
               >
                 {isEdit ? "Save" : "Create"}
@@ -972,7 +1144,9 @@ function ViewTeamDialog({ row, onClose }) {
           if (alive && data) {
             setAdviser(data?.adviser?.fullName || "-");
             setManager(data?.manager?.fullName || "-");
-            setMembers(Array.isArray(data?.memberNames) ? data.memberNames : []);
+            setMembers(
+              Array.isArray(data?.memberNames) ? data.memberNames : []
+            );
           }
         } else {
           setAdviser("-");
@@ -985,7 +1159,9 @@ function ViewTeamDialog({ row, onClose }) {
         if (alive) setLoading(false);
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [row?.teamId]);
 
   return (
@@ -994,7 +1170,10 @@ function ViewTeamDialog({ row, onClose }) {
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[760px] max-w-[92vw]">
         <div className="rounded-2xl bg-white border border-neutral-200 shadow-2xl focus:outline-none p-0">
           <div className="flex items-center justify-between px-5 pt-4">
-            <div className="text-[16px] font-semibold" style={{ color: MAROON }}>
+            <div
+              className="text-[16px] font-semibold"
+              style={{ color: MAROON }}
+            >
               View Team
             </div>
             <button
@@ -1005,31 +1184,42 @@ function ViewTeamDialog({ row, onClose }) {
             </button>
           </div>
           <div className="mt-3 h-[2px] w-full bg-neutral-200">
-            <div className="h-[2px]" style={{ backgroundColor: MAROON, width: 110 }} />
+            <div
+              className="h-[2px]"
+              style={{ backgroundColor: MAROON, width: 110 }}
+            />
           </div>
 
           <div className="px-6 pb-6">
             <div className="grid grid-cols-2 gap-x-10 gap-y-6">
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-neutral-700 mb-2">Team</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Team
+                </label>
                 <div className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm">
                   {row?.team || "-"}
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">Adviser</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Adviser
+                </label>
                 <div className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm">
                   {loading ? "Loading…" : adviser}
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">Project Manager</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Project Manager
+                </label>
                 <div className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm">
                   {loading ? "Loading…" : manager}
                 </div>
               </div>
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-neutral-700 mb-2">Members</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Members
+                </label>
                 <div className="w-full rounded-md border border-neutral-300 bg-white px-3 py-3 text-sm">
                   {loading ? (
                     "Loading…"
@@ -1037,7 +1227,9 @@ function ViewTeamDialog({ row, onClose }) {
                     <span className="text-neutral-500">No members listed.</span>
                   ) : (
                     <ul className="list-disc ml-5 space-y-1">
-                      {members.map((m, i) => <li key={i}>{m}</li>)}
+                      {members.map((m, i) => (
+                        <li key={i}>{m}</li>
+                      ))}
                     </ul>
                   )}
                 </div>
