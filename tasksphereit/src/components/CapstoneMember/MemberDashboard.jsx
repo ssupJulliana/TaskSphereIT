@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Calendar, Clock, Users, MoreVertical } from "lucide-react";
 import { Pie, Bar } from "react-chartjs-2";
 import {
@@ -25,6 +25,10 @@ ChartJS.register(
 
 const MAROON = "#6A0F14";
 const MAROON_DARK = "#4a0a0d";
+
+// Firestore
+import { db } from "../../config/firebase";
+import { collection, getDocs } from "firebase/firestore";
 
 /* -------------------- Small UI helpers -------------------- */
 const Card = ({ className = "", children }) => (
@@ -55,65 +59,13 @@ const Badge = ({ children, tone = "maroon" }) => {
   );
 };
 
-/* -------------------- Demo data -------------------- */
-const upcoming = [
-  {
-    id: 1,
-    tag: "Title Defense",
-    team: "Aguas, Et Al",
-    date: "Jan 11, 2025",
-    time: "8:00 AM",
-  },
-  {
-    id: 2,
-    tag: "Title Defense",
-    team: "Bernardo, Et Al",
-    date: "Jan 11, 2025",
-    time: "9:00 AM",
-  },
-  {
-    id: 3,
-    tag: "Title Defense",
-    team: "Hawke, Et Al",
-    date: "Jan 11, 2025",
-    time: "10:00 AM",
-  },
-];
-
-const weeklyData = {
-  labels: ["To Do", "In Progress", "To Review", "Completed", "Missed"],
-  datasets: [
-    {
-      label: "Weekly Summary",
-      data: [3, 2, 5, 4, 1], // Static values for the bar chart
-      backgroundColor: [
-        "#FABC3F", // To Do
-        "#809D3C", // In Progress
-        "#578FCA", // To Review
-        "#4BC0C0", // Completed
-        "#FF6384", // Missed
-      ],
-    },
-  ],
-};
-
-const pieData = {
-  labels: ["To Do", "In Progress", "Completed", "Missed"],
-  datasets: [
-    {
-      data: [3, 2, 5, 1], // Static values for the pie chart
-      backgroundColor: ["#FABC3F", "#809D3C", "#4BC0C0", "#FF6384"], // Matching colors
-    },
-  ],
-};
-
-const upcomingTasks = upcoming;
-const statusCounts = {
-  "To Do": 0,
-  "In Progress": 0,
-  "To Review": 0,
-  Completed: 0,
-  Missed: 0,
+/* -------------------- Live (no static data) -------------------- */
+const COLOR = {
+  todo: "#FABC3F",
+  inprogress: "#809D3C",
+  toreview: "#578FCA",
+  completed: "#4BC0C0",
+  missed: "#FF6384",
 };
 
 /* -------------------- Calendar generator -------------------- */
@@ -141,6 +93,75 @@ function getMonthMatrix(today = new Date()) {
 
 /* -------------------- Page -------------------- */
  function MemberDashboard() {
+  const uid = typeof window !== "undefined" ? localStorage.getItem("uid") : null;
+  const [upcomingTasks, setUpcomingTasks] = useState([]);
+  const [weeklyCounts, setWeeklyCounts] = useState({ todo: 0, inprogress: 0, toreview: 0, completed: 0, missed: 0 });
+
+  const to12h = (t) => {
+    if (!t) return "";
+    const [H, M] = String(t).split(":").map(Number);
+    const ampm = H >= 12 ? "PM" : "AM";
+    const hh = ((H + 11) % 12) + 1;
+    return `${hh}:${String(M || 0).padStart(2, "0")} ${ampm}`;
+  };
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const fmtDate = (yyyy_mm_dd) => {
+    if (!yyyy_mm_dd) return "";
+    const [y, m, d] = yyyy_mm_dd.split("-").map(Number);
+    return `${MONTHS[(m || 1) - 1]} ${Number(d || 1)}, ${y}`;
+  };
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        // Load all task collections then filter by assignee uid
+        const cols = [
+          { tag: "Title Defense", coll: "titleDefenseTasks" },
+          { tag: "Oral Defense",  coll: "oralDefenseTasks" },
+          { tag: "Final Defense", coll: "finalDefenseTasks" },
+          { tag: "Final Re-Defense", coll: "finalRedefenseTasks" },
+        ];
+        const snaps = await Promise.all(cols.map((c) => getDocs(collection(db, c.coll))));
+        const all = [];
+        snaps.forEach((s, i) => {
+          const tag = cols[i].tag;
+          s.forEach((dx) => {
+            const d = dx.data() || {};
+            all.push({ id: dx.id, tag, ...d });
+          });
+        });
+
+        const mine = all.filter((t) => Array.isArray(t.assignees) && t.assignees.some((a) => a?.uid === uid));
+
+        const upcoming = mine
+          .filter((t) => typeof t.dueAtMs === "number" && t.dueAtMs >= Date.now())
+          .sort((a, b) => (a.dueAtMs || 0) - (b.dueAtMs || 0))
+          .slice(0, 3)
+          .map((t) => ({ id: t.id, tag: t.tag, team: t.team?.name || "—", date: fmtDate(t.dueDate || ""), time: to12h(t.dueTime || "") }));
+        if (alive) setUpcomingTasks(upcoming);
+
+        const counts = { todo: 0, inprogress: 0, toreview: 0, completed: 0, missed: 0 };
+        const now = Date.now();
+        mine.forEach((t) => {
+          const s = String(t.status || "To Do").toLowerCase();
+          if (s.includes("review")) counts.toreview++;
+          else if (s.includes("progress")) counts.inprogress++;
+          else if (s.includes("complete")) counts.completed++;
+          else counts.todo++;
+          if (typeof t.dueAtMs === "number" && t.dueAtMs < now && (t.status || "") !== "Completed") counts.missed++;
+        });
+        if (alive) setWeeklyCounts(counts);
+      } catch (e) {
+        console.error("MemberDashboard load failed:", e);
+        if (alive) {
+          setUpcomingTasks([]);
+          setWeeklyCounts({ todo: 0, inprogress: 0, toreview: 0, completed: 0, missed: 0 });
+        }
+      }
+    })();
+    return () => { alive = false; };
+  }, [uid]);
   const today = new Date();
   const monthWeeks = useMemo(() => getMonthMatrix(today), [today]);
   const monthName = today.toLocaleString("default", { month: "long" });
@@ -191,18 +212,57 @@ function getMonthMatrix(today = new Date()) {
       <div className="mt-3 grid md:grid-cols-2 gap-5">
         {/* Bar Chart */}
         <div className="bg-white rounded-xl border border-neutral-200 shadow-[0_6px_18px_rgba(0,0,0,0.05)] p-4">
-          <Bar data={weeklyData} options={{ responsive: true }} />
+          <Bar
+            data={{
+              labels: ["To Do", "In Progress", "To Review", "Completed", "Missed"],
+              datasets: [
+                {
+                  label: "Weekly Summary",
+                  data: [
+                    weeklyCounts.todo,
+                    weeklyCounts.inprogress,
+                    weeklyCounts.toreview,
+                    weeklyCounts.completed,
+                    weeklyCounts.missed,
+                  ],
+                  backgroundColor: [
+                    COLOR.todo,
+                    COLOR.inprogress,
+                    COLOR.toreview,
+                    COLOR.completed,
+                    COLOR.missed,
+                  ],
+                },
+              ],
+            }}
+            options={{ responsive: true }}
+          />
         </div>
 
         {/* Pie Chart */}
         <div className="bg-white rounded-xl border border-neutral-200 shadow-[0_6px_18px_rgba(0,0,0,0.05)] p-4 flex items-center justify-center">
           <div style={{ maxWidth: "300px", maxHeight: "300px" }}>
             <Pie
-              data={pieData}
-              options={{
-                responsive: true,
-                maintainAspectRatio: true,
+              data={{
+                labels: ["To Do", "In Progress", "Completed", "Missed"],
+                datasets: [
+                  {
+                    data: [
+                      weeklyCounts.todo,
+                      weeklyCounts.inprogress,
+                      weeklyCounts.completed,
+                      weeklyCounts.missed,
+                    ],
+                    backgroundColor: [
+                      COLOR.todo,
+                      COLOR.inprogress,
+                      COLOR.completed,
+                      COLOR.missed,
+                    ],
+                  },
+                ],
               }}
+              options={{ responsive: true, maintainAspectRatio: true }}
             />
           </div>
         </div>
