@@ -16,6 +16,7 @@ import {
   Trash2,
   X,
   Filter,
+  ExternalLink,
 } from "lucide-react";
 
 /* ===== Firestore ===== */
@@ -151,6 +152,9 @@ export default function ManuscriptSubmission() {
   const [editRow, setEditRow] = useState(null);
   const [viewRow, setViewRow] = useState(null);
 
+  /* ===== Files viewer modal ===== */
+  const [filesRow, setFilesRow] = useState(null);
+
   /* ===== Bulk delete ===== */
   const [bulkMode, setBulkMode] = useState(false);
   const [selected, setSelected] = useState(new Set());
@@ -230,13 +234,10 @@ export default function ManuscriptSubmission() {
   const loadRows = async () => {
     setLoadingRows(true);
     try {
-      // First, load title defense schedules to check which teams passed and have scheduled dates passed
       const titleDefenseSnap = await getDocs(
         collection(db, "titleDefenseSchedules")
       );
       const currentDateTime = new Date();
-
-      // Create a map of team IDs that are eligible for manuscript submission
       const eligibleTeams = new Map();
 
       titleDefenseSnap.forEach((docX) => {
@@ -254,7 +255,6 @@ export default function ManuscriptSubmission() {
           defenseDate &&
           defenseTime
         ) {
-          // Check if the scheduled defense date/time has passed
           const defenseDateTime = new Date(`${defenseDate}T${defenseTime}:00`);
           if (defenseDateTime < currentDateTime) {
             eligibleTeams.set(teamId, teamName);
@@ -262,7 +262,6 @@ export default function ManuscriptSubmission() {
         }
       });
 
-      // Now load manuscript submissions, but only include those from eligible teams
       const manuscriptSnap = await getDocs(collection(db, COLLECTION));
       const arr = [];
 
@@ -270,27 +269,27 @@ export default function ManuscriptSubmission() {
         const d = docX.data();
         const teamId = d?.teamId;
 
-        // Only include manuscript if the team is eligible (passed title defense and date passed)
         if (eligibleTeams.has(teamId)) {
           arr.push({
             id: docX.id,
             teamId: teamId,
             team: d?.teamName || "",
             title: d?.title || "",
-            date: d?.date || "", // yyyy-mm-dd
-            time: d?.time || "", // HH:MM
+            date: d?.date || "",
+            time: d?.time || "",
             plag: Number(d?.plag ?? 0),
             ai: Number(d?.ai ?? 0),
             file: d?.file || "—",
             verdict: d?.verdict || "Pending",
             createdAt: d?.createdAt,
+            fileUrl: Array.isArray(d?.fileUrl) ? d.fileUrl : [], // <-- include uploaded files
           });
         }
       });
 
       arr.sort((a, b) => {
-        const ad = a.date || "",
-          bd = b.date || "";
+        const ad = a.date || "";
+        const bd = b.date || "";
         if (ad < bd) return -1;
         if (ad > bd) return 1;
         return (a.time || "").localeCompare(b.time || "");
@@ -332,7 +331,7 @@ export default function ManuscriptSubmission() {
     );
   }, [query, rows]);
 
-  /* ===== PDF export — SAME header/footer + IMAGES as credentials/title defense ===== */
+  /* ===== PDF export ===== */
   const loadImage = (src) =>
     new Promise((resolve, reject) => {
       const img = new Image();
@@ -493,7 +492,6 @@ export default function ManuscriptSubmission() {
         to12h(r.time) || "—",
         `${Number(r.plag || 0)}%`,
         `${Number(r.ai || 0)}%`,
-        r.file || "—",
         r.verdict || "Pending",
       ]),
       styles: {
@@ -518,26 +516,22 @@ export default function ManuscriptSubmission() {
         4: { cellWidth: W.time },
         5: { cellWidth: W.plag, halign: "right" },
         6: { cellWidth: W.ai, halign: "right" },
-        7: { cellWidth: W.file },
-        8: { cellWidth: W.ver, halign: "center" },
+        7: { cellWidth: W.ver, halign: "center" },
       },
       margin: { left: marginX, right: marginX, bottom: 64 },
       tableWidth: contentWidth,
       didParseCell: (data) => {
         if (data.section === "body") {
-          if (data.column.index === 8) {
-            // verdict
+          if (data.column.index === 7) {
             data.cell.styles.textColor = verdictColor(data.cell.text?.[0]);
             data.cell.styles.fontStyle = "bold";
           }
           if (data.column.index === 5) {
-            // plag
             const val = (data.cell.text?.[0] || "").replace("%", "").trim();
             data.cell.styles.textColor = pctColor(val);
             data.cell.styles.fontStyle = "bold";
           }
           if (data.column.index === 6) {
-            // ai
             const val = (data.cell.text?.[0] || "").replace("%", "").trim();
             data.cell.styles.textColor = pctColor(val);
             data.cell.styles.fontStyle = "bold";
@@ -571,12 +565,10 @@ export default function ManuscriptSubmission() {
   };
 
   const handleBulkDeleteClick = async () => {
-    // first click -> enter bulk mode
     if (!bulkMode) {
       setBulkMode(true);
       return;
     }
-    // already in bulk mode
     if (selected.size === 0) {
       alert("Select at least one submission to delete.");
       return;
@@ -724,6 +716,9 @@ export default function ManuscriptSubmission() {
               ) : (
                 filtered.map((r, idx) => {
                   const isChecked = selected.has(r.id);
+                  const fileCount = Array.isArray(r.fileUrl)
+                    ? r.fileUrl.length
+                    : 0;
                   return (
                     <tr
                       key={r.id}
@@ -769,9 +764,20 @@ export default function ManuscriptSubmission() {
                       >
                         {r.ai}%
                       </td>
-                      <td className="px-4 py-3 text-neutral-700">
-                        {r.file || "—"}
+
+                      {/* View-only files modal trigger */}
+                      <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() => setFilesRow(r)}
+                          className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-50"
+                          title="View uploaded files"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                          View Files{fileCount ? ` (${fileCount})` : ""}
+                        </button>
                       </td>
+
                       <td className="px-4 py-3">
                         <div className="relative inline-flex items-center">
                           <select
@@ -795,6 +801,7 @@ export default function ManuscriptSubmission() {
                           />
                         </div>
                       </td>
+
                       <td className="px-2 py-3">
                         <button
                           data-menu-root
@@ -868,6 +875,11 @@ export default function ManuscriptSubmission() {
       )}
       {viewRow && (
         <ViewTeamDialog row={viewRow} onClose={() => setViewRow(null)} />
+      )}
+
+      {/* View-only Uploaded Files modal */}
+      {filesRow && (
+        <FilesViewerModal row={filesRow} onClose={() => setFilesRow(null)} />
       )}
     </div>
   );
@@ -1244,6 +1256,124 @@ function ViewTeamDialog({ row, onClose }) {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- View-only Files Modal ---------------- */
+function FilesViewerModal({ row, onClose }) {
+  const files = Array.isArray(row?.fileUrl) ? row.fileUrl : [];
+
+  // normalize: support either object form or raw URL strings
+  const list = files.map((f, i) => {
+    if (typeof f === "string") {
+      const name = f.split("/").pop() || `file-${i + 1}`;
+      return { name, fileName: name, url: f };
+    }
+    return {
+      name: f.name || `file-${i + 1}`,
+      fileName: f.fileName || f.name || `file-${i + 1}`,
+      url: f.url || "",
+      uploadedAt: f.uploadedAt || "",
+    };
+  });
+
+  return (
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-black/35" onClick={onClose} />
+      <div className="relative z-10 mx-auto mt-10 w-[880px] max-w-[95vw]">
+        <div className="bg-white rounded-2xl shadow-2xl border border-neutral-200 overflow-hidden flex flex-col max-h-[85vh]">
+          {/* header bar */}
+          <div className="h-[2px] w-full" style={{ backgroundColor: MAROON }} />
+          <div className="flex items-center justify-between px-5 pt-3 pb-2">
+            <div
+              className="flex items-center gap-2 text-[16px] font-semibold"
+              style={{ color: MAROON }}
+            >
+              <span>●</span>
+              <span>Uploaded Files — {row?.team || row?.teamName}</span>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-1 rounded-md hover:bg-neutral-100 text-neutral-500"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* body */}
+          <div className="flex-1 px-5 pb-5 overflow-y-auto">
+            <div className="rounded-xl border border-neutral-200">
+              <div className="px-4 py-2 border-b border-neutral-200 text-sm font-semibold">
+                Files
+              </div>
+              <div className="p-4">
+                {list.length ? (
+                  <ul className="space-y-2">
+                    {list.map((f, i) => (
+                      <li
+                        key={f.fileName || `${f.url}-${i}`}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-neutral-200 px-3 py-2"
+                      >
+                        <div className="truncate">
+                          <div className="text-sm font-medium truncate">
+                            {f.name}
+                          </div>
+                          <div className="text-xs text-neutral-500 truncate">
+                            {f.fileName}
+                          </div>
+                          {f.uploadedAt && (
+                            <div className="text-xs text-neutral-400">
+                              {new Date(f.uploadedAt).toLocaleString()}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <a
+                            href={f.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-neutral-300 hover:bg-neutral-50"
+                            title="Open"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            Open
+                          </a>
+                          <a
+                            href={f.url}
+                            download={f.name || "file"}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-neutral-300 hover:bg-neutral-50"
+                            title="Download"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            Download
+                          </a>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="text-sm text-neutral-600">
+                    There’s no uploaded file yet.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* footer */}
+          <div className="flex justify-end gap-2 px-5 pb-4 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-md border border-neutral-300 text-sm hover:bg-neutral-100"
+            >
+              Close
+            </button>
           </div>
         </div>
       </div>
