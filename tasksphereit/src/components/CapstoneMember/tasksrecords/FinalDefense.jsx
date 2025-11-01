@@ -1,60 +1,12 @@
 // src/components/CapstoneMember/tasksrecords/FinalDefense.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Search, Eye, CalendarDays, Clock, ChevronLeft } from "lucide-react";
+import { db } from "../../../config/firebase";
+import { collection, getDocs } from "firebase/firestore";
 
 const MAROON = "#6A0F14";
 
-/* ================== Sample completed Final Defense records ================== */
-const RAW_ROWS = [
-  {
-    no: 1,
-    assigned: "Alejandro F.",
-    type: "Presentation",
-    task: "Final Deck",
-    subtask: "Polish Slides",
-    element: "Software",
-    created: "2025-03-01",
-    due: "2025-03-05",
-    time: "09:00",
-    completed: "2025-03-05",
-    revision: "No Revision",
-    status: "Completed",
-    methodology: "Agile",
-    phase: "Finalization",
-  },
-  {
-    no: 2,
-    assigned: "Harzwel Zhen L.",
-    type: "Documentation",
-    task: "Final Manuscript",
-    subtask: "Formatting",
-    element: "Software",
-    created: "2025-02-27",
-    due: "2025-03-04",
-    time: "13:30",
-    completed: "2025-03-04",
-    revision: "Revision 1",
-    status: "Completed",
-    methodology: "Agile",
-    phase: "Finalization",
-  },
-  {
-    no: 3,
-    assigned: "Julliana C.",
-    type: "Demo",
-    task: "System Demo",
-    subtask: "Dry Run",
-    element: "Hardware",
-    created: "2025-02-28",
-    due: "2025-03-03",
-    time: "15:00",
-    completed: "2025-03-03",
-    revision: "No Revision",
-    status: "Completed",
-    methodology: "Agile",
-    phase: "Finalization",
-  },
-];
+// No static rows; loads from Firestore
 
 /* =============================== Helpers =============================== */
 const formatDate = (d) =>
@@ -77,9 +29,56 @@ function formatTime(timeStr) {
 
 /* =========================== Component =========================== */
 function FinalDefense({ onBack, onView }) {
-  const [rows] = useState(RAW_ROWS);
+  const uid = typeof window !== "undefined" ? localStorage.getItem("uid") : null;
+  const [rows, setRows] = useState([]);
   const [search, setSearch] = useState("");
   const [phaseFilter, setPhaseFilter] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, "finalDefenseTasks"));
+        const arr = [];
+        snap.forEach((d) => {
+          const t = d.data() || {};
+          const mine = Array.isArray(t.assignees) && t.assignees.some((a) => a?.uid === uid);
+          const completed = String(t.status || "").toLowerCase() === "completed";
+          if (!mine || !completed) return;
+          const assigned = Array.isArray(t.assignees)
+            ? t.assignees.map((a) => a?.name).filter(Boolean).join(", ")
+            : "";
+          const createdISO = t.createdAt?.toDate?.()?.toISOString?.().slice(0, 10) || "";
+          const completedISO =
+            t.completedAt?.toDate?.()?.toISOString?.().slice(0, 10) ||
+            t.updatedAt?.toDate?.()?.toISOString?.().slice(0, 10) ||
+            t.dueDate || "";
+          arr.push({
+            assigned: assigned || "—",
+            type: t.type || "—",
+            task: t.task || t.type || "Task",
+            subtask: t.subtask || t.type || "—",
+            element: t.element || t.team?.name || t.teamName || "—",
+            created: createdISO,
+            due: t.dueDate || "",
+            time: t.dueTime || "",
+            completed: completedISO,
+            revision: t.revision || "No Revision",
+            status: t.status || "Completed",
+            methodology: t.methodology || "—",
+            phase: t.phase || "—",
+            __createdSort: createdISO,
+          });
+        });
+        arr.sort((a, b) => (b.__createdSort || "").localeCompare(a.__createdSort || ""));
+        if (alive) setRows(arr.map((r, i) => ({ no: i + 1, ...r })));
+      } catch (e) {
+        console.error("Member FinalDefense record load failed:", e);
+        if (alive) setRows([]);
+      }
+    })();
+    return () => { alive = false; };
+  }, [uid]);
 
   const phases = useMemo(
     () => Array.from(new Set(rows.map((r) => r.phase))),

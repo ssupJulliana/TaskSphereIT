@@ -28,7 +28,8 @@ const MAROON_DARK = "#4a0a0d";
 
 // Firestore
 import { db } from "../../config/firebase";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, query, where } from "firebase/firestore";
+import { getUserTeams } from "../../services/events";
 
 /* -------------------- Small UI helpers -------------------- */
 const Card = ({ className = "", children }) => (
@@ -166,6 +167,100 @@ function getMonthMatrix(today = new Date()) {
   const monthWeeks = useMemo(() => getMonthMatrix(today), [today]);
   const monthName = today.toLocaleString("default", { month: "long" });
 
+  // Calendar (match PM layout)
+  const [calCursor, setCalCursor] = useState(new Date());
+  const [calEvents, setCalEvents] = useState([]); // [{date:'yyyy-mm-dd', title}]
+  const calTitle = `${calCursor.toLocaleString("default", { month: "long" })} ${calCursor.getFullYear()}`;
+  const calMatrix = useMemo(
+    () => {
+      const y = calCursor.getFullYear();
+      const m = calCursor.getMonth();
+      // build 6x7 matrix
+      const first = new Date(y, m, 1);
+      const startDay = first.getDay();
+      const daysInMonth = new Date(y, m + 1, 0).getDate();
+      const cells = [];
+      for (let i = 0; i < startDay; i++) cells.push(null);
+      for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(y, m, d));
+      while (cells.length % 7 !== 0) cells.push(null);
+      while (cells.length < 42) cells.push(null);
+      const rows = [];
+      for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
+      return rows;
+    },
+    [calCursor]
+  );
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        if (!uid) return;
+        // Teams for schedules
+        const teams = await getUserTeams(uid);
+        const teamIds = teams.map((t) => t.id);
+
+        const chunkFetch = async (collName) => {
+          if (teamIds.length === 0) return [];
+          const arr = [];
+          for (let i = 0; i < teamIds.length; i += 10) {
+            const ch = teamIds.slice(i, i + 10);
+            const s = await getDocs(query(collection(db, collName), where("teamId", "in", ch)));
+            s.forEach((dx) => arr.push({ id: dx.id, ...dx.data() }));
+          }
+          return arr;
+        };
+
+        // Member tasks
+        const taskCols = ["titleDefenseTasks", "oralDefenseTasks", "finalDefenseTasks", "finalRedefenseTasks"];
+        const taskSnaps = await Promise.all(taskCols.map((c) => getDocs(collection(db, c))));
+        const myTasks = [];
+        taskSnaps.forEach((s) => s.forEach((dx) => {
+          const d = dx.data() || {};
+          if (Array.isArray(d.assignees) && d.assignees.some((a) => a?.uid === uid)) {
+            myTasks.push(d);
+          }
+        }));
+
+        // Schedules
+        const [titleSched, manusSched, oralSched, finalSched, redefSched] = await Promise.all([
+          chunkFetch("titleDefenseSchedules"),
+          chunkFetch("manuscriptSubmissions"),
+          chunkFetch("oralDefenseSchedules"),
+          chunkFetch("finalDefenseSchedules"),
+          chunkFetch("finalRedefenseSchedules").catch(() => []),
+        ]);
+
+        // Month range
+        const y = calCursor.getFullYear();
+        const m = calCursor.getMonth() + 1;
+        const start = `${y}-${String(m).padStart(2, "0")}-01`;
+        const endDay = new Date(y, m, 0).getDate();
+        const end = `${y}-${String(m).padStart(2, "0")}-${String(endDay).padStart(2, "0")}`;
+        const between = (d) => d >= start && d <= end;
+
+        const taskEvents = myTasks
+          .filter((t) => typeof t.dueDate === "string" && t.dueDate.length >= 10 && between(t.dueDate))
+          .map((t) => ({ date: t.dueDate, title: `${t.task || t.type || "Task"} (${t.status || "To Do"})` }));
+
+        const schedEvents = [
+          ...titleSched.map((s) => ({ date: s.date || "", title: "Title Defense" })),
+          ...manusSched.map((s) => ({ date: s.date || "", title: "Manuscript Submission" })),
+          ...oralSched.map((s) => ({ date: s.date || "", title: "Oral Defense" })),
+          ...finalSched.map((s) => ({ date: s.date || "", title: "Final Defense" })),
+          ...redefSched.map((s) => ({ date: s.date || "", title: "Final Re-Defense" })),
+        ].filter((e) => e.date && between(e.date));
+
+        const merged = [...taskEvents, ...schedEvents];
+        if (alive) setCalEvents(merged);
+      } catch (e) {
+        console.error("Member calendar load failed:", e);
+        if (alive) setCalEvents([]);
+      }
+    })();
+    return () => { alive = false; };
+  }, [uid, calCursor]);
+
   return (
     <div className="p-6">
       {/* ---------- UPCOMING TASK ---------- */}
@@ -202,6 +297,14 @@ function getMonthMatrix(today = new Date()) {
             </div>
           </Card>
         ))}
+        {upcomingTasks.length === 0 && (
+          <Card className="w-[300px]">
+            <div className="rounded-t-xl px-3 py-2 text-white text-sm font-semibold" style={{ backgroundColor: MAROON }}>
+              Upcoming
+            </div>
+            <div className="px-4 py-3 text-sm text-neutral-600">No upcoming tasks.</div>
+          </Card>
+        )}
       </div>
 
       {/* ---------- WEEKLY SUMMARY ---------- */}
@@ -268,80 +371,60 @@ function getMonthMatrix(today = new Date()) {
         </div>
       </div>
 
-      {/* ---------- CALENDAR ---------- */}
-      <h2 className="mt-8 text-[18px] font-semibold tracking-wide text-[#6A0F14]">
-        CALENDAR
-      </h2>
-
-      <div className="mt-3 bg-white rounded-xl border border-neutral-200 shadow-[0_6px_18px_rgba(0,0,0,0.05)] p-4">
-        {/* month name chip */}
-        <div className="w-full text-center">
-          <span
-            className="inline-block rounded-md px-3 py-[2px] text-xs font-medium text-white"
-            style={{ backgroundColor: MAROON }}
-          >
-            {monthName}
-          </span>
-        </div>
-
-        <div className="mt-3 grid grid-cols-[40px_repeat(7,1fr)] gap-y-2 text-sm">
-          {/* header row: blank for week column + days */}
+      {/* ---------- CALENDAR (match PM layout) ---------- */}
+      <h2 className="mt-8 text-[18px] font-semibold tracking-wide text-[#6A0F14]">CALENDAR</h2>
+      <div className="mt-3 bg-white rounded-xl border border-neutral-200 shadow-[0_6px_18px_rgba(0,0,0,0.05)]">
+        <div className="px-5 pt-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <button
+              className="h-8 w-8 grid place-items-center rounded-md text-white"
+              style={{ background: MAROON }}
+              onClick={() => setCalCursor(new Date(calCursor.getFullYear(), calCursor.getMonth() - 1, 1))}
+              title="Previous"
+            >
+              ‹
+            </button>
+            <button
+              className="h-8 w-8 grid place-items-center rounded-md text-white"
+              style={{ background: MAROON }}
+              onClick={() => setCalCursor(new Date(calCursor.getFullYear(), calCursor.getMonth() + 1, 1))}
+              title="Next"
+            >
+              ›
+            </button>
+          </div>
+          <div className="text-sm font-semibold" style={{ color: MAROON }}>{calTitle}</div>
           <div />
-          {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((d) => (
-            <div key={d} className="text-center text-neutral-600">
-              {d}
-            </div>
-          ))}
-
-          {/* weeks with left week-number chips */}
-          {monthWeeks.map((week, wi) => {
-            const weekNum =
-              wi +
-              1 +
-              Number(
-                new Date(today.getFullYear(), today.getMonth(), 1).getDay() > 1
-                  ? 0
-                  : 0
-              );
-            return (
-              <React.Fragment key={wi}>
-                <div className="grid place-items-center">
-                  <span
-                    className="rounded-md px-2 py-[2px] text-xs font-medium text-white"
-                    style={{ backgroundColor: MAROON_DARK }}
-                  >
-                    {String(weekNum + 39)}
-                    {/* visual-only running count like screenshot (40..45) */}
-                  </span>
+        </div>
+        <div className="px-5 mt-3 h-[2px] w-full" style={{ background: MAROON }} />
+        <div className="p-5">
+          <div className="grid grid-cols-7 text-xs text-neutral-500 mb-2">
+            {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((d) => (
+              <div key={d} className="text-center">{d}</div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-px bg-neutral-200 rounded-lg overflow-hidden">
+            {calMatrix.flat().map((cell, i) => {
+              const id = `cell-${i}`;
+              const isBlank = !cell;
+              const cellYmd = cell ? `${cell.getFullYear()}-${String(cell.getMonth()+1).padStart(2,'0')}-${String(cell.getDate()).padStart(2,'0')}` : "";
+              const dayEvents = (calEvents || []).filter((e) => e.date === cellYmd);
+              return (
+                <div key={id} className={`min-h-[92px] bg-white relative ${isBlank ? "bg-neutral-50" : ""}`}>
+                  {!isBlank && (
+                    <div className="absolute top-2 right-2 text-xs text-neutral-500">{cell.getDate()}</div>
+                  )}
+                  <div className="absolute left-3 right-3 top-8 space-y-1">
+                    {dayEvents.map((e, idx) => (
+                      <div key={idx} className="text-[11px] text-white px-2 py-0.5 rounded" style={{ background: MAROON }}>
+                        {e.title}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                {week.map((d, di) => {
-                  const isToday =
-                    d &&
-                    d.getDate() === today.getDate() &&
-                    d.getMonth() === today.getMonth() &&
-                    d.getFullYear() === today.getFullYear();
-
-                  return (
-                    <div key={di} className="h-10 grid place-items-center">
-                      {d ? (
-                        <span
-                          className={
-                            "inline-flex items-center justify-center h-7 w-7 rounded-md " +
-                            (isToday ? "text-white" : "text-neutral-700")
-                          }
-                          style={isToday ? { backgroundColor: MAROON } : {}}
-                        >
-                          {d.getDate()}
-                        </span>
-                      ) : (
-                        <span className="h-7 w-7" />
-                      )}
-                    </div>
-                  );
-                })}
-              </React.Fragment>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

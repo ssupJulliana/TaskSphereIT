@@ -1,5 +1,5 @@
 // src/components/CapstoneMember/tasksrecords/TitleDefense.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Search,
   Eye,
@@ -7,51 +7,12 @@ import {
   Clock,
   ChevronLeft,
 } from "lucide-react";
+import { db } from "../../../config/firebase";
+import { collection, getDocs } from "firebase/firestore";
 
 const MAROON = "#6A0F14";
 
-// Same sample data as PM record
-const RAW_ROWS = [
-  {
-    no: 1,
-    assigned: "Addrialene G. Mendoza",
-    type: "Documentation",
-    task: "Introduction",
-    created: "2025-01-05",
-    due: "2025-01-10",
-    time: "08:00",
-    completed: "2025-01-10",
-    revision: "No Revision",
-    status: "Completed",
-    phase: "Analysis",
-  },
-  {
-    no: 2,
-    assigned: "Harzwel Zhen B. Lacson",
-    type: "Documentation",
-    task: "Chapter 1",
-    created: "2025-01-07",
-    due: "2025-01-12",
-    time: "10:30",
-    completed: "2025-01-12",
-    revision: "Revision 1",
-    status: "Completed",
-    phase: "Planning",
-  },
-  {
-    no: 3,
-    assigned: "Julliana N. Castaneda",
-    type: "Discussion",
-    task: "Scope Definition",
-    created: "2025-01-06",
-    due: "2025-01-14",
-    time: "09:15",
-    completed: "2025-01-14",
-    revision: "No Revision",
-    status: "Completed",
-    phase: "Analysis",
-  },
-];
+// No static rows; loads from Firestore
 
 // ===== Helpers =====
 function formatDate(iso) {
@@ -69,12 +30,49 @@ function formatTime(hhmm) {
 }
 
 function TitleDefense({ onBack, onView }) {
-  const [rows] = useState(RAW_ROWS);
+  const uid = typeof window !== "undefined" ? localStorage.getItem("uid") : null;
+  const [rows, setRows] = useState([]);
   const [search, setSearch] = useState("");
   const [phaseFilter, setPhaseFilter] = useState("");
 
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, "titleDefenseTasks"));
+        const arr = [];
+        snap.forEach((d) => {
+          const t = d.data() || {};
+          const assigned = Array.isArray(t.assignees) ? t.assignees.map((a) => a?.name).filter(Boolean).join(", ") : "";
+          const mine = Array.isArray(t.assignees) && t.assignees.some((a) => a?.uid === uid);
+          const completed = String(t.status || "").toLowerCase() === "completed";
+          if (!mine || !completed) return;
+          arr.push({
+            assigned: assigned || "—",
+            type: t.type || "—",
+            task: t.task || t.type || "Task",
+            created: t.createdAt?.toDate?.()?.toISOString?.().slice(0,10) || "",
+            due: t.dueDate || "",
+            time: t.dueTime || "",
+            completed: t.completedAt?.toDate?.()?.toISOString?.().slice(0,10) || t.updatedAt?.toDate?.()?.toISOString?.().slice(0,10) || t.dueDate || "",
+            revision: t.revision || "No Revision",
+            status: t.status || "Completed",
+            phase: t.phase || "—",
+          });
+        });
+        // Stable sort by created date desc
+        arr.sort((a,b) => (b.created||"").localeCompare(a.created||""));
+        if (alive) setRows(arr.map((r, i) => ({ no: i+1, ...r })));
+      } catch (e) {
+        console.error("Member TitleDefense record load failed:", e);
+        if (alive) setRows([]);
+      }
+    })();
+    return () => { alive = false; };
+  }, [uid]);
+
   // derive phases for filter
-  const phases = useMemo(() => Array.from(new Set(rows.map((r) => r.phase))), [rows]);
+  const phases = useMemo(() => Array.from(new Set(rows.map((r) => r.phase).filter(Boolean))), [rows]);
 
   // filter rows
   const filteredRows = useMemo(() => {
