@@ -28,6 +28,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
+import { notifyTeamSchedule } from "../../../services/notifications";
 
 /* ===== PDF ===== */
 import jsPDF from "jspdf";
@@ -775,6 +776,14 @@ function ScheduleDialog({
       };
 
       await updateDoc(doc(db, "finalDefenseSchedules", initial.id), payload);
+      await notifyTeamSchedule({
+        kind: "Final Defense",
+        teamId,
+        teamName: team,
+        date,
+        timeStart: time,
+        timeEnd,
+      });
 
       if (typeof onSaved === "function") onSaved();
       onClose();
