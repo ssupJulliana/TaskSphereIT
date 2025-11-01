@@ -1,4 +1,4 @@
-// src/components/ProjectManager/ProjectManagerDashboard.jsx
+﻿// src/components/ProjectManager/ProjectManagerDashboard.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Users, CalendarDays, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -28,41 +28,7 @@ const COLORS = {
   missed: "#E5534B",
 };
 
-const UPCOMING = [
-  { name: "Mendoza, Et Al",   chapter: "Chapter 3", date: "Feb 5, 2025", time: "8:00 AM",  color: "#7C9C3B" },
-  { name: "Addrialene M",     chapter: "Chapter 2", date: "Feb 2, 2025", time: "8:00 AM",  color: "#D9A81E" },
-  { name: "Harzwel L",        chapter: "Chapter 3", date: "Feb 5, 2025", time: "8:00 AM",  color: "#4C79B7" },
-  { name: "Julliana C",       chapter: "Chapter 3", date: "Feb 5, 2025", time: "8:00 AM",  color: "#8CB55E" },
-  { name: "Alejandro F",      chapter: "Chapter 3", date: "Feb 5, 2025", time: "8:00 AM",  color: "#7FA042" },
-];
-
-// weekly counts (approx. like screenshot)
-const WEEKLY = [
-  { key: "todo",       label: "To Do",       value: 4,  color: COLORS.todo },
-  { key: "inprogress", label: "In Progress", value: 9,  color: COLORS.inprogress },
-  { key: "toreview",   label: "To Review",   value: 14, color: COLORS.toreview },
-  { key: "completed",  label: "Completed",   value: 16, color: COLORS.completed },
-  { key: "missed",     label: "Missed",      value: 1,  color: COLORS.missed },
-];
-
-// donut segments (percent distribution)
-const DONUT_SEGMENTS = [
-  { key: "todo",       label: "To Do",       pct: 30, color: COLORS.todo },
-  { key: "inprogress", label: "In Progress", pct: 15, color: COLORS.inprogress },
-  { key: "toreview",   label: "To Review",   pct: 20, color: COLORS.toreview },
-  { key: "completed",  label: "Completed",   pct: 30, color: COLORS.completed },
-  { key: "missed",     label: "Missed",      pct: 5,  color: COLORS.missed },
-];
-
-/* ============================
-   Recent Tasks Created (table)
-   ============================ */
-const RECENT_TASKS = [
-  { no: 1, assigned: "Julliana C",  task: "Chapter 3", subtask: "Developments",   element: "Peopleware", created: "Feb 4, 2025",  due: "Feb 7, 2025",  time: "8:30 AM",  status: "To Review",  phase: "Design" },
-  { no: 2, assigned: "John Reagan S", task: "Chapter 3", subtask: "Implementation", element: "Hardware",   created: "Feb 7, 2025",  due: "Feb 11, 2025", time: "11:50 AM", status: "In Progress", phase: "Design" },
-  { no: 3, assigned: "Justine P",   task: "Chapter 3", subtask: "Implementation", element: "Software",   created: "Feb 11, 2025", due: "Feb 13, 2025", time: "10:00 AM", status: "To Do",      phase: "Design" },
-  { no: 4, assigned: "Addrialene G", task: "Chapter 3", subtask: "Implementation", element: "Peopleware", created: "Feb 12, 2025", due: "Feb 15, 2025", time: "11:00 AM", status: "To Do",      phase: "Design" },
-];
+// No static sample datasets; everything loads from Firestore.
 
 const statusColor = (s) =>
   s === "To Review"   ? COLORS.toreview :
@@ -204,13 +170,9 @@ const monthNames = ["January","February","March","April","May","June","July","Au
 const dayNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
 // sample events to mimic your screenshot
-const SAMPLE_EVENTS = [
-  { date: "2025-10-12", title: "2: Refine: Chapter 2 (Missed)" },
-  { date: "2025-10-13", title: "2: Refine: Chapter 2 (Missed)" },
-  { date: "2025-10-22", title: "2: Refine: Chapter 1 (To Do)" },
-  { date: "2025-10-23", title: "2: Refine: Chapter 1 (To Do)" },
-  { date: "2025-10-07", title: "Kaycelle David", pill: true },
-];
+// Calendar events are loaded live (tasks + schedules)
+// shape: { date: 'yyyy-mm-dd', title: string, pill?: boolean }
+const SAMPLE_EVENTS = [];
 
 function ymd(d) {
   const y = d.getFullYear();
@@ -239,10 +201,11 @@ function buildMonthMatrix(year, monthIndex) {
   return matrix;
 }
 
-const CalendarCard = () => {
-  // default to October 2025 to mirror screenshot
+const CalendarCard = ({ pmUid }) => {
+  // default to current month
   const [view, setView] = useState("month"); // "month" | "week" | "day" (only month visual here)
-  const [cursor, setCursor] = useState(new Date(2025, 9, 1)); // Oct 2025
+  const [cursor, setCursor] = useState(new Date());
+  const [events, setEvents] = useState(SAMPLE_EVENTS);
 
   const title = `${monthNames[cursor.getMonth()]} ${cursor.getFullYear()}`;
   const matrix = useMemo(
@@ -256,6 +219,83 @@ const CalendarCard = () => {
   const goNext = () => {
     if (view === "month") setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1));
   };
+
+  useEffect(() => {
+    let alive = true;
+    if (!pmUid) return;
+    (async () => {
+      try {
+        // Find teams managed by this PM
+        const teamsRef = collection(db, "teams");
+        let teamsSnap = await getDocs(query(teamsRef, where("manager.uid", "==", pmUid)));
+        let pmTeams = teamsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+        if (pmTeams.length === 0) {
+          const alt = await getDocs(query(teamsRef, where("managerUid", "==", pmUid)));
+          pmTeams = alt.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+        }
+        const teamIds = pmTeams.map((t) => t.id);
+
+        // Helper to chunk fetch schedules by teamId (IN up to 10)
+        const fetchByTeam = async (collName) => {
+          if (teamIds.length === 0) return [];
+          const arr = [];
+          for (let i = 0; i < teamIds.length; i += 10) {
+            const chunk = teamIds.slice(i, i + 10);
+            const s = await getDocs(query(collection(db, collName), where("teamId", "in", chunk)));
+            s.forEach((dx) => arr.push({ id: dx.id, ...dx.data() }));
+          }
+          return arr;
+        };
+
+        // Load tasks created by PM (for due dates)
+        const taskDefs = ["titleDefenseTasks", "oralDefenseTasks", "finalDefenseTasks", "finalRedefenseTasks"];
+        const taskSnaps = await Promise.all(
+          taskDefs.map((c) => getDocs(query(collection(db, c), where("createdBy.uid", "==", pmUid))))
+        );
+        const tasks = [];
+        taskSnaps.forEach((s) => s.forEach((dx) => tasks.push({ id: dx.id, ...dx.data() })));
+
+        // Load schedules relevant to PM teams
+        const [titleSched, manusSched, oralSched, finalSched, redefSched] = await Promise.all([
+          fetchByTeam("titleDefenseSchedules"),
+          fetchByTeam("manuscriptSubmissions"),
+          fetchByTeam("oralDefenseSchedules"),
+          fetchByTeam("finalDefenseSchedules"),
+          fetchByTeam("finalRedefenseSchedules").catch(() => []),
+        ]);
+
+        // Month window boundaries
+        const y = cursor.getFullYear();
+        const m = cursor.getMonth() + 1;
+        const start = `${y}-${String(m).padStart(2, "0")}-01`;
+        const endDate = new Date(y, m, 0).getDate();
+        const end = `${y}-${String(m).padStart(2, "0")}-${String(endDate).padStart(2, "0")}`;
+        const between = (d) => d >= start && d <= end;
+
+        const taskEvents = tasks
+          .filter((t) => typeof t.dueDate === "string" && t.dueDate.length >= 10 && between(t.dueDate))
+          .map((t) => ({
+            date: t.dueDate,
+            title: `${t.task || t.type || "Task"} (${t.status || "To Do"})`,
+          }));
+
+        const schedEvents = [
+          ...titleSched.map((s) => ({ date: s.date || "", title: "Title Defense" })),
+          ...manusSched.map((s) => ({ date: s.date || "", title: "Manuscript Submission" })),
+          ...oralSched.map((s) => ({ date: s.date || "", title: "Oral Defense" })),
+          ...finalSched.map((s) => ({ date: s.date || "", title: "Final Defense" })),
+          ...redefSched.map((s) => ({ date: s.date || "", title: "Final Re-Defense" })),
+        ].filter((e) => e.date && between(e.date));
+
+        const merged = [...taskEvents, ...schedEvents];
+        if (alive) setEvents(merged);
+      } catch (e) {
+        console.error("Calendar load failed:", e);
+        if (alive) setEvents([]);
+      }
+    })();
+    return () => { alive = false; };
+  }, [pmUid, cursor]);
 
   return (
     <Card>
@@ -332,8 +372,7 @@ const CalendarCard = () => {
             const id = `cell-${i}`;
             const isBlank = !cell;
             const cellYmd = cell ? ymd(cell) : "";
-            const events = SAMPLE_EVENTS.filter((e) => e.date === cellYmd);
-            const is20th = cell && cell.getDate() === 20;
+            const dayEvents = (events || []).filter((e) => e.date === cellYmd);
 
             return (
               <div
@@ -348,18 +387,11 @@ const CalendarCard = () => {
                 )}
 
                 {/* purple person pill*/}
-                {events.some((e) => e.pill) && (
-                  <div className="absolute left-3 top-6">
-                    <span className="text-[11px] font-semibold text-white px-2 py-0.5 rounded-md" style={{ background: "#8B5CF6" }}>
-                      Kaycelle David
-                    </span>
-                  </div>
-                )}
+                {/* reserved for future person pills */}
 
                 {/* maroon event chips */}
                 <div className="absolute left-3 right-3 top-10 space-y-1">
-                  {events
-                    .filter((e) => !e.pill)
+                  {dayEvents
                     .map((e, idx) => (
                       <div
                         key={idx}
@@ -370,13 +402,6 @@ const CalendarCard = () => {
                       </div>
                     ))}
                 </div>
-
-                {/* light highlighted day (20) */}
-                {is20th && (
-                  <div className="absolute top-2 left-2 h-6 w-6 rounded-full grid place-items-center text-[11px] text-white" style={{ background: MAROON }}>
-                    20
-                  </div>
-                )}
               </div>
             );
           })}
@@ -388,6 +413,27 @@ const CalendarCard = () => {
 
 // ---- main ---------------------------------------------------------------
 const ProjectManagerDashboard = () => {
+  // Live data that falls back to sample values until loaded
+  const [upcoming, setUpcoming] = useState([]);
+  const [weekly, setWeekly] = useState([{ key: "todo", label: "To Do", value: 0, color: COLORS.todo },{ key: "inprogress", label: "In Progress", value: 0, color: COLORS.inprogress },{ key: "toreview", label: "To Review", value: 0, color: COLORS.toreview },{ key: "completed", label: "Completed", value: 0, color: COLORS.completed },{ key: "missed", label: "Missed", value: 0, color: COLORS.missed }]);
+  const [donut, setDonut] = useState([{ key: "todo", label: "To Do", pct: 0, color: COLORS.todo },{ key: "inprogress", label: "In Progress", pct: 0, color: COLORS.inprogress },{ key: "toreview", label: "To Review", pct: 0, color: COLORS.toreview },{ key: "completed", label: "Completed", pct: 0, color: COLORS.completed },{ key: "missed", label: "Missed", pct: 0, color: COLORS.missed }]);
+  const [recentTasks, setRecentTasks] = useState([]);
+
+  // helpers
+  const to12h = (t) => {
+    if (!t) return "";
+    const [H, M] = String(t).split(":").map(Number);
+    const ampm = H >= 12 ? "PM" : "AM";
+    const hh = ((H + 11) % 12) + 1;
+    return `${hh}:${String(M || 0).padStart(2, "0")} ${ampm}`;
+  };
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const fmtDate = (yyyy_mm_dd) => {
+    if (!yyyy_mm_dd) return "--";
+    const [y, m, d] = yyyy_mm_dd.split("-").map(Number);
+    if (!y || !m || !d) return "--";
+    return `${MONTHS[m - 1]} ${Number(d)}, ${y}`;
+  };
   /* ===== Title gate (Passed => require title) ===== */
   const [pmUid, setPmUid] = useState("");
   const [modalTeam, setModalTeam] = useState(null); // { id, name }
@@ -454,6 +500,103 @@ const ProjectManagerDashboard = () => {
     })();
   }, [pmUid, titleGateChecked]);
 
+  // Load PM-created tasks and compute dashboard data
+  useEffect(() => {
+    if (!pmUid) return;
+    (async () => {
+      try {
+        const defs = [
+          { key: "title", coll: "titleDefenseTasks" },
+          { key: "oral", coll: "oralDefenseTasks" },
+          { key: "final", coll: "finalDefenseTasks" },
+          { key: "redef", coll: "finalRedefenseTasks" },
+        ];
+
+        const snaps = await Promise.all(
+          defs.map((d) => getDocs(query(collection(db, d.coll), where("createdBy.uid", "==", pmUid))))
+        );
+        const all = [];
+        snaps.forEach((s) => {
+          s.forEach((dx) => {
+            const data = dx.data() || {};
+            all.push({ id: dx.id, ...data });
+          });
+        });
+
+        // Upcoming: nearest future dueAtMs
+        const now = Date.now();
+        const upcomingRaw = all
+          .filter((t) => typeof t.dueAtMs === "number" && t.dueAtMs >= now)
+          .sort((a, b) => (a.dueAtMs || 0) - (b.dueAtMs || 0))
+          .slice(0, 5)
+          .map((t) => ({
+            name: t.team?.name || (t.assignees?.[0]?.name || "—"),
+            chapter: t.task || t.type || "Task",
+            date: fmtDate(t.dueDate || ""),
+            time: to12h(t.dueTime || ""),
+            color:
+              (t.status === "In Progress" && COLORS.inprogress) ||
+              (t.status === "To Review" && COLORS.toreview) ||
+              (t.status === "Completed" && COLORS.completed) ||
+              COLORS.todo,
+          }));
+        if (upcomingRaw.length > 0) setUpcoming(upcomingRaw);
+
+        // Weekly summary: counts by status (simple total)
+        const counts = { todo: 0, inprogress: 0, toreview: 0, completed: 0, missed: 0 };
+        const nowMs = Date.now();
+        all.forEach((t) => {
+          const s = String(t.status || "To Do").toLowerCase();
+          if (s.includes("review")) counts.toreview++;
+          else if (s.includes("progress")) counts.inprogress++;
+          else if (s.includes("complete")) counts.completed++;
+          else counts.todo++;
+          if (typeof t.dueAtMs === "number" && t.dueAtMs < nowMs && (t.status || "") !== "Completed") counts.missed++;
+        });
+        setWeekly([
+          { key: "todo",       label: "To Do",       value: counts.todo,       color: COLORS.todo },
+          { key: "inprogress", label: "In Progress", value: counts.inprogress, color: COLORS.inprogress },
+          { key: "toreview",   label: "To Review",   value: counts.toreview,   color: COLORS.toreview },
+          { key: "completed",  label: "Completed",   value: counts.completed,  color: COLORS.completed },
+          { key: "missed",     label: "Missed",      value: counts.missed,     color: COLORS.missed },
+        ]);
+
+        // Donut: percentage from counts
+        const total = counts.todo + counts.inprogress + counts.toreview + counts.completed + counts.missed;
+        const pct = (n) => (total > 0 ? Math.round((n / total) * 100) : 0);
+        setDonut([
+          { key: "todo",       label: "To Do",       pct: pct(counts.todo),       color: COLORS.todo },
+          { key: "inprogress", label: "In Progress", pct: pct(counts.inprogress), color: COLORS.inprogress },
+          { key: "toreview",   label: "To Review",   pct: pct(counts.toreview),   color: COLORS.toreview },
+          { key: "completed",  label: "Completed",   pct: pct(counts.completed),  color: COLORS.completed },
+          { key: "missed",     label: "Missed",      pct: pct(counts.missed),     color: COLORS.missed },
+        ]);
+
+        // Recent tasks
+        const recent = all
+          .map((t, i) => ({
+            createdKey: t.createdAt?.toMillis?.() || 0,
+            assigned: t.assignees?.[0]?.name || "—",
+            task: t.task || t.type || "Task",
+            subtask: t.type || "—",
+            element: t.team?.name || "—",
+            created: t.createdAt?.toDate?.()?.toLocaleDateString?.() || "—",
+            due: fmtDate(t.dueDate || ""),
+            time: to12h(t.dueTime || ""),
+            status: t.status || "To Do",
+            phase: t.phase || "Design",
+          }))
+          .filter((x) => x.createdKey > 0)
+          .sort((a, b) => b.createdKey - a.createdKey)
+          .slice(0, 10)
+          .map((x, i) => ({ no: i + 1, ...x }));
+        if (recent.length > 0) setRecentTasks(recent);
+      } catch (e) {
+        console.error("Title gate check failed:", e);
+      }
+    })();
+  }, [pmUid]);
+
   return (
     <div className="space-y-8">
       {/* UPCOMING */}
@@ -462,7 +605,7 @@ const ProjectManagerDashboard = () => {
           UPCOMING TASKS
         </h3>
         <div className="flex flex-wrap gap-5">
-          {UPCOMING.map((u, i) => (
+          {upcoming.map((u, i) => (
             <UpcomingCard key={i} item={u} />
           ))}
         </div>
@@ -480,10 +623,10 @@ const ProjectManagerDashboard = () => {
           <div className="p-6">
             <div className="grid grid-cols-12 gap-6">
               <div className="col-span-12 xl:col-span-8">
-                <WeeklyBarChart data={WEEKLY} />
+                <WeeklyBarChart data={weekly} />
               </div>
               <div className="col-span-12 xl:col-span-4">
-                <Legend items={WEEKLY} />
+                <Legend items={weekly} />
               </div>
             </div>
           </div>
@@ -499,10 +642,10 @@ const ProjectManagerDashboard = () => {
           <div className="p-6">
             <div className="grid grid-cols-12 gap-6 items-center">
               <div className="col-span-12 xl:col-span-8">
-                <Donut segments={DONUT_SEGMENTS} centerText="40%" />
+                <Donut segments={donut} centerText="40%" />
               </div>
               <div className="col-span-12 xl:col-span-4">
-                <Legend items={DONUT_SEGMENTS} />
+                <Legend items={donut} />
               </div>
             </div>
           </div>
@@ -545,7 +688,7 @@ const ProjectManagerDashboard = () => {
                 </tr>
               </thead>
               <tbody>
-                {RECENT_TASKS.map((r) => (
+                {recentTasks.map((r) => (
                   <tr key={r.no} className="border-t border-neutral-200">
                     <td className="py-3 pl-6 pr-3">{r.no}.</td>
                     <td className="py-3 pr-3">{r.assigned}</td>
@@ -567,7 +710,7 @@ const ProjectManagerDashboard = () => {
                   </tr>
                 ))}
 
-                {RECENT_TASKS.length === 0 && (
+                {recentTasks.length === 0 && (
                   <tr>
                     <td colSpan={10} className="py-10 text-center text-neutral-500">
                       No recent tasks.
@@ -585,7 +728,7 @@ const ProjectManagerDashboard = () => {
         <h3 className="text-xl font-extrabold tracking-wide" style={{ color: MAROON }}>
           CALENDAR
         </h3>
-        <CalendarCard />
+        <CalendarCard pmUid={pmUid} />
       </section>
 
       {/* === Title requirement modal (opens when Passed & no title yet) === */}
@@ -603,3 +746,8 @@ const ProjectManagerDashboard = () => {
 };
 
 export default ProjectManagerDashboard;
+
+
+
+
+
