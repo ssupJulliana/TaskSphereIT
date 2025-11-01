@@ -186,7 +186,15 @@ function DetailView({ me, card, onBack }) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [tab, setTab] = useState("conversation"); // "conversation" | "attachments"
   const listRef = useRef(null);
+
+  // Static attachments (UI only)
+  const attachments = [
+    { id: "a1", name: "Castaneda Chapter 3.pdf", type: "pdf", date: "Feb 6, 2025", url: "#" },
+    { id: "a2", name: "Another File.pdf", type: "pdf", date: "Feb 5, 2025", url: "#" },
+    { id: "a3", name: "Sample Document.docx", type: "docx", date: "Feb 4, 2025", url: "#" },
+  ];
 
   // Stable thread key (legacy-compatible)
   const threadKey = useMemo(() => {
@@ -342,70 +350,134 @@ function DetailView({ me, card, onBack }) {
         </div>
 
         <div className="bg-white border border-neutral-200 rounded-xl shadow p-0 overflow-hidden relative">
+          {/* Tabs */}
           <div className="px-4 pt-3">
             <div className="flex gap-6 text-sm">
-              <div className="pb-2 font-medium border-b-2 border-neutral-800">Conversation</div>
+              <button
+                onClick={() => setTab("conversation")}
+                className={`pb-2 font-medium ${
+                  tab === "conversation"
+                    ? "border-b-2 border-neutral-800"
+                    : "text-neutral-500 hover:text-neutral-800"
+                }`}
+              >
+                Conversation
+              </button>
+              <button
+                onClick={() => setTab("attachments")}
+                className={`pb-2 font-medium inline-flex items-center gap-2 ${
+                  tab === "attachments"
+                    ? "border-b-2 border-neutral-800"
+                    : "text-neutral-500 hover:text-neutral-800"
+                }`}
+              >
+                <Paperclip className="w-4 h-4" />
+                Attachments
+              </button>
             </div>
           </div>
           <div className="h-[1px] bg-neutral-200" />
-          <div className="p-4">
-            <div className="rounded-lg border border-neutral-300 overflow-hidden">
-              <div className="px-3 py-2 border-b border-neutral-200 text-sm font-medium">
-                {me?.name || "You"} <span className="text-neutral-500">({me?.role})</span>
-              </div>
-              <div className="p-3 relative">
-                <textarea
-                  rows={3}
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  placeholder="Write a message…"
-                  className="w-full resize-none outline-none text-sm"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      send();
-                    }
-                  }}
-                />
-                <div className="flex items-center gap-2 absolute right-3 bottom-3">
-                  <button
-                    className="p-1.5 rounded hover:bg-neutral-100 cursor-not-allowed opacity-50"
-                    title="Attach (coming soon)"
-                    disabled
-                  >
-                    <Paperclip className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={send}
-                    disabled={sending}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-white cursor-pointer disabled:opacity-60"
-                    style={{ backgroundColor: MAROON }}
-                  >
-                    {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                    {sending ? "Sending…" : "Send"}
-                  </button>
+
+          {/* Conversation tab */}
+          {tab === "conversation" && (
+            <>
+              <div className="p-4">
+                <div className="rounded-lg border border-neutral-300 overflow-hidden">
+                  <div className="px-3 py-2 border-b border-neutral-200 text-sm font-medium">
+                    {me?.name || "You"} <span className="text-neutral-500">({me?.role})</span>
+                  </div>
+                  <div className="p-3 relative">
+                    <textarea
+                      rows={3}
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      placeholder="Write a message…"
+                      className="w-full resize-none outline-none text-sm"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          send();
+                        }
+                      }}
+                    />
+                    <div className="flex items-center gap-2 absolute right-3 bottom-3">
+                      <button
+                        className="p-1.5 rounded hover:bg-neutral-100 cursor-not-allowed opacity-50"
+                        title="Attach (coming soon)"
+                        disabled
+                      >
+                        <Paperclip className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={send}
+                        disabled={sending}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-white cursor-pointer disabled:opacity-60"
+                        style={{ backgroundColor: MAROON }}
+                      >
+                        {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        {sending ? "Sending…" : "Send"}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
 
-          <div ref={listRef} className="px-4 pb-4 max-h-[360px] overflow-y-auto space-y-3">
-            {messages.length === 0 ? (
-              <div className="text-sm text-neutral-600">No messages yet. Start the conversation above.</div>
-            ) : (
-              messages.map((m) => (
-                <ChatBubble
-                  key={m.id || m._localId || m.createdAt?.seconds || Math.random()}
-                  m={m}
-                  meUid={meUid}
-                  onEdit={editMessage}
-                  onDelete={deleteMessage}
-                  editingId={editingId}
-                  setEditingId={setEditingId}
-                />
-              ))
-            )}
-          </div>
+              {sending && (
+                <div className="absolute inset-0 bg-white/40 pointer-events-none flex items-start justify-end pr-6 pt-24" />
+              )}
+
+              <div ref={listRef} className="px-4 pb-4 max-h-[360px] overflow-y-auto space-y-3">
+                {messages.length === 0 ? (
+                  <div className="text-sm text-neutral-600">No messages yet. Start the conversation above.</div>
+                ) : (
+                  messages.map((m) => (
+                    <ChatBubble
+                      key={m.id || m._localId || m.createdAt?.seconds || Math.random()}
+                      m={m}
+                      meUid={meUid}
+                      onEdit={editMessage}
+                      onDelete={deleteMessage}
+                      editingId={editingId}
+                      setEditingId={setEditingId}
+                    />
+                  ))
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Attachments tab (static UI) */}
+          {tab === "attachments" && (
+            <div className="p-4">
+              <div className="rounded-lg border border-neutral-200 overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-neutral-50 text-neutral-600">
+                    <tr>
+                      <th className="text-left px-4 py-2 font-medium">Attachment</th>
+                      <th className="text-right px-4 py-2 font-medium">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-200">
+                    {attachments.map((f) => (
+                      <tr key={f.id} className="hover:bg-neutral-50">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-red-600">
+                              <Paperclip className="w-4 h-4" />
+                            </span>
+                            <a href={f.url} className="text-[15px] hover:underline cursor-pointer">
+                              {f.name}
+                            </a>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-right text-neutral-700">{f.date}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
