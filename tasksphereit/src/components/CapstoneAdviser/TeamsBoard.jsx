@@ -9,6 +9,7 @@ import {
   Send,
   MessageSquareText,
   Loader2,
+  X as XIcon,
 } from "lucide-react";
 
 /* ===== Firebase ===== */
@@ -29,6 +30,9 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
+
+/* ===== Supabase (for file uploads / public URLs) ===== */
+import { supabase } from "../../config/supabase";
 
 const MAROON = "#6A0F14";
 
@@ -55,6 +59,33 @@ const safeName = (u) =>
     .filter(Boolean)
     .join(" ") || "Unknown";
 
+const cleanBase = (p = "") =>
+  String(p).split("/").pop()?.split("?")[0] || String(p);
+
+const humanName = (meta = {}) =>
+  meta.originalName ||
+  meta.fileName ||
+  meta.name ||
+  cleanBase(meta.path || meta.url || "");
+
+const fmtWhen = (msOrDate) => {
+  try {
+    if (!msOrDate) return "";
+    const d = msOrDate instanceof Date ? msOrDate : new Date(msOrDate);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleString();
+  } catch {
+    return "";
+  }
+};
+
+const slugSafe = (s = "") =>
+  s
+    .toLowerCase()
+    .replace(/[^\w\s.-]/g, "_")
+    .replace(/\s+/g, "-")
+    .slice(0, 120);
+
 /* ======================= Reusable UI ========================= */
 function Column({ title, color, children }) {
   return (
@@ -66,7 +97,9 @@ function Column({ title, color, children }) {
         {title}
       </div>
       <div className="flex-1 min-h-0">
-        <div className="h-full overflow-y-auto px-3 py-3 space-y-3">{children}</div>
+        <div className="h-full overflow-y-auto px-3 py-3 space-y-3">
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -77,7 +110,9 @@ function KanbanCard({ data, onOpen }) {
     <div className={cardShell}>
       <div className="p-3">
         <div className="flex items-start justify-between">
-          <div className="font-semibold text-sm">{data.teamName || "No Team"}</div>
+          <div className="font-semibold text-sm">
+            {data.teamName || "No Team"}
+          </div>
           <button
             onClick={() => onOpen(data)}
             className="p-1 rounded hover:bg-neutral-100 cursor-pointer"
@@ -89,8 +124,12 @@ function KanbanCard({ data, onOpen }) {
         </div>
 
         <div className="mt-2 text-sm">
-          <div className="text-neutral-800">{data.task || data.chapter || "Task"}</div>
-          <div className="text-neutral-500">{data.revision || "No Revision"}</div>
+          <div className="text-neutral-800">
+            {data.task || data.chapter || "Task"}
+          </div>
+          <div className="text-neutral-500">
+            {data.revision || "No Revision"}
+          </div>
         </div>
 
         <div className="mt-3 text-xs text-neutral-700 flex items-center gap-2">
@@ -121,17 +160,19 @@ function Field({ label, value }) {
 function ChatBubble({ m, meUid, onEdit, onDelete, editingId, setEditingId }) {
   const mine = m.sender?.uid === meUid;
   const [editText, setEditText] = useState(m.text);
-
   const base =
     "max-w-[80%] px-3 py-2 rounded-lg text-sm leading-snug shadow border border-neutral-200";
-
   const isEditing = editingId === m.id && mine;
+
+  const hasFiles = Array.isArray(m.fileUrl) && m.fileUrl.length > 0;
 
   return (
     <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
       <div
         className={`${base} ${mine ? "bg-[#F9F5F4]" : "bg-white"}`}
-        title={m.createdAt?.toDate?.() ? m.createdAt.toDate().toLocaleString() : ""}
+        title={
+          m.createdAt?.toDate?.() ? m.createdAt.toDate().toLocaleString() : ""
+        }
       >
         <div className="text-xs text-neutral-500 mb-1">
           {m.role || m.sender?.name || "Someone"}
@@ -156,22 +197,51 @@ function ChatBubble({ m, meUid, onEdit, onDelete, editingId, setEditingId }) {
               >
                 Save
               </button>
-              <button onClick={() => setEditingId(null)} className="text-neutral-500">
+              <button
+                onClick={() => setEditingId(null)}
+                className="text-neutral-500"
+              >
                 Cancel
               </button>
             </div>
           </>
         ) : (
           <>
-            <div className="text-neutral-800 whitespace-pre-wrap">
-              {m.text || <span className="italic text-neutral-500">[no text]</span>}
-            </div>
+            {m.text ? (
+              <div className="text-neutral-800 whitespace-pre-wrap">
+                {m.text}
+              </div>
+            ) : null}
+
+            {hasFiles && (
+              <ul className="mt-2 space-y-1">
+                {m.fileUrl.map((f, i) => (
+                  <li key={i} className="text-sm">
+                    <a
+                      href={f.url || f.publicUrl || "#"}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline"
+                    >
+                      {humanName(f)}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+
             {mine && !m.__optimistic && (
               <div className="mt-1 text-xs text-neutral-500 flex gap-4">
-                <button onClick={() => setEditingId(m.id)} className="hover:underline cursor-pointer">
+                <button
+                  onClick={() => setEditingId(m.id)}
+                  className="hover:underline cursor-pointer"
+                >
                   Edit
                 </button>
-                <button onClick={() => onDelete(m.id)} className="hover:underline cursor-pointer">
+                <button
+                  onClick={() => onDelete(m.id)}
+                  className="hover:underline cursor-pointer"
+                >
                   Delete
                 </button>
               </div>
@@ -185,90 +255,218 @@ function ChatBubble({ m, meUid, onEdit, onDelete, editingId, setEditingId }) {
 
 function DetailView({ me, card, onBack }) {
   const meUid = me?.uid;
+
+  // chat state
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [tab, setTab] = useState("conversation"); // "conversation" | "attachments"
+
+  // local attach-before-send
+  const [pendingFiles, setPendingFiles] = useState([]);
+  const fileInputRef = useRef(null);
+
+  // attachments tab aggregated
+  const [taskFiles, setTaskFiles] = useState([]); // from task doc
+  const [chatFiles, setChatFiles] = useState([]); // from chat docs
+  const [tab, setTab] = useState("conversation");
   const listRef = useRef(null);
 
-  // Static attachments (UI-only, per request)
-  const attachments = [
-    { id: "a1", name: "Castaneda Chapter 3.pdf", type: "pdf", date: "Feb 6, 2025", url: "#" },
-    { id: "a2", name: "Another File.pdf", type: "pdf", date: "Feb 5, 2025", url: "#" },
-    { id: "a3", name: "Sample Document.docx", type: "docx", date: "Feb 4, 2025", url: "#" },
-  ];
+  // ==== task doc fileUrl (existing files) ====
+  useEffect(() => {
+    let stop = false;
+    (async () => {
+      try {
+        const dref = doc(db, card._collection, card.id);
+        const snap = await getDoc(dref);
+        const data = snap.exists() ? snap.data() : {};
+        const arr = Array.isArray(data.fileUrl) ? data.fileUrl : [];
+        // normalize: add url via supabase if only "path" provided
+        const normalized = await Promise.all(
+          arr.map(async (f) => {
+            const path = f.path || f.fileName || f.name || "";
+            let url = f.url || f.publicUrl || "";
+            if (!url && path) {
+              const { data } = supabase.storage
+                .from("user-tasks-files")
+                .getPublicUrl(path);
+              url = data?.publicUrl || "";
+            }
+            return {
+              ...f,
+              path,
+              url,
+              source: "task",
+              uploadedAtMs:
+                f.uploadedAtMs ||
+                (f.uploadedAt?.toDate?.()
+                  ? f.uploadedAt.toDate().getTime()
+                  : null),
+            };
+          })
+        );
+        if (!stop) setTaskFiles(normalized);
+      } catch (e) {
+        if (!stop) setTaskFiles([]);
+      }
+    })();
+    return () => {
+      stop = true;
+    };
+  }, [card._collection, card.id]);
 
-  // Stable thread key (prevents “disappearing” when navigating)
-  const threadKey = useMemo(() => {
-    const tId = card.teamId || "no-team";
-    return `${card._collection}:${card.id}:${tId}`;
-  }, [card._collection, card.id, card.teamId]);
-
-  // Real-time chat subscription (never clears locally unless threadKey changes)
+  // ==== chat subscription (this task only; no threadKey) ====
   useEffect(() => {
     const qy = query(
       collection(db, "chats"),
-      where("threadKey", "==", threadKey),
+      where("taskCollection", "==", card._collection),
+      where("taskId", "==", card.id),
       orderBy("createdAt", "asc")
     );
     const stop = onSnapshot(qy, (snap) => {
       const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setMessages(rows);
-      // autoscroll to bottom
+
+      // collect any files on messages
+      const files = [];
+      rows.forEach((m) => {
+        const arr = Array.isArray(m.fileUrl) ? m.fileUrl : [];
+        arr.forEach((f) => {
+          files.push({
+            ...f,
+            source: "chat",
+            uploadedAtMs:
+              f.uploadedAtMs ||
+              (f.uploadedAt?.toDate?.()
+                ? f.uploadedAt.toDate().getTime()
+                : null) ||
+              (m.createdAt?.toDate?.() ? m.createdAt.toDate().getTime() : null),
+          });
+        });
+      });
+      setChatFiles(files);
+
+      // autoscroll
       requestAnimationFrame(() => {
-        if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+        if (listRef.current)
+          listRef.current.scrollTop = listRef.current.scrollHeight;
       });
     });
     return () => stop();
-  }, [threadKey]);
+  }, [card._collection, card.id]);
+
+  // ==== aggregate attachments for the tab ====
+  const allAttachments = useMemo(() => {
+    const all = [...taskFiles, ...chatFiles];
+    return all
+      .map((f) => ({
+        ...f,
+        displayName: humanName(f),
+        when: fmtWhen(f.uploadedAtMs),
+      }))
+      .sort((a, b) => (b.uploadedAtMs || 0) - (a.uploadedAtMs || 0));
+  }, [taskFiles, chatFiles]);
+
+  // composer helpers
+  const openPicker = () => fileInputRef.current?.click();
+  const onFilePick = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length) {
+      setPendingFiles((prev) => [...prev, ...files]);
+    }
+    e.target.value = "";
+  };
+  const removePending = (idx) => {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const uploadFiles = async () => {
+    if (pendingFiles.length === 0) return [];
+    const bucket = "user-tasks-files";
+    const uploaded = [];
+    for (const f of pendingFiles) {
+      const ts = Date.now();
+      const path = `${card.teamId || "no-team"}/${card.id}/${ts}-${slugSafe(
+        f.name
+      )}`;
+      const { error } = await supabase.storage.from(bucket).upload(path, f, {
+        upsert: false,
+        contentType: f.type || undefined,
+      });
+      if (error) {
+        // skip failed items but keep sending text/chat
+        continue;
+      }
+      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+      uploaded.push({
+        path,
+        url: data?.publicUrl || "",
+        originalName: f.name,
+        size: f.size,
+        uploadedAtMs: ts,
+      });
+    }
+    return uploaded;
+  };
 
   const send = async () => {
     const text = draft.trim();
-    if (!text || sending) return;
+    if (!text && pendingFiles.length === 0) return;
 
     setSending(true);
+    const optimisticTime = new Date();
 
-    // Optimistic bubble
+    // optimistic message
     const optimistic = {
       id: `tmp-${Date.now()}`,
       text,
-      role: me?.role || "Adviser",
-      sender: { uid: meUid, name: me?.name || "Unknown", photoURL: me?.photoURL || null },
+      role: me?.role || "Project Manager",
+      sender: { uid: meUid || null, name: me?.name || "Unknown" },
       teamId: card.teamId || null,
       teamName: card.teamName || null,
       taskId: card.id,
       taskTitle: card.task || card.chapter || "Task",
       taskCollection: card._collection,
-      threadKey,
-      createdAt: { toDate: () => new Date() }, // for tooltip
+      createdAt: { toDate: () => optimisticTime },
       __optimistic: true,
       type: "message",
+      fileUrl: pendingFiles.map((f) => ({
+        path: `${card.teamId || "no-team"}/${card.id}/(uploading)-${slugSafe(
+          f.name
+        )}`,
+        url: "",
+        originalName: f.name,
+        size: f.size,
+        uploadedAtMs: optimisticTime.getTime(),
+      })),
     };
-    setMessages((prev) => [...prev, optimistic]); // appears instantly
+    if (text || optimistic.fileUrl.length) {
+      setMessages((prev) => [...prev, optimistic]);
+    }
     setDraft("");
 
     try {
+      // upload to supabase
+      const uploaded = await uploadFiles();
+
+      // persist chat doc with fileUrl array + text
       await addDoc(collection(db, "chats"), {
         text,
-        role: me?.role || "Adviser",
-        sender: {
-          uid: meUid || null,
-          name: me?.name || "Unknown",
-          photoURL: me?.photoURL || null,
-        },
+        role: me?.role || "Project Manager",
+        sender: { uid: meUid || null, name: me?.name || "Unknown" },
         teamId: card.teamId || null,
         teamName: card.teamName || null,
         taskId: card.id,
         taskTitle: card.task || card.chapter || "Task",
         taskCollection: card._collection,
-        threadKey,
         createdAt: serverTimestamp(),
         type: "message",
+        fileUrl: uploaded, // <-- final uploaded list
       });
     } finally {
       setSending(false);
-      // snapshot will replace the optimistic message with the saved one
+      setPendingFiles([]);
+      // snapshot listener will refresh and show the saved message & files
     }
   };
 
@@ -285,20 +483,25 @@ function DetailView({ me, card, onBack }) {
     await deleteDoc(doc(db, "chats", id));
   };
 
-  // Activity (status, missed, plus any activity-type entries)
   const computedActivity = useMemo(() => {
     const items = [];
-    if (card._colId === "missed") items.push({ id: "miss", text: "Task is overdue (Missed Task)." });
-    if (card.status) items.push({ id: "st", text: `Current status: ${card.status}` });
+    if (card._colId === "missed")
+      items.push({ id: "miss", text: "Task is overdue (Missed Task)." });
+    if (card.status)
+      items.push({ id: "st", text: `Current status: ${card.status}` });
     messages
       .filter((m) => m.type === "activity")
-      .forEach((m) => items.push({ id: m.id, text: m.text || `Activity by ${m.role || "system"}` }));
+      .forEach((m) =>
+        items.push({
+          id: m.id,
+          text: m.text || `Activity by ${m.role || "system"}`,
+        })
+      );
     return items;
   }, [card._colId, card.status, messages]);
 
   return (
     <div className="space-y-4">
-      {/* breadcrumb */}
       <div className="flex items-center gap-2">
         <LayoutList className="w-5 h-5" />
         <span className="font-semibold">Task Board</span>
@@ -319,7 +522,9 @@ function DetailView({ me, card, onBack }) {
         {/* LEFT: Task meta */}
         <div className="bg-white border border-neutral-200 rounded-xl shadow p-4">
           <div className="flex items-center justify-between">
-            <div className="text-lg font-semibold">{card.task || card.chapter || "Task"}</div>
+            <div className="text-lg font-semibold">
+              {card.task || card.chapter || "Task"}
+            </div>
             <span
               className="text-sm font-semibold px-3 py-1 rounded-full text-white"
               style={{
@@ -335,7 +540,9 @@ function DetailView({ me, card, onBack }) {
                     : "#F5B700",
               }}
             >
-              {card._colId === "missed" ? "Missed Task" : card.status || "To Do"}
+              {card._colId === "missed"
+                ? "Missed Task"
+                : card.status || "To Do"}
             </span>
           </div>
 
@@ -367,7 +574,7 @@ function DetailView({ me, card, onBack }) {
 
         {/* RIGHT: Conversation / Attachments */}
         <div className="bg-white border border-neutral-200 rounded-xl shadow p-0 overflow-hidden relative">
-          {/* top tabs */}
+          {/* Tabs */}
           <div className="px-4 pt-3">
             <div className="flex gap-6 text-sm">
               <button
@@ -395,21 +602,21 @@ function DetailView({ me, card, onBack }) {
           </div>
           <div className="h-[1px] bg-neutral-200" />
 
-          {/* ======= Conversation tab ======= */}
+          {/* Conversation */}
           {tab === "conversation" && (
             <>
-              {/* composer */}
               <div className="p-4">
                 <div className="rounded-lg border border-neutral-300 overflow-hidden">
                   <div className="px-3 py-2 border-b border-neutral-200 text-sm font-medium">
-                    {me?.name || "You"} <span className="text-neutral-500">({me?.role})</span>
+                    {me?.name || "You"}{" "}
+                    <span className="text-neutral-500">({me?.role})</span>
                   </div>
                   <div className="p-3 relative">
                     <textarea
                       rows={3}
                       value={draft}
                       onChange={(e) => setDraft(e.target.value)}
-                      placeholder="Write a message to the Project Manager…"
+                      placeholder="Write a message…"
                       className="w-full resize-none outline-none text-sm"
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey) {
@@ -418,11 +625,42 @@ function DetailView({ me, card, onBack }) {
                         }
                       }}
                     />
+
+                    {/* Pending file chips */}
+                    {pendingFiles.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {pendingFiles.map((f, i) => (
+                          <span
+                            key={`${f.name}-${i}`}
+                            className="inline-flex items-center gap-2 px-2 py-1 rounded border text-xs bg-neutral-50"
+                          >
+                            {f.name}
+                            <button
+                              onClick={() => removePending(i)}
+                              className="hover:text-red-600"
+                            >
+                              <XIcon className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* hidden picker */}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={onFilePick}
+                      accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.png,.jpg,.jpeg,.txt"
+                    />
+
                     <div className="flex items-center gap-2 absolute right-3 bottom-3">
                       <button
-                        className="p-1.5 rounded hover:bg-neutral-100 cursor-not-allowed opacity-50"
-                        title="Attach (coming soon)"
-                        disabled
+                        onClick={openPicker}
+                        className="p-1.5 rounded hover:bg-neutral-100 cursor-pointer"
+                        title="Attach files"
                       >
                         <Paperclip className="w-4 h-4" />
                       </button>
@@ -432,7 +670,11 @@ function DetailView({ me, card, onBack }) {
                         className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-white cursor-pointer disabled:opacity-60"
                         style={{ backgroundColor: MAROON }}
                       >
-                        {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        {sending ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Send className="w-4 h-4" />
+                        )}
                         {sending ? "Sending…" : "Send"}
                       </button>
                     </div>
@@ -440,15 +682,14 @@ function DetailView({ me, card, onBack }) {
                 </div>
               </div>
 
-              {/* “sending” glass overlay (subtle) */}
               {sending && (
-                <div className="absolute inset-0 bg-white/40 pointer-events-none flex items-start justify-end pr-6 pt-24">
-                  {/* nothing heavy here; button already shows spinner */}
-                </div>
+                <div className="absolute inset-0 bg-white/40 pointer-events-none flex items-start justify-end pr-6 pt-24" />
               )}
 
-              {/* messages (real-time) */}
-              <div ref={listRef} className="px-4 pb-4 max-h-[360px] overflow-y-auto space-y-3">
+              <div
+                ref={listRef}
+                className="px-4 pb-4 max-h-[360px] overflow-y-auto space-y-3"
+              >
                 {messages.length === 0 ? (
                   <div className="text-sm text-neutral-600">
                     No messages yet. Start the conversation above.
@@ -456,7 +697,12 @@ function DetailView({ me, card, onBack }) {
                 ) : (
                   messages.map((m) => (
                     <ChatBubble
-                      key={m.id || m._localId || m.createdAt?.seconds || Math.random()}
+                      key={
+                        m.id ||
+                        m._localId ||
+                        m.createdAt?.seconds ||
+                        Math.random()
+                      }
                       m={m}
                       meUid={meUid}
                       onEdit={editMessage}
@@ -470,33 +716,59 @@ function DetailView({ me, card, onBack }) {
             </>
           )}
 
-          {/* ======= Attachments tab (static UI) ======= */}
+          {/* Attachments */}
           {tab === "attachments" && (
             <div className="p-4">
               <div className="rounded-lg border border-neutral-200 overflow-hidden">
                 <table className="w-full text-sm">
                   <thead className="bg-neutral-50 text-neutral-600">
                     <tr>
-                      <th className="text-left px-4 py-2 font-medium">Attachment</th>
+                      <th className="text-left px-4 py-2 font-medium">
+                        Attachment
+                      </th>
                       <th className="text-right px-4 py-2 font-medium">Date</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-200">
-                    {attachments.map((f) => (
-                      <tr key={f.id} className="hover:bg-neutral-50">
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-red-600">
-                              <Paperclip className="w-4 h-4" />
-                            </span>
-                            <a href={f.url} className="text-[15px] hover:underline cursor-pointer">
-                              {f.name}
-                            </a>
-                          </div>
+                    {allAttachments.length === 0 ? (
+                      <tr>
+                        <td
+                          className="px-4 py-6 text-center text-neutral-500"
+                          colSpan={2}
+                        >
+                          No attachments yet.
                         </td>
-                        <td className="px-4 py-3 text-right text-neutral-700">{f.date}</td>
                       </tr>
-                    ))}
+                    ) : (
+                      allAttachments.map((f, i) => (
+                        <tr
+                          key={`${f.path || f.url || i}`}
+                          className="hover:bg-neutral-50"
+                        >
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-red-600">
+                                <Paperclip className="w-4 h-4" />
+                              </span>
+                              <a
+                                href={f.url || f.publicUrl || "#"}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[15px] hover:underline cursor-pointer"
+                                title={
+                                  f.source === "task" ? "[task]" : "[chat]"
+                                }
+                              >
+                                {humanName(f)}
+                              </a>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right text-neutral-700">
+                            {f.when || ""}
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -515,7 +787,7 @@ export default function TaskBoard() {
   const [cards, setCards] = useState([]);
   const [selected, setSelected] = useState(null);
 
-  // Identify user & load display name from users (by uid)
+  // Identify user
   useEffect(() => {
     const stop = onAuthStateChanged(auth, async (u) => {
       const uid = u?.uid || localStorage.getItem("uid") || "";
@@ -523,7 +795,11 @@ export default function TaskBoard() {
 
       let profile = null;
       try {
-        const qUser = query(collection(db, "users"), where("uid", "==", uid), limit(1));
+        const qUser = query(
+          collection(db, "users"),
+          where("uid", "==", uid),
+          limit(1)
+        );
         const snap = await getDocs(qUser);
         if (!snap.empty) profile = snap.docs[0].data();
       } catch (_) {}
@@ -531,19 +807,22 @@ export default function TaskBoard() {
       setMe({
         uid,
         name: safeName(profile),
-        role: profile?.role || "Adviser",
+        role: profile?.role || "Project Manager",
         photoURL: profile?.photoURL || null,
       });
     });
     return () => stop();
   }, []);
 
-  // Load my teams (as Adviser or PM)
+  // Load my teams (PM or Adviser)
   useEffect(() => {
     if (!me?.uid) return;
     const isPM = (me.role || "").toLowerCase().includes("project");
     const qTeams = isPM
-      ? query(collection(db, "teams"), where("projectManager.uid", "==", me.uid))
+      ? query(
+          collection(db, "teams"),
+          where("projectManager.uid", "==", me.uid)
+        )
       : query(collection(db, "teams"), where("adviser.uid", "==", me.uid));
 
     const stop = onSnapshot(qTeams, (snap) => {
@@ -553,7 +832,7 @@ export default function TaskBoard() {
     return () => stop();
   }, [me?.uid, me?.role]);
 
-  // Tasks → only those where taskManager == "Adviser"
+  // Subscribe tasks for my teams (taskManager == "Adviser" OR "Project Manager" depending on role)
   useEffect(() => {
     if (teams.length === 0) {
       setCards([]);
@@ -566,29 +845,35 @@ export default function TaskBoard() {
       );
 
     const allStops = [];
-    const buffer = new Map(); // `${coll}:${id}` -> card
+    const buffer = new Map();
 
     const collectUpdates = (collectionName, snap) => {
       for (const d of snap.docs) {
         const x = d.data();
         const t = x.team || {};
         const teamId = t.id || x.teamId || "no-team";
-        const teamName = t.name || teams.find((tt) => tt.id === teamId)?.name || "No Team";
+        const teamName =
+          t.name || teams.find((tt) => tt.id === teamId)?.name || "No Team";
 
-        // created / due displays
-        const created = typeof x.createdAt?.toDate === "function" ? x.createdAt.toDate() : null;
+        const created =
+          typeof x.createdAt?.toDate === "function"
+            ? x.createdAt.toDate()
+            : null;
         const createdDisplay = created ? created.toLocaleDateString() : "—";
 
         const dueDate = x.dueDate || null;
         const time = x.dueTime || null;
         const dueDisplay = dueDate || "—";
         const dueAtMs =
-          x.dueAtMs ?? (dueDate && time ? new Date(`${dueDate}T${time}:00`).getTime() : null);
+          x.dueAtMs ??
+          (dueDate && time
+            ? new Date(`${dueDate}T${time}:00`).getTime()
+            : null);
 
-        // column calc
         let colId = STATUS_TO_COLUMN[x.status || "To Do"] || "todo";
         const now = Date.now();
-        const isOverdue = !!dueAtMs && dueAtMs < now && (x.status || "To Do") !== "Completed";
+        const isOverdue =
+          !!dueAtMs && dueAtMs < now && (x.status || "To Do") !== "Completed";
         if (isOverdue) colId = "missed";
 
         const key = `${collectionName}:${d.id}`;
@@ -614,22 +899,20 @@ export default function TaskBoard() {
       setCards(Array.from(buffer.values()));
     };
 
-    const attach = (collectionName) => {
+    const attach = (collectionName, managerLabel) => {
       chunks(teamIds, 10).forEach((ids) => {
-        // shape: team.id
         const stopA = onSnapshot(
           query(
             collection(db, collectionName),
-            where("taskManager", "==", "Adviser"),
+            where("taskManager", "==", managerLabel),
             where("team.id", "in", ids)
           ),
           (snap) => collectUpdates(collectionName, snap)
         );
-        // shape: teamId
         const stopB = onSnapshot(
           query(
             collection(db, collectionName),
-            where("taskManager", "==", "Adviser"),
+            where("taskManager", "==", managerLabel),
             where("teamId", "in", ids)
           ),
           (snap) => collectUpdates(collectionName, snap)
@@ -638,13 +921,17 @@ export default function TaskBoard() {
       });
     };
 
-    attach("oralDefenseTasks");
-    attach("finalDefenseTasks");
+    const managerLabel = (me.role || "").toLowerCase().includes("project")
+      ? "Project Manager"
+      : "Adviser";
+
+    attach("oralDefenseTasks", managerLabel);
+    attach("finalDefenseTasks", managerLabel);
 
     return () => {
       allStops.forEach((s) => s && s());
     };
-  }, [teams]);
+  }, [teams, me?.role]);
 
   // group by column
   const grouped = useMemo(() => {
@@ -654,7 +941,9 @@ export default function TaskBoard() {
   }, [cards]);
 
   if (selected) {
-    return <DetailView me={me} card={selected} onBack={() => setSelected(null)} />;
+    return (
+      <DetailView me={me} card={selected} onBack={() => setSelected(null)} />
+    );
   }
 
   return (

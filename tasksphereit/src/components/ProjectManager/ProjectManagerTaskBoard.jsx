@@ -18,6 +18,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
@@ -28,6 +29,9 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
+
+/* ===== Supabase (for uploads & public URLs) ===== */
+import { supabase } from "../../config/supabase";
 
 const MAROON = "#6A0F14";
 
@@ -54,6 +58,26 @@ const safeName = (u) =>
     .filter(Boolean)
     .join(" ") || "Unknown";
 
+const BUCKET = "user-tasks-files";
+
+const safeFileName = (name = "") =>
+  name.replace(/[^\w.\- ]+/g, "_").replace(/\s+/g, "_");
+
+const buildTaskFolder = (card) => `${card._collection}/${card.id}`;
+
+const toDate = (v) => {
+  if (!v) return null;
+  if (typeof v.toDate === "function") return v.toDate();
+  const d = new Date(v);
+  return Number.isNaN(+d) ? null : d;
+};
+
+const uniqBy = (arr, keyFn) => {
+  const m = new Map();
+  arr.forEach((x) => m.set(keyFn(x), x));
+  return Array.from(m.values());
+};
+
 /* ======================= Reusable UI ========================= */
 function Column({ title, color, children }) {
   return (
@@ -65,7 +89,9 @@ function Column({ title, color, children }) {
         {title}
       </div>
       <div className="flex-1 min-h-0">
-        <div className="h-full overflow-y-auto px-3 py-3 space-y-3">{children}</div>
+        <div className="h-full overflow-y-auto px-3 py-3 space-y-3">
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -76,7 +102,9 @@ function KanbanCard({ data, onOpen }) {
     <div className={cardShell}>
       <div className="p-3">
         <div className="flex items-start justify-between">
-          <div className="font-semibold text-sm">{data.teamName || "No Team"}</div>
+          <div className="font-semibold text-sm">
+            {data.teamName || "No Team"}
+          </div>
           <button
             onClick={() => onOpen(data)}
             className="p-1 rounded hover:bg-neutral-100 cursor-pointer"
@@ -88,8 +116,12 @@ function KanbanCard({ data, onOpen }) {
         </div>
 
         <div className="mt-2 text-sm">
-          <div className="text-neutral-800">{data.task || data.chapter || "Task"}</div>
-          <div className="text-neutral-500">{data.revision || "No Revision"}</div>
+          <div className="text-neutral-800">
+            {data.task || data.chapter || "Task"}
+          </div>
+          <div className="text-neutral-500">
+            {data.revision || "No Revision"}
+          </div>
         </div>
 
         <div className="mt-3 text-xs text-neutral-700 flex items-center gap-2">
@@ -124,11 +156,14 @@ function ChatBubble({ m, meUid, onEdit, onDelete, editingId, setEditingId }) {
     "max-w-[80%] px-3 py-2 rounded-lg text-sm leading-snug shadow border border-neutral-200";
   const isEditing = editingId === m.id && mine;
 
+  // (Text-only bubble; attachments are shown in Attachments tab.)
   return (
     <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
       <div
         className={`${base} ${mine ? "bg-[#F9F5F4]" : "bg-white"}`}
-        title={m.createdAt?.toDate?.() ? m.createdAt.toDate().toLocaleString() : ""}
+        title={
+          m.createdAt?.toDate?.() ? m.createdAt.toDate().toLocaleString() : ""
+        }
       >
         <div className="text-xs text-neutral-500 mb-1">
           {m.role || m.sender?.name || "Someone"}
@@ -153,7 +188,10 @@ function ChatBubble({ m, meUid, onEdit, onDelete, editingId, setEditingId }) {
               >
                 Save
               </button>
-              <button onClick={() => setEditingId(null)} className="text-neutral-500">
+              <button
+                onClick={() => setEditingId(null)}
+                className="text-neutral-500"
+              >
                 Cancel
               </button>
             </div>
@@ -161,14 +199,22 @@ function ChatBubble({ m, meUid, onEdit, onDelete, editingId, setEditingId }) {
         ) : (
           <>
             <div className="text-neutral-800 whitespace-pre-wrap">
-              {m.text || <span className="italic text-neutral-500">[no text]</span>}
+              {m.text || (
+                <span className="italic text-neutral-500">[no text]</span>
+              )}
             </div>
             {mine && !m.__optimistic && (
               <div className="mt-1 text-xs text-neutral-500 flex gap-4">
-                <button onClick={() => setEditingId(m.id)} className="hover:underline cursor-pointer">
+                <button
+                  onClick={() => setEditingId(m.id)}
+                  className="hover:underline cursor-pointer"
+                >
                   Edit
                 </button>
-                <button onClick={() => onDelete(m.id)} className="hover:underline cursor-pointer">
+                <button
+                  onClick={() => onDelete(m.id)}
+                  className="hover:underline cursor-pointer"
+                >
                   Delete
                 </button>
               </div>
@@ -187,76 +233,196 @@ function DetailView({ me, card, onBack }) {
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [tab, setTab] = useState("conversation"); // "conversation" | "attachments"
+  const [pendingFiles, setPendingFiles] = useState([]); // File[]
+  const [attRows, setAttRows] = useState([]); // merged attachments
+  const [hydrating, setHydrating] = useState(false);
   const listRef = useRef(null);
 
-  // Static attachments (UI only)
-  const attachments = [
-    { id: "a1", name: "Castaneda Chapter 3.pdf", type: "pdf", date: "Feb 6, 2025", url: "#" },
-    { id: "a2", name: "Another File.pdf", type: "pdf", date: "Feb 5, 2025", url: "#" },
-    { id: "a3", name: "Sample Document.docx", type: "docx", date: "Feb 4, 2025", url: "#" },
-  ];
-
-  // Stable thread key (legacy-compatible)
-  const threadKey = useMemo(() => {
-    const tId = card.teamId || "no-team";
-    return `${card._collection}:${card.id}:${tId}`;
-  }, [card._collection, card.id, card.teamId]);
-
+  // live messages for this task (no threadKey; simplest: by collection + taskId (+teamId))
   useEffect(() => {
+    if (!card?.id) return;
+    const filters = [
+      where("taskCollection", "==", card._collection),
+      where("taskId", "==", card.id),
+    ];
+    if (card.teamId) filters.push(where("teamId", "==", card.teamId));
     const qy = query(
       collection(db, "chats"),
-      where("threadKey", "==", threadKey),
+      ...filters,
       orderBy("createdAt", "asc")
     );
-    let stop = onSnapshot(qy, (snap) => {
+
+    const stop = onSnapshot(qy, (snap) => {
       const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setMessages(rows);
       requestAnimationFrame(() => {
-        if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+        if (listRef.current)
+          listRef.current.scrollTop = listRef.current.scrollHeight;
       });
     });
-    return () => {
-      if (typeof stop === "function") stop();
+    return () => typeof stop === "function" && stop();
+  }, [card]);
+
+  // merged attachments from: task.fileUrl[] + chats.sender.fileUrl[] (or top-level fileUrl[])
+  const hydrateAttachments = async () => {
+    setHydrating(true);
+    try {
+      const merged = [];
+      const folder = buildTaskFolder(card);
+
+      // 1) Task doc files
+      const taskSnap = await getDoc(doc(db, card._collection, card.id));
+      if (taskSnap.exists()) {
+        const data = taskSnap.data() || {};
+        const arr = Array.isArray(data.fileUrl) ? data.fileUrl : [];
+        for (const f of arr) {
+          const fileName = f.fileName || f.name || "";
+          let url = f.url || f.publicUrl || null;
+          if (!url && fileName) {
+            const { data: pub } = supabase.storage
+              .from(BUCKET)
+              .getPublicUrl(`${folder}/${fileName}`);
+            url = pub?.publicUrl || null;
+          }
+          merged.push({
+            name: fileName || "attachment",
+            url,
+            date: toDate(f.uploadedAt) || toDate(data.createdAt) || null,
+            source: "task",
+          });
+        }
+      }
+
+      // 2) Chat files (bundle saved on sender.fileUrl[])
+      const filters = [
+        where("taskCollection", "==", card._collection),
+        where("taskId", "==", card.id),
+      ];
+      if (card.teamId) filters.push(where("teamId", "==", card.teamId));
+      const snap = await getDocs(query(collection(db, "chats"), ...filters));
+      snap.forEach((d) => {
+        const m = d.data();
+        const files =
+          (Array.isArray(m?.sender?.fileUrl) && m.sender.fileUrl) ||
+          (Array.isArray(m?.fileUrl) && m.fileUrl) ||
+          [];
+        files.forEach((f, i) => {
+          merged.push({
+            name: f.fileName || f.name || `Attachment ${i + 1}`,
+            url: f.url || f.publicUrl || null,
+            date: toDate(f.uploadedAt) || toDate(m.createdAt) || null,
+            source: "chat",
+          });
+        });
+      });
+
+      const unique = uniqBy(
+        merged,
+        (x) => `${x.source}:${x.name}:${x.url || ""}`
+      );
+      unique.sort(
+        (a, b) => (b.date?.getTime?.() || 0) - (a.date?.getTime?.() || 0)
+      );
+      setAttRows(unique);
+    } finally {
+      setHydrating(false);
+    }
+  };
+
+  useEffect(() => {
+    if (tab === "attachments") hydrateAttachments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  const openPicker = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.onchange = (e) => {
+      const files = Array.from(e.target.files || []);
+      if (files.length) setPendingFiles((prev) => [...prev, ...files]);
     };
-  }, [threadKey]);
+    input.click();
+  };
+
+  const removePending = (idx) => {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   const send = async () => {
-    const text = draft.trim();
-    if (!text || sending) return;
-    setSending(true);
+    const text = (draft || "").trim();
+    if (!text && pendingFiles.length === 0) return;
 
-    const optimistic = {
-      id: `tmp-${Date.now()}`,
-      text,
-      role: me?.role || "Project Manager",
-      sender: { uid: meUid, name: me?.name || "Unknown", photoURL: me?.photoURL || null },
-      teamId: card.teamId || null,
-      teamName: card.teamName || null,
-      taskId: card.id,
-      taskTitle: card.task || card.chapter || "Task",
-      taskCollection: card._collection,
-      threadKey,
-      createdAt: { toDate: () => new Date() },
-      __optimistic: true,
-      type: "message",
-    };
-    setMessages((prev) => [...prev, optimistic]);
-    setDraft("");
+    setSending(true);
+    const uploads = [];
 
     try {
-      await addDoc(collection(db, "chats"), {
+      // upload staged files (all in one go; one chat message will contain them)
+      const folder = buildTaskFolder(card);
+
+      for (const f of pendingFiles) {
+        const filename = `${Date.now()}-${safeFileName(f.name)}`;
+        const storagePath = `${folder}/${filename}`;
+        const { error: upErr } = await supabase.storage
+          .from(BUCKET)
+          .upload(storagePath, f, {
+            contentType: f.type || "application/octet-stream",
+            upsert: false,
+          });
+        if (upErr) throw upErr;
+
+        const { data: pub } = supabase.storage
+          .from(BUCKET)
+          .getPublicUrl(storagePath);
+        uploads.push({
+          fileName: filename,
+          url: pub?.publicUrl || null,
+          storagePath,
+          uploadedAt: new Date().toISOString(),
+        });
+      }
+
+      // optimistic local message (keeps UI snappy)
+      const optimistic = {
+        id: `tmp-${Date.now()}`,
         text,
         role: me?.role || "Project Manager",
-        sender: { uid: meUid || null, name: me?.name || "Unknown", photoURL: me?.photoURL || null },
+        sender: { uid: meUid, name: me?.name || "Unknown", fileUrl: uploads },
         teamId: card.teamId || null,
         teamName: card.teamName || null,
         taskId: card.id,
         taskTitle: card.task || card.chapter || "Task",
         taskCollection: card._collection,
-        threadKey,
+        createdAt: { toDate: () => new Date() },
+        __optimistic: true,
+        type: "message",
+      };
+      setMessages((prev) => [...prev, optimistic]);
+      setDraft("");
+      setPendingFiles([]);
+
+      // write the real message (single chat doc with all files)
+      await addDoc(collection(db, "chats"), {
+        text,
+        role: me?.role || "Project Manager",
+        sender: {
+          uid: meUid || null,
+          name: me?.name || "Unknown",
+          fileUrl: uploads,
+        },
+        teamId: card.teamId || null,
+        teamName: card.teamName || null,
+        taskId: card.id,
+        taskTitle: card.task || card.chapter || "Task",
+        taskCollection: card._collection,
         createdAt: serverTimestamp(),
         type: "message",
       });
+
+      if (tab === "attachments") hydrateAttachments();
+    } catch (e) {
+      console.error("[chat] send failed:", e);
+      alert("Failed to send. Check console for details.");
     } finally {
       setSending(false);
     }
@@ -265,7 +431,10 @@ function DetailView({ me, card, onBack }) {
   const editMessage = async (id, newText) => {
     const text = (newText || "").trim();
     if (!text) return;
-    await updateDoc(doc(db, "chats", id), { text, editedAt: serverTimestamp() });
+    await updateDoc(doc(db, "chats", id), {
+      text,
+      editedAt: serverTimestamp(),
+    });
   };
 
   const deleteMessage = async (id) => {
@@ -274,11 +443,18 @@ function DetailView({ me, card, onBack }) {
 
   const computedActivity = useMemo(() => {
     const items = [];
-    if (card._colId === "missed") items.push({ id: "miss", text: "Task is overdue (Missed Task)." });
-    if (card.status) items.push({ id: "st", text: `Current status: ${card.status}` });
+    if (card._colId === "missed")
+      items.push({ id: "miss", text: "Task is overdue (Missed Task)." });
+    if (card.status)
+      items.push({ id: "st", text: `Current status: ${card.status}` });
     messages
       .filter((m) => m.type === "activity")
-      .forEach((m) => items.push({ id: m.id, text: m.text || `Activity by ${m.role || "system"}` }));
+      .forEach((m) =>
+        items.push({
+          id: m.id,
+          text: m.text || `Activity by ${m.role || "system"}`,
+        })
+      );
     return items;
   }, [card._colId, card.status, messages]);
 
@@ -303,7 +479,9 @@ function DetailView({ me, card, onBack }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-white border border-neutral-200 rounded-xl shadow p-4">
           <div className="flex items-center justify-between">
-            <div className="text-lg font-semibold">{card.task || card.chapter || "Task"}</div>
+            <div className="text-lg font-semibold">
+              {card.task || card.chapter || "Task"}
+            </div>
             <span
               className="text-sm font-semibold px-3 py-1 rounded-full text-white"
               style={{
@@ -319,7 +497,9 @@ function DetailView({ me, card, onBack }) {
                     : "#F5B700",
               }}
             >
-              {card._colId === "missed" ? "Missed Task" : card.status || "To Do"}
+              {card._colId === "missed"
+                ? "Missed Task"
+                : card.status || "To Do"}
             </span>
           </div>
 
@@ -378,13 +558,14 @@ function DetailView({ me, card, onBack }) {
           </div>
           <div className="h-[1px] bg-neutral-200" />
 
-          {/* Conversation tab */}
+          {/* Conversation */}
           {tab === "conversation" && (
             <>
               <div className="p-4">
                 <div className="rounded-lg border border-neutral-300 overflow-hidden">
                   <div className="px-3 py-2 border-b border-neutral-200 text-sm font-medium">
-                    {me?.name || "You"} <span className="text-neutral-500">({me?.role})</span>
+                    {me?.name || "You"}{" "}
+                    <span className="text-neutral-500">({me?.role})</span>
                   </div>
                   <div className="p-3 relative">
                     <textarea
@@ -400,11 +581,42 @@ function DetailView({ me, card, onBack }) {
                         }
                       }}
                     />
+
+                    {/* Staged files (before Send) */}
+                    {pendingFiles.length > 0 && (
+                      <div className="mt-2 space-y-2">
+                        {pendingFiles.map((f, i) => (
+                          <div
+                            key={`${f.name}-${i}`}
+                            className="flex items-center justify-between text-sm rounded border px-2 py-1"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-red-600">
+                                <Paperclip className="w-4 h-4" />
+                              </span>
+                              <span
+                                className="truncate max-w-[320px]"
+                                title={f.name}
+                              >
+                                {f.name}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => removePending(i)}
+                              className="text-neutral-500 hover:text-neutral-800"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     <div className="flex items-center gap-2 absolute right-3 bottom-3">
                       <button
-                        className="p-1.5 rounded hover:bg-neutral-100 cursor-not-allowed opacity-50"
-                        title="Attach (coming soon)"
-                        disabled
+                        onClick={openPicker}
+                        className="p-1.5 rounded hover:bg-neutral-100 cursor-pointer"
+                        title="Attach"
                       >
                         <Paperclip className="w-4 h-4" />
                       </button>
@@ -414,7 +626,11 @@ function DetailView({ me, card, onBack }) {
                         className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-white cursor-pointer disabled:opacity-60"
                         style={{ backgroundColor: MAROON }}
                       >
-                        {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        {sending ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Send className="w-4 h-4" />
+                        )}
                         {sending ? "Sending…" : "Send"}
                       </button>
                     </div>
@@ -422,17 +638,23 @@ function DetailView({ me, card, onBack }) {
                 </div>
               </div>
 
-              {sending && (
-                <div className="absolute inset-0 bg-white/40 pointer-events-none flex items-start justify-end pr-6 pt-24" />
-              )}
-
-              <div ref={listRef} className="px-4 pb-4 max-h-[360px] overflow-y-auto space-y-3">
+              <div
+                ref={listRef}
+                className="px-4 pb-4 max-h-[360px] overflow-y-auto space-y-3"
+              >
                 {messages.length === 0 ? (
-                  <div className="text-sm text-neutral-600">No messages yet. Start the conversation above.</div>
+                  <div className="text-sm text-neutral-600">
+                    No messages yet. Start the conversation above.
+                  </div>
                 ) : (
                   messages.map((m) => (
                     <ChatBubble
-                      key={m.id || m._localId || m.createdAt?.seconds || Math.random()}
+                      key={
+                        m.id ||
+                        m._localId ||
+                        m.createdAt?.seconds ||
+                        Math.random()
+                      }
                       m={m}
                       meUid={meUid}
                       onEdit={editMessage}
@@ -446,33 +668,66 @@ function DetailView({ me, card, onBack }) {
             </>
           )}
 
-          {/* Attachments tab (static UI) */}
+          {/* Attachments */}
           {tab === "attachments" && (
             <div className="p-4">
               <div className="rounded-lg border border-neutral-200 overflow-hidden">
                 <table className="w-full text-sm">
                   <thead className="bg-neutral-50 text-neutral-600">
                     <tr>
-                      <th className="text-left px-4 py-2 font-medium">Attachment</th>
+                      <th className="text-left px-4 py-2 font-medium">
+                        Attachment
+                      </th>
                       <th className="text-right px-4 py-2 font-medium">Date</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-200">
-                    {attachments.map((f) => (
-                      <tr key={f.id} className="hover:bg-neutral-50">
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-red-600">
-                              <Paperclip className="w-4 h-4" />
-                            </span>
-                            <a href={f.url} className="text-[15px] hover:underline cursor-pointer">
-                              {f.name}
-                            </a>
-                          </div>
+                    {hydrating ? (
+                      <tr>
+                        <td className="px-4 py-6 text-neutral-500" colSpan={2}>
+                          Loading attachments…
                         </td>
-                        <td className="px-4 py-3 text-right text-neutral-700">{f.date}</td>
                       </tr>
-                    ))}
+                    ) : attRows.length === 0 ? (
+                      <tr>
+                        <td className="px-4 py-6 text-neutral-500" colSpan={2}>
+                          No attachments yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      attRows.map((f, i) => (
+                        <tr
+                          key={`${f.name}-${i}`}
+                          className="hover:bg-neutral-50"
+                        >
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-red-600">
+                                <Paperclip className="w-4 h-4" />
+                              </span>
+                              {f.url ? (
+                                <a
+                                  href={f.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[15px] hover:underline"
+                                >
+                                  {f.name}
+                                </a>
+                              ) : (
+                                <span className="text-[15px]">{f.name}</span>
+                              )}
+                              <span className="ml-2 text-xs text-neutral-400">
+                                [{f.source}]
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right text-neutral-700">
+                            {f.date ? f.date.toLocaleString() : "—"}
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -500,7 +755,11 @@ export default function ProjectManagerTaskBoard() {
 
       let profile = null;
       try {
-        const qUser = query(collection(db, "users"), where("uid", "==", uid), limit(1));
+        const qUser = query(
+          collection(db, "users"),
+          where("uid", "==", uid),
+          limit(1)
+        );
         const snap = await getDocs(qUser);
         if (!snap.empty) profile = snap.docs[0].data();
       } catch (_) {}
@@ -529,7 +788,10 @@ export default function ProjectManagerTaskBoard() {
       query(collection(db, "teams"), where("projectManager.uid", "==", me.uid)),
       apply
     );
-    const stopB = onSnapshot(query(collection(db, "teams"), where("manager.uid", "==", me.uid)), apply);
+    const stopB = onSnapshot(
+      query(collection(db, "teams"), where("manager.uid", "==", me.uid)),
+      apply
+    );
 
     return () => {
       if (typeof stopA === "function") stopA();
@@ -537,10 +799,9 @@ export default function ProjectManagerTaskBoard() {
     };
   }, [me?.uid]);
 
-  // Subscribe tasks for my teams; **union** two subset queries to avoid flicker
+  // Subscribe tasks for my teams; union two subset queries to avoid flicker
   const unsubsRef = useRef([]);
   useEffect(() => {
-    // cleanup old listeners
     unsubsRef.current.forEach((u) => typeof u === "function" && u());
     unsubsRef.current = [];
 
@@ -551,9 +812,10 @@ export default function ProjectManagerTaskBoard() {
 
     const teamIds = teams.map((t) => t.id);
     const chunks = (arr, n = 10) =>
-      Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));
+      Array.from({ length: Math.ceil(arr.length / n) }, (_, i) =>
+        arr.slice(i * n, i * n + n)
+      );
 
-    // keep separate subset maps per collection (A: team.id, B: teamId)
     const store = {
       oralDefenseTasks: { A: new Map(), B: new Map() },
       finalDefenseTasks: { A: new Map(), B: new Map() },
@@ -563,19 +825,24 @@ export default function ProjectManagerTaskBoard() {
       const x = d.data();
       const t = x.team || {};
       const teamId = t.id || x.teamId || "no-team";
-      const teamName = t.name || teams.find((tt) => tt.id === teamId)?.name || "No Team";
+      const teamName =
+        t.name || teams.find((tt) => tt.id === teamId)?.name || "No Team";
 
-      const created = typeof x.createdAt?.toDate === "function" ? x.createdAt.toDate() : null;
+      const created =
+        typeof x.createdAt?.toDate === "function" ? x.createdAt.toDate() : null;
       const createdDisplay = created ? created.toLocaleDateString() : "—";
 
       const dueDate = x.dueDate || null;
       const time = x.dueTime || null;
       const dueDisplay = dueDate || "—";
-      const dueAtMs = x.dueAtMs ?? (dueDate && time ? new Date(`${dueDate}T${time}:00`).getTime() : null);
+      const dueAtMs =
+        x.dueAtMs ??
+        (dueDate && time ? new Date(`${dueDate}T${time}:00`).getTime() : null);
 
       let colId = STATUS_TO_COLUMN[x.status || "To Do"] || "todo";
       const now = Date.now();
-      const isOverdue = !!dueAtMs && dueAtMs < now && (x.status || "To Do") !== "Completed";
+      const isOverdue =
+        !!dueAtMs && dueAtMs < now && (x.status || "To Do") !== "Completed";
       if (isOverdue) colId = "missed";
 
       return {
@@ -602,7 +869,9 @@ export default function ProjectManagerTaskBoard() {
       const unionMap = new Map();
       for (const coll of ["oralDefenseTasks", "finalDefenseTasks"]) {
         for (const subset of ["A", "B"]) {
-          store[coll][subset].forEach((val, key) => unionMap.set(`${coll}:${key}`, val));
+          store[coll][subset].forEach((val, key) =>
+            unionMap.set(`${coll}:${key}`, val)
+          );
         }
       }
       setCards(Array.from(unionMap.values()));
@@ -618,7 +887,9 @@ export default function ProjectManagerTaskBoard() {
         );
         const ua = onSnapshot(qa, (snap) => {
           const next = new Map();
-          snap.docs.forEach((d) => next.set(d.id, normalize(collectionName, d)));
+          snap.docs.forEach((d) =>
+            next.set(d.id, normalize(collectionName, d))
+          );
           store[collectionName].A = next;
           publish();
         });
@@ -631,7 +902,9 @@ export default function ProjectManagerTaskBoard() {
         );
         const ub = onSnapshot(qb, (snap) => {
           const next = new Map();
-          snap.docs.forEach((d) => next.set(d.id, normalize(collectionName, d)));
+          snap.docs.forEach((d) =>
+            next.set(d.id, normalize(collectionName, d))
+          );
           store[collectionName].B = next;
           publish();
         });
@@ -657,7 +930,9 @@ export default function ProjectManagerTaskBoard() {
   }, [cards]);
 
   if (selected) {
-    return <DetailView me={me} card={selected} onBack={() => setSelected(null)} />;
+    return (
+      <DetailView me={me} card={selected} onBack={() => setSelected(null)} />
+    );
   }
 
   return (
@@ -673,7 +948,9 @@ export default function ProjectManagerTaskBoard() {
         <button
           onClick={() => setManagerTab("Adviser")}
           className={`px-3 py-1.5 text-sm rounded-md border ${
-            managerTab === "Adviser" ? "bg-neutral-100 border-neutral-300 font-semibold" : "border-neutral-300"
+            managerTab === "Adviser"
+              ? "bg-neutral-100 border-neutral-300 font-semibold"
+              : "border-neutral-300"
           }`}
         >
           Adviser Tasks
@@ -681,7 +958,9 @@ export default function ProjectManagerTaskBoard() {
         <button
           onClick={() => setManagerTab("Project Manager")}
           className={`px-3 py-1.5 text-sm rounded-md border ${
-            managerTab === "Project Manager" ? "bg-neutral-100 border-neutral-300 font-semibold" : "border-neutral-300"
+            managerTab === "Project Manager"
+              ? "bg-neutral-100 border-neutral-300 font-semibold"
+              : "border-neutral-300"
           }`}
         >
           Project Manager Tasks

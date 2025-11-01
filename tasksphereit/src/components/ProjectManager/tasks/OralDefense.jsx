@@ -1,5 +1,5 @@
 // src/components/ProjectManager/tasks/OralDefense.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   SlidersHorizontal,
@@ -30,6 +30,9 @@ import {
   where,
 } from "firebase/firestore";
 
+/* ===== Supabase ===== */
+import { supabase } from "../../../config/supabase";
+
 const MAROON = "#6A0F14";
 const TASKS_COLLECTION = "oralDefenseTasks";
 
@@ -38,14 +41,18 @@ const ModeSwitch = ({ mode, setMode }) => (
   <div className="inline-flex rounded-md border border-neutral-300 overflow-hidden">
     <button
       onClick={() => setMode("team")}
-      className={`px-3 py-1.5 text-sm font-medium ${mode === "team" ? "text-white" : "text-neutral-700"}`}
+      className={`px-3 py-1.5 text-sm font-medium ${
+        mode === "team" ? "text-white" : "text-neutral-700"
+      }`}
       style={{ background: mode === "team" ? MAROON : "white" }}
     >
       Team
     </button>
     <button
       onClick={() => setMode("adviser")}
-      className={`px-3 py-1.5 text-sm font-medium border-l border-neutral-300 ${mode === "adviser" ? "text-white" : "text-neutral-700"}`}
+      className={`px-3 py-1.5 text-sm font-medium border-l border-neutral-300 ${
+        mode === "adviser" ? "text-white" : "text-neutral-700"
+      }`}
       style={{ background: mode === "adviser" ? MAROON : "white" }}
     >
       Adviser Tasks
@@ -70,13 +77,21 @@ const StatusBadge = ({ value, isEditable, onChange }) => {
       className="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-medium border-none bg-white shadow-md cursor-pointer"
     >
       {Object.keys(statusColors).map((status) => (
-        <option key={status} value={status} className={`${statusColors[status]}`}>
+        <option
+          key={status}
+          value={status}
+          className={`${statusColors[status]}`}
+        >
           {status}
         </option>
       ))}
     </select>
   ) : (
-    <span className={`inline-flex items-center px-3 py-1 rounded-full text-[12px] font-medium ${statusColors[value] || "bg-neutral-200"}`}>
+    <span
+      className={`inline-flex items-center px-3 py-1 rounded-full text-[12px] font-medium ${
+        statusColors[value] || "bg-neutral-200"
+      }`}
+    >
       {value}
     </span>
   );
@@ -93,7 +108,9 @@ const RevisionPill = ({ value }) =>
 
 const RevisionSelect = ({ value, onChange, disabled }) => (
   <select
-    className={`text-[12px] leading-tight font-medium border border-neutral-300 rounded-lg px-2.5 py-0.5 bg-white ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
+    className={`text-[12px] leading-tight font-medium border border-neutral-300 rounded-lg px-2.5 py-0.5 bg-white ${
+      disabled ? "opacity-60 cursor-not-allowed" : ""
+    }`}
     value={value}
     onChange={(e) => onChange(e.target.value)}
     disabled={disabled}
@@ -106,11 +123,27 @@ const RevisionSelect = ({ value, onChange, disabled }) => (
 );
 
 /* -------------------- CASCADING OPTIONS -------------------- */
-const METHODOLOGIES = ["Agile", "Rapid Application Development (RAD)", "Spiral"];
+const METHODOLOGIES = [
+  "Agile",
+  "Rapid Application Development (RAD)",
+  "Spiral",
+];
 
 const PHASE_OPTIONS = {
-  Agile: ["Analysis", "Design", "Implementation", "Development", "Testing", "Preparation"],
-  "Rapid Application Development (RAD)": ["Design", "Prototyping", "Review & Iterate", "Preparation"],
+  Agile: [
+    "Analysis",
+    "Design",
+    "Implementation",
+    "Development",
+    "Testing",
+    "Preparation",
+  ],
+  "Rapid Application Development (RAD)": [
+    "Design",
+    "Prototyping",
+    "Review & Iterate",
+    "Preparation",
+  ],
   Spiral: ["Risk Analysis", "Design", "Prototype", "Evaluation", "Preparation"],
 };
 
@@ -184,6 +217,36 @@ const TASK_SEEDS = {
   },
 };
 
+/* ===== Supabase helpers for task files (any type) ===== */
+const uploadTaskFileToSupabase = async (file, userId) => {
+  const ext = (file.name.split(".").pop() || "bin").toLowerCase();
+  const fileName = `${userId}/${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}.${ext}`;
+  const { error: upErr } = await supabase.storage
+    .from("user-tasks-files")
+    .upload(fileName, file);
+  if (upErr) throw new Error(upErr.message || "Upload failed");
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from("user-tasks-files").getPublicUrl(fileName);
+  return {
+    url: publicUrl,
+    fileName,
+    originalName: file.name,
+    size: file.size,
+    type: file.type,
+  };
+};
+
+const deleteTaskFileFromSupabase = async (fileName) => {
+  if (!fileName) return;
+  const { error } = await supabase.storage
+    .from("user-tasks-files")
+    .remove([fileName]);
+  if (error) throw new Error(error.message || "Delete failed");
+};
+
 /* ======= Edit/Create Task Dialog (FinalDefense header + accent) ======= */
 function EditTaskDialog({
   open,
@@ -209,6 +272,12 @@ function EditTaskDialog({
   const [assignees, setAssignees] = useState([]);
   const [comment, setComment] = useState("");
 
+  // Attachments state
+  const [attachedFiles, setAttachedFiles] = useState([]); // existing (from Firestore)
+  const [newFiles, setNewFiles] = useState([]); // [{ id, file, name, isNew:true }]
+  const [filesToDelete, setFilesToDelete] = useState([]); // subset of attachedFiles
+  const fileInputRef = useRef(null);
+
   useEffect(() => {
     if (!open) return;
     setTeamId(existingTask?.team?.id || teams[0]?.id || "");
@@ -219,8 +288,16 @@ function EditTaskDialog({
       setTask(existingTask.task || "");
       setDue(existingTask.dueDate || "");
       setTime(existingTask.dueTime || "");
-      setAssignees((existingTask.assignees || []).map((a) => ({ uid: a.uid, name: a.name })));
+      setAssignees(
+        (existingTask.assignees || []).map((a) => ({
+          uid: a.uid,
+          name: a.name,
+        }))
+      );
       setComment(existingTask.comment || "");
+      setAttachedFiles(existingTask.fileUrl || []);
+      setNewFiles([]);
+      setFilesToDelete([]);
     } else {
       setMethodology("");
       setPhase("");
@@ -228,8 +305,13 @@ function EditTaskDialog({
       setTask("");
       setDue("");
       setTime("");
-      setAssignees(seedMember ? [{ uid: seedMember.uid, name: seedMember.name }] : []);
+      setAssignees(
+        seedMember ? [{ uid: seedMember.uid, name: seedMember.name }] : []
+      );
       setComment("");
+      setAttachedFiles([]);
+      setNewFiles([]);
+      setFilesToDelete([]);
     }
   }, [open, existingTask, seedMember, teams]);
 
@@ -238,62 +320,119 @@ function EditTaskDialog({
     [methodology]
   );
 
-  const canSave = teamId && methodology && phase && type && task && assignees.length > 0;
+  const canSave =
+    teamId && methodology && phase && type && task && assignees.length > 0;
 
   const addAssignee = () => {
     if (!pickedUid) return;
     const found = members.find((m) => m.uid === pickedUid);
     if (!found) return;
-    if (!assignees.some((a) => a.uid === pickedUid)) setAssignees((arr) => [...arr, found]);
+    if (!assignees.some((a) => a.uid === pickedUid))
+      setAssignees((arr) => [...arr, found]);
     setPickedUid("");
   };
-  const removeAssignee = (uid) => setAssignees((arr) => arr.filter((a) => a.uid !== uid));
+  const removeAssignee = (uid) =>
+    setAssignees((arr) => arr.filter((a) => a.uid !== uid));
+
+  const handleAttachClick = () => fileInputRef.current?.click();
+  const onFilePicked = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const objs = files.map((f) => ({
+      id: Date.now() + Math.random(),
+      file: f,
+      name: f.name,
+      isNew: true,
+    }));
+    setNewFiles((prev) => [...prev, ...objs]);
+    e.target.value = "";
+  };
+  const removeNewFile = (id) =>
+    setNewFiles((prev) => prev.filter((f) => f.id !== id));
+  const removeExistingFile = (id) => {
+    const f = attachedFiles.find((x) => x.id === id);
+    if (!f) return;
+    setFilesToDelete((prev) => [...prev, f]);
+    setAttachedFiles((prev) => prev.filter((x) => x.id !== id));
+  };
 
   const save = async () => {
-  if (!canSave) return;
-  setSaving(true);
-  try {
-    const team = teams.find((t) => t.id === teamId) || null;
+    if (!canSave) return;
+    setSaving(true);
+    try {
+      const team = teams.find((t) => t.id === teamId) || null;
+      const taskManager = mode === "adviser" ? "Adviser" : "Project Manager";
 
-    // Determine taskManager based on the current mode
-    const taskManager = mode === "adviser" ? "Adviser" : "Project Manager";
+      // upload/delete attachments
+      const userId =
+        auth.currentUser?.uid || localStorage.getItem("uid") || "anon";
 
-    const payload = {
-      methodology,
-      phase,
-      type,
-      task,
-      // PM cannot edit due/time in dialog
-      dueDate: existingTask ? (existingTask.dueDate ?? null) : null,
-      dueTime: existingTask ? (existingTask.dueTime ?? null) : null,
-      dueAtMs: existingTask ? (existingTask.dueAtMs ?? null) : null,
-      status: existingTask?.status || "To Do",
-      revision: existingTask?.revision || "No Revision", // Fixed revision
-      assignees: assignees.map((a) => ({ uid: a.uid, name: a.name })),
-      team: team ? { id: team.id, name: team.name } : null,
-      comment: comment || "",
-      createdBy: pm ? { uid: pm.uid, name: pm.name, role: "Project Manager" } : null,
-      taskManager, // This will now be "Adviser" or "Project Manager" based on mode
-    };
+      if (filesToDelete.length > 0) {
+        // best-effort delete
+        await Promise.allSettled(
+          filesToDelete.map((f) => deleteTaskFileFromSupabase(f.fileName))
+        );
+      }
 
-    if (existingTask?.id) {
-      await updateDoc(doc(db, TASKS_COLLECTION, existingTask.id), {
-        ...payload,
-        updatedAt: serverTimestamp(),
-      });
-    } else {
-      await addDoc(collection(db, TASKS_COLLECTION), {
-        ...payload,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      let uploaded = [];
+      if (newFiles.length > 0) {
+        uploaded = await Promise.all(
+          newFiles.map(async (nf) => {
+            const up = await uploadTaskFileToSupabase(nf.file, userId);
+            return {
+              id: nf.id,
+              name: up.originalName,
+              fileName: up.fileName,
+              url: up.url,
+              uploadedAt: new Date().toISOString(),
+              size: nf.file.size,
+              type: nf.file.type,
+            };
+          })
+        );
+      }
+
+      const finalFileUrl = [...attachedFiles, ...uploaded];
+
+      const payload = {
+        methodology,
+        phase,
+        type,
+        task,
+        fileUrl: finalFileUrl,
+        dueDate: existingTask ? existingTask.dueDate ?? null : null,
+        dueTime: existingTask ? existingTask.dueTime ?? null : null,
+        dueAtMs: existingTask ? existingTask.dueAtMs ?? null : null,
+        status: existingTask?.status || "To Do",
+        revision: existingTask?.revision || "No Revision",
+        assignees: assignees.map((a) => ({ uid: a.uid, name: a.name })),
+        team: team ? { id: team.id, name: team.name } : null,
+        comment: comment || "",
+        createdBy: pm
+          ? { uid: pm.uid, name: pm.name, role: "Project Manager" }
+          : null,
+        taskManager,
+      };
+
+      if (existingTask?.id) {
+        await updateDoc(doc(db, TASKS_COLLECTION, existingTask.id), {
+          ...payload,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        await addDoc(collection(db, TASKS_COLLECTION), {
+          ...payload,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      onSaved?.();
+      onClose();
+    } finally {
+      setSaving(false);
     }
-    onSaved?.();
-    onClose();
-  } finally {
-    setSaving(false);
-  }
-};
+  };
 
   if (!open) return null;
 
@@ -301,26 +440,36 @@ function EditTaskDialog({
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
       <div className="relative z-10 mx-auto mt-10 w-[980px] max-w-[95vw]">
-        <div className="bg-white rounded-2xl shadow-2xl border border-neutral-200 overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-2xl border border-neutral-200 overflow-hidden flex flex-col max-h-[85vh]">
           <div className="h-[2px] w-full" style={{ backgroundColor: MAROON }} />
           <div className="flex items-center justify-between px-5 pt-3 pb-2">
-            <div className="flex items-center gap-2 text-[16px] font-semibold" style={{ color: MAROON }}>
+            <div
+              className="flex items-center gap-2 text-[16px] font-semibold"
+              style={{ color: MAROON }}
+            >
               <span>●</span>
               <span>{existingTask ? "Edit Task" : "Create Task"}</span>
             </div>
-            <button onClick={onClose} className="p-1 rounded-md hover:bg-neutral-100 text-neutral-500" aria-label="Close">
+            <button
+              onClick={onClose}
+              className="p-1 rounded-md hover:bg-neutral-100 text-neutral-500"
+              aria-label="Close"
+            >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          <div className="px-5 pb-5 space-y-5">
+          <div className="flex-1 px-5 pb-5 space-y-5 overflow-y-auto">
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
-              <b>Reminder:</b> Due Date and Time are <b>managed by the Adviser</b>.
+              <b>Reminder:</b> Due Date and Time are{" "}
+              <b>managed by the Adviser</b>.
             </div>
 
             <div className="grid grid-cols-12 gap-4">
               <div className="col-span-6">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Team</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Team
+                </label>
                 <select
                   className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                   value={teamId}
@@ -335,7 +484,9 @@ function EditTaskDialog({
               </div>
 
               <div className="col-span-6">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Methodology</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Methodology
+                </label>
                 <select
                   className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                   value={methodology}
@@ -358,14 +509,18 @@ function EditTaskDialog({
 
             <div className="grid grid-cols-12 gap-4">
               <div className="col-span-4">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Project Phase</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Project Phase
+                </label>
                 <select
                   className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                   value={phase}
                   onChange={(e) => setPhase(e.target.value)}
                   disabled={!methodology}
                 >
-                  <option value="">{methodology ? "Select phase" : "Pick Methodology first"}</option>
+                  <option value="">
+                    {methodology ? "Select phase" : "Pick Methodology first"}
+                  </option>
                   {(PHASE_OPTIONS[methodology] || []).map((p) => (
                     <option key={p} value={p}>
                       {p}
@@ -375,7 +530,9 @@ function EditTaskDialog({
               </div>
 
               <div className="col-span-4">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Task Type</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Task Type
+                </label>
                 <select
                   className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                   value={type}
@@ -385,7 +542,9 @@ function EditTaskDialog({
                   }}
                   disabled={!methodology}
                 >
-                  <option value="">{methodology ? "Select" : "Pick Methodology first"}</option>
+                  <option value="">
+                    {methodology ? "Select" : "Pick Methodology first"}
+                  </option>
                   {["Documentation", "Discussion & Review"].map((t) => (
                     <option key={t} value={t}>
                       {t}
@@ -395,14 +554,18 @@ function EditTaskDialog({
               </div>
 
               <div className="col-span-4">
-                <label className="block text sm font-medium text-neutral-700 mb-1">Tasks</label>
+                <label className="block text sm font-medium text-neutral-700 mb-1">
+                  Tasks
+                </label>
                 <select
                   className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                   value={task}
                   onChange={(e) => setTask(e.target.value)}
                   disabled={!type}
                 >
-                  <option value="">{type ? "Select task" : "Pick Task Type first"}</option>
+                  <option value="">
+                    {type ? "Select task" : "Pick Task Type first"}
+                  </option>
                   {(TASK_SEEDS[methodology]?.[type] || []).map((t) => (
                     <option key={t} value={t}>
                       {t}
@@ -502,12 +665,84 @@ function EditTaskDialog({
                     value={comment}
                     onChange={(e) => setComment(e.target.value)}
                   />
-                  <button type="button" className="absolute right-2 bottom-2 p-1 rounded hover:bg-neutral-100" title="Attach">
+                  <button
+                    type="button"
+                    className="absolute right-2 bottom-2 p-1 rounded hover:bg-neutral-100"
+                    title="Attach"
+                    onClick={handleAttachClick}
+                  >
                     <Paperclip className="w-4 h-4" />
                   </button>
+                  <input
+                    ref={fileInputRef}
+                    className="hidden"
+                    type="file"
+                    multiple
+                    onChange={onFilePicked}
+                  />
                 </div>
               </div>
             </div>
+
+            {/* Attachments list (no SweetAlert view) */}
+            {(attachedFiles.length > 0 || newFiles.length > 0) && (
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Attachments ({attachedFiles.length + newFiles.length})
+                </label>
+                <div className="space-y-2">
+                  {attachedFiles.map((f) => (
+                    <div
+                      key={f.id}
+                      className="flex items-center justify-between p-2 rounded-lg border border-neutral-200"
+                    >
+                      <div className="truncate text-sm">
+                        <span className="font-medium">{f.name}</span>
+                        {f.url ? (
+                          <a
+                            className="ml-2 text-xs text-[#6A0F14] underline"
+                            href={f.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            open
+                          </a>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        className="p-1 rounded-md hover:bg-neutral-200"
+                        aria-label={`Remove ${f.name}`}
+                        onClick={() => removeExistingFile(f.id)}
+                      >
+                        <X className="w-4 h-4 text-neutral-600" />
+                      </button>
+                    </div>
+                  ))}
+                  {newFiles.map((nf) => (
+                    <div
+                      key={nf.id}
+                      className="flex items-center justify-between p-2 rounded-lg border border-neutral-200"
+                    >
+                      <div className="truncate text-sm">
+                        <span className="font-medium">{nf.name}</span>
+                        <span className="ml-2 text-xs text-blue-600">
+                          (new)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="p-1 rounded-md hover:bg-neutral-200"
+                        aria-label={`Remove ${nf.name}`}
+                        onClick={() => removeNewFile(nf.id)}
+                      >
+                        <X className="w-4 h-4 text-neutral-600" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="flex justify-end gap-2 pt-2">
               <button
@@ -551,31 +786,28 @@ const OralDefense = ({ onBack }) => {
 
   const [mode, setMode] = useState("team"); // "team" | "adviser"
   const isTeam = mode === "team";
-  const canEdit = mode === "adviser" || isTeam; // keep existing behavior for other columns
+  const canEdit = mode === "adviser" || isTeam;
 
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState(new Set());
-  const [menuOpenId, setMenuOpenId] = useState(null); // row key
+  const [menuOpenId, setMenuOpenId] = useState(null);
   const [editingModal, setEditingModal] = useState(null); // {seedMember, existingTask}
-  const [deletingId, setDeletingId] = useState(null); // task id
+  const [deletingId, setDeletingId] = useState(null);
 
   const [editingCell, setEditingCell] = useState(null); // {key, field}
   const [optimistic, setOptimistic] = useState({});
 
   const pageSize = 10;
 
-  // current PM
   const pmUid = auth.currentUser?.uid || localStorage.getItem("uid") || "";
   const [pmProfile, setPmProfile] = useState(null);
 
   const [teams, setTeams] = useState([]);
   const [members, setMembers] = useState([]);
 
-  // raw task docs created by this PM
   const [tasks, setTasks] = useState([]);
 
-  /* PM profile */
   useEffect(() => {
     if (!pmUid) return;
     const unsub = onSnapshot(
@@ -594,7 +826,6 @@ const OralDefense = ({ onBack }) => {
     return () => unsub && unsub();
   }, [pmUid]);
 
-  /* Teams + members of this PM */
   useEffect(() => {
     if (!pmUid) return;
     const unsubTeams = onSnapshot(
@@ -603,11 +834,14 @@ const OralDefense = ({ onBack }) => {
         const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         setTeams(rows);
 
-        const memberUids = Array.from(new Set(rows.flatMap((t) => t.memberUids || [])));
+        const memberUids = Array.from(
+          new Set(rows.flatMap((t) => t.memberUids || []))
+        );
         if (memberUids.length === 0) return setMembers([]);
 
         const chunks = [];
-        for (let i = 0; i < memberUids.length; i += 10) chunks.push(memberUids.slice(i, i + 10));
+        for (let i = 0; i < memberUids.length; i += 10)
+          chunks.push(memberUids.slice(i, i + 10));
         const unsubs = chunks.map((uids) =>
           onSnapshot(
             query(collection(db, "users"), where("uid", "in", uids)),
@@ -624,7 +858,9 @@ const OralDefense = ({ onBack }) => {
               setMembers((prev) => {
                 const map = new Map(prev.map((m) => [m.uid, m]));
                 list.forEach((m) => map.set(m.uid, m));
-                return Array.from(map.values()).filter((m) => memberUids.includes(m.uid));
+                return Array.from(map.values()).filter((m) =>
+                  memberUids.includes(m.uid)
+                );
               });
             }
           )
@@ -635,127 +871,124 @@ const OralDefense = ({ onBack }) => {
     return () => unsubTeams && unsubTeams();
   }, [pmUid]);
 
-  /* Tasks created by this PM (live) — client-side sort by updatedAt/createdAt */
-  /* Tasks created by this PM (live) — client-side sort by updatedAt/createdAt */
-useEffect(() => {
-  if (!pmUid) return;
-  const qRef = query(collection(db, TASKS_COLLECTION), where("createdBy.uid", "==", pmUid));
-  const unsub = onSnapshot(qRef, (snap) => {
-    const list = snap.docs
-      .map((d) => ({ id: d.id, ...d.data() }))
-      .sort((a, b) => {
-        const aTs = a?.updatedAt?.toDate?.() ?? a?.createdAt?.toDate?.() ?? 0;
-        const bTs = b?.updatedAt?.toDate?.() ?? b?.createdAt?.toDate?.() ?? 0;
-        return bTs - aTs;
-      });
-
-    setTasks(list);
-    setSelected(new Set());
-    setPage(1);
-
-    setOptimistic((prev) => {
-      const next = { ...prev };
-      const memberWithTask = new Set();
-      for (const d of snap.docs) {
-        const data = d.data();
-        (data.assignees || []).forEach((a) => {
-          if (a?.uid) memberWithTask.add(a.uid);
+  useEffect(() => {
+    if (!pmUid) return;
+    const qRef = query(
+      collection(db, TASKS_COLLECTION),
+      where("createdBy.uid", "==", pmUid)
+    );
+    const unsub = onSnapshot(qRef, (snap) => {
+      const list = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => {
+          const aTs = a?.updatedAt?.toDate?.() ?? a?.createdAt?.toDate?.() ?? 0;
+          const bTs = b?.updatedAt?.toDate?.() ?? b?.createdAt?.toDate?.() ?? 0;
+          return bTs - aTs;
         });
-      }
-      for (const k of Object.keys(next)) {
-        if (memberWithTask.has(k)) delete next[k];
-      }
-      return next;
-    });
-  });
-  return () => unsub && unsub();
-}, [pmUid]);
 
-  /* ---------- Rows for Team tab (per-member) ---------- */
-const rows = useMemo(() => {
-  const out = [];
-  const seenMemberUids = new Set();
+      setTasks(list);
+      setSelected(new Set());
+      setPage(1);
 
-  // Filter tasks for Team tab (only Project Manager tasks)
-  const teamTasks = tasks.filter(t => t.taskManager === "Project Manager");
-
-  for (const t of teamTasks) {
-    const assignees = t.assignees && t.assignees.length ? t.assignees : [{ uid: "", name: "Team" }];
-    assignees.forEach((a, idx) => {
-      if (a.uid) seenMemberUids.add(a.uid);
-      out.push({
-        key: `${t.id}:${a.uid || idx}`,
-        taskId: t.id,
-        memberUid: a.uid || "",
-        memberName: a.name || "Team",
-        methodology: t?.methodology || "--",
-        phase: t?.phase || "--",
-        type: t?.type || "--",
-        task: t?.task || "--",
-        created: t?.createdAt?.toDate?.()?.toLocaleDateString?.() || "--",
-        due: t?.dueDate || "--",
-        time: t?.dueTime || "--",
-        revision: t?.revision || "No Revision",
-        status: t?.status || "To Do",
-        existingTask: t,
-        teamId: t?.team?.id || null,
-        teamName: t?.team?.name || "No Team",
+      setOptimistic((prev) => {
+        const next = { ...prev };
+        const memberWithTask = new Set();
+        for (const d of snap.docs) {
+          const data = d.data();
+          (data.assignees || []).forEach((a) => {
+            if (a?.uid) memberWithTask.add(a.uid);
+          });
+        }
+        for (const k of Object.keys(next)) {
+          if (memberWithTask.has(k)) delete next[k];
+        }
+        return next;
       });
     });
-  }
+    return () => unsub && unsub();
+  }, [pmUid]);
 
-  members.forEach((m, idx) => {
-    if (!seenMemberUids.has(m.uid)) {
-      out.push({
-        key: `placeholder:${m.uid || idx}`,
-        taskId: null,
-        memberUid: m.uid,
-        memberName: m.name,
-        methodology: "--",
-        phase: "--",
-        type: "--",
-        task: "--",
-        created: "--",
-        due: "--",
-        time: "--",
-        revision: "--",
-        status: "--",
-        existingTask: null,
-        teamId: teams[0]?.id ?? null,
-        teamName: teams[0]?.name ?? "No Team",
+  const rows = useMemo(() => {
+    const out = [];
+    const seenMemberUids = new Set();
+    const teamTasks = tasks.filter((t) => t.taskManager === "Project Manager");
+
+    for (const t of teamTasks) {
+      const assignees =
+        t.assignees && t.assignees.length
+          ? t.assignees
+          : [{ uid: "", name: "Team" }];
+      assignees.forEach((a, idx) => {
+        if (a.uid) seenMemberUids.add(a.uid);
+        out.push({
+          key: `${t.id}:${a.uid || idx}`,
+          taskId: t.id,
+          memberUid: a.uid || "",
+          memberName: a.name || "Team",
+          methodology: t?.methodology || "--",
+          phase: t?.phase || "--",
+          type: t?.type || "--",
+          task: t?.task || "--",
+          created: t?.createdAt?.toDate?.()?.toLocaleDateString?.() || "--",
+          due: t?.dueDate || "--",
+          time: t?.dueTime || "--",
+          revision: t?.revision || "No Revision",
+          status: t?.status || "To Do",
+          existingTask: t,
+          teamId: t?.team?.id || null,
+          teamName: t?.team?.name || "No Team",
+        });
       });
     }
-  });
 
-  return out;
-}, [tasks, members, teams]);
+    members.forEach((m, idx) => {
+      if (!seenMemberUids.has(m.uid)) {
+        out.push({
+          key: `placeholder:${m.uid || idx}`,
+          taskId: null,
+          memberUid: m.uid,
+          memberName: m.name,
+          methodology: "--",
+          phase: "--",
+          type: "--",
+          task: "--",
+          created: "--",
+          due: "--",
+          time: "--",
+          revision: "--",
+          status: "--",
+          existingTask: null,
+          teamId: teams[0]?.id ?? null,
+          teamName: teams[0]?.name ?? "No Team",
+        });
+      }
+    });
 
-  /* ---------- Rows for Adviser tab (group by team, one row per task) ---------- */
-const adviserRows = useMemo(() => {
-  // Filter tasks for Adviser tab (only Adviser tasks)
-  const adviserTasks = tasks.filter(t => t.taskManager === "Adviser");
-  
-  return adviserTasks.map((t, idx) => ({
-    key: t.id,
-    taskId: t.id,
-    memberUid: "", // team-level
-    memberName: "Team", // show as team-level task
-    methodology: t?.methodology || "--",
-    phase: t?.phase || "--",
-    type: t?.type || "--",
-    task: t?.task || "--",
-    created: t?.createdAt?.toDate?.()?.toLocaleDateString?.() || "--",
-    due: t?.dueDate || "--",
-    time: t?.dueTime || "--",
-    revision: t?.revision || "No Revision",
-    status: t?.status || "To Do",
-    existingTask: t,
-    teamId: t?.team?.id || `no-team-${idx}`,
-    teamName: t?.team?.name || "No Team",
-  }));
-}, [tasks]);
+    return out;
+  }, [tasks, members, teams]);
 
-  /* Search + paging (different bases per tab) */
+  const adviserRows = useMemo(() => {
+    const adviserTasks = tasks.filter((t) => t.taskManager === "Adviser");
+    return adviserTasks.map((t, idx) => ({
+      key: t.id,
+      taskId: t.id,
+      memberUid: "",
+      memberName: "Team",
+      methodology: t?.methodology || "--",
+      phase: t?.phase || "--",
+      type: t?.type || "--",
+      task: t?.task || "--",
+      created: t?.createdAt?.toDate?.()?.toLocaleDateString?.() || "--",
+      due: t?.dueDate || "--",
+      time: t?.dueTime || "--",
+      revision: t?.revision || "No Revision",
+      status: t?.status || "To Do",
+      existingTask: t,
+      teamId: t?.team?.id || `no-team-${idx}`,
+      teamName: t?.team?.name || "No Team",
+    }));
+  }, [tasks]);
+
   const [qLocal, setQLocal] = useState("");
   useEffect(() => setQLocal(q.trim().toLowerCase()), [q]);
 
@@ -774,15 +1007,18 @@ const adviserRows = useMemo(() => {
         (r.created || "").toLowerCase().includes(qLocal) ||
         (r.due || "").toLowerCase().includes(qLocal) ||
         (r.time || "").toLowerCase().includes(qLocal) ||
-        String(r.revision || "").toLowerCase().includes(qLocal) ||
-        String(r.status || "").toLowerCase().includes(qLocal)
+        String(r.revision || "")
+          .toLowerCase()
+          .includes(qLocal) ||
+        String(r.status || "")
+          .toLowerCase()
+          .includes(qLocal)
     );
   }, [qLocal, baseRows]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize);
 
-  /* ---------- Update helpers (unchanged) ---------- */
   const updateTaskRow = async (row, patch) => {
     if (row.taskId) {
       await updateDoc(doc(db, TASKS_COLLECTION, row.taskId), {
@@ -793,10 +1029,19 @@ const adviserRows = useMemo(() => {
     }
     const base = {
       status: "To Do",
-      revision: "No Revision", // Fixed revision
-      createdBy: pmProfile ? { uid: pmProfile.uid, name: pmProfile.name, role: "Project Manager" } : null,
-      assignees: row.memberUid ? [{ uid: row.memberUid, name: row.memberName }] : [],
-      team: row.teamId && row.teamName ? { id: row.teamId, name: row.teamName } : (teams[0] ? { id: teams[0].id, name: teams[0].name } : null),
+      revision: "No Revision",
+      createdBy: pmProfile
+        ? { uid: pmProfile.uid, name: pmProfile.name, role: "Project Manager" }
+        : null,
+      assignees: row.memberUid
+        ? [{ uid: row.memberUid, name: row.memberName }]
+        : [],
+      team:
+        row.teamId && row.teamName
+          ? { id: row.teamId, name: row.teamName }
+          : teams[0]
+          ? { id: teams[0].id, name: teams[0].name }
+          : null,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
@@ -804,46 +1049,44 @@ const adviserRows = useMemo(() => {
   };
 
   const startEdit = (row, field) => {
-  if (!canEdit) return;
-  // In Team tab, ALL visible columns are editable (including due/time).
-  const editingDueOrTime = field === "due" || field === "time";
-  if (!isTeam && editingDueOrTime) return; // lock due/time when not in Team tab
+    if (!canEdit) return;
+    const editingDueOrTime = field === "due" || field === "time";
+    if (!isTeam && editingDueOrTime) return;
 
-  if (!isTeam) {
-    // enforce chain only outside Team tab
-    if (field === "phase" && (row.methodology === "--" || row.methodology === "null")) return;
-    if (field === "type" && (row.methodology === "--" || row.methodology === "null" || row.phase === "--" || row.phase === "null")) return;
-    if (field === "task" && (row.type === "--" || row.type === "null")) return;
-  }
-  setEditingCell({ key: row.key, field });
-};
+    if (!isTeam) {
+      if (
+        field === "phase" &&
+        (row.methodology === "--" || row.methodology === "null")
+      )
+        return;
+      if (
+        field === "type" &&
+        (row.methodology === "--" ||
+          row.methodology === "null" ||
+          row.phase === "--" ||
+          row.phase === "null")
+      )
+        return;
+      if (field === "task" && (row.type === "--" || row.type === "null"))
+        return;
+    }
+    setEditingCell({ key: row.key, field });
+  };
   const stopEdit = () => setEditingCell(null);
 
-  const saveMethodology = async (row, newMethod) => {
-    await updateTaskRow(row, { methodology: newMethod || null, phase: null, type: null, task: null });
-    stopEdit();
-  };
-  const savePhase = async (row, newPhase) => {
-    await updateTaskRow(row, { phase: newPhase || null, type: null, task: null });
-    stopEdit();
-  };
-  const saveType = async (row, newType) => {
-    await updateTaskRow(row, { type: newType || null, task: null });
-    stopEdit();
-  };
   const saveTask = async (row, newTask) => {
     await updateTaskRow(row, { task: newTask || null });
     stopEdit();
-  };
-  const saveRevision = async (row, newRev) => {
-    await updateTaskRow(row, { revision: newRev || "No Revision" });  // not editable via UI for PM now
   };
   const saveStatus = async (row, newStatus) => {
     await updateTaskRow(row, { status: newStatus || "To Do" });
   };
   const saveDue = async (row, newDate) => {
     const hasTime = row.time && row.time !== "null";
-    const dueAtMs = newDate && hasTime ? new Date(`${newDate}T${row.time}:00`).getTime() : null;
+    const dueAtMs =
+      newDate && hasTime
+        ? new Date(`${newDate}T${row.time}:00`).getTime()
+        : null;
     await updateTaskRow(row, {
       dueDate: newDate || null,
       dueAtMs,
@@ -852,9 +1095,10 @@ const adviserRows = useMemo(() => {
     stopEdit();
   };
   const saveTime = async (row, newTime) => {
-    const dueAtMs = row.due && row.due !== "null" && newTime
-      ? new Date(`${row.due}T${newTime}:00`).getTime()
-      : null;
+    const dueAtMs =
+      row.due && row.due !== "null" && newTime
+        ? new Date(`${row.due}T${newTime}:00`).getTime()
+        : null;
     await updateTaskRow(row, { dueTime: newTime || null, dueAtMs });
     stopEdit();
   };
@@ -870,35 +1114,38 @@ const adviserRows = useMemo(() => {
 
   const deleteSelectedRows = async () => {
     if (!canEdit || selected.size === 0) return;
-    const toDelete = pageRows.filter((r) => selected.has(r.key) && r.taskId).map((r) => r.taskId);
+    const toDelete = pageRows
+      .filter((r) => selected.has(r.key) && r.taskId)
+      .map((r) => r.taskId);
     for (const id of toDelete) {
       await deleteTask(id);
     }
     setSelected(new Set());
   };
 
-  // Modal helpers
   const openModalEditor = (row) => {
     setEditingModal({
-      seedMember: row.memberUid ? { uid: row.memberUid, name: row.memberName } : null,
+      seedMember: row.memberUid
+        ? { uid: row.memberUid, name: row.memberName }
+        : null,
       existingTask: row.taskId ? { ...row.existingTask, id: row.taskId } : null,
     });
   };
   const openModalCreate = (row) => {
     setEditingModal({
-      seedMember: row?.memberUid ? { uid: row.memberUid, name: row.memberName } : null,
+      seedMember: row?.memberUid
+        ? { uid: row.memberUid, name: row.memberName }
+        : null,
       existingTask: null,
     });
   };
 
-  // Choose member for Create when in Team tab:
   const handleCreateClick = () => {
     if (isTeam) {
-      // prefer a single selected row; else first member row
       const selectedKey = Array.from(selected)[0] || null;
       let seedRow =
         (selectedKey && filtered.find((r) => r.key === selectedKey)) ||
-        filtered.find((r) => r.memberUid); // first member row
+        filtered.find((r) => r.memberUid);
       if (!seedRow) {
         alert("Select a member row first to create a task for.");
         return;
@@ -909,15 +1156,17 @@ const adviserRows = useMemo(() => {
     }
   };
 
-  const STATUS_OPTIONS = ["To Do", "In Progress", "To Review", "Completed"];
-
-  // For Adviser tab grouping: build groups from the *paged* rows to keep paginator consistent
   const adviserGroups = useMemo(() => {
     if (isTeam) return null;
     const groups = new Map();
     for (const r of pageRows) {
       const key = r.teamId || "no-team";
-      if (!groups.has(key)) groups.set(key, { teamId: key, teamName: r.teamName || "No Team", rows: [] });
+      if (!groups.has(key))
+        groups.set(key, {
+          teamId: key,
+          teamName: r.teamName || "No Team",
+          rows: [],
+        });
       groups.get(key).rows.push(r);
     }
     return Array.from(groups.values());
@@ -925,7 +1174,6 @@ const adviserRows = useMemo(() => {
 
   return (
     <div className="space-y-4">
-      {/* top bar like FinalDefense: Back + tabs + Create + Search + Delete/Filter */}
       <div className="flex items-center justify-between gap-3 flex-nowrap">
         <div className="flex items-center gap-3">
           <button
@@ -967,7 +1215,9 @@ const adviserRows = useMemo(() => {
           <button
             onClick={deleteSelectedRows}
             disabled={!canEdit}
-            className={`inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50 ${!canEdit ? "opacity-60 cursor-not-allowed" : ""}`}
+            className={`inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50 ${
+              !canEdit ? "opacity-60 cursor-not-allowed" : ""
+            }`}
             title="Delete"
           >
             <Trash2 className="w-4 h-4" />
@@ -984,7 +1234,6 @@ const adviserRows = useMemo(() => {
         </div>
       </div>
 
-      {/* table container */}
       <div className="bg-white border border-neutral-200 rounded-2xl shadow overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-[13px] leading-tight whitespace-nowrap">
@@ -995,10 +1244,14 @@ const adviserRows = useMemo(() => {
                     type="checkbox"
                     onChange={(e) => {
                       if (!canEdit) return;
-                      if (e.target.checked) setSelected(new Set(pageRows.map((r) => r.key)));
+                      if (e.target.checked)
+                        setSelected(new Set(pageRows.map((r) => r.key)));
                       else setSelected(new Set());
                     }}
-                    checked={pageRows.length > 0 && pageRows.every((r) => selected.has(r.key))}
+                    checked={
+                      pageRows.length > 0 &&
+                      pageRows.every((r) => selected.has(r.key))
+                    }
                     disabled={!canEdit}
                   />
                 </th>
@@ -1028,23 +1281,44 @@ const adviserRows = useMemo(() => {
             </thead>
 
             <tbody>
-              {/* Adviser tab: grouped by team, one row per task */}
               {!isTeam &&
-                adviserGroups?.map((g, gIdx) => (
+                (adviserGroups || []).map((g, gIdx) => (
                   <React.Fragment key={g.teamId || `group-${gIdx}`}>
                     <tr className="bg-neutral-50/60">
-                      <td colSpan={11} className="py-2 pl-6 pr-3 text-[13px] font-semibold text-neutral-800">
+                      <td
+                        colSpan={11}
+                        className="py-2 pl-6 pr-3 text-[13px] font-semibold text-neutral-800"
+                      >
                         Team: {g.teamName}
                       </td>
                     </tr>
                     {g.rows.map((r, idx) => {
-                      const isEditing = (field) => editingCell?.key === r.key && editingCell?.field === field;
+                      const isEditing = (field) =>
+                        editingCell?.key === r.key &&
+                        editingCell?.field === field;
 
-                      const typeOptions = (r.methodology !== "--" && r.methodology !== "null") ? ["Documentation", "Discussion & Review"] : [];
-                      const taskOptions = (r.methodology !== "--" && r.methodology !== "null" && r.type !== "--" && r.type !== "null") ? TASK_SEEDS[r.methodology]?.[r.type] || [] : [];
+                      const typeOptions =
+                        r.methodology !== "--" && r.methodology !== "null"
+                          ? ["Documentation", "Discussion & Review"]
+                          : [];
+                      const taskOptions =
+                        r.methodology !== "--" &&
+                        r.methodology !== "null" &&
+                        r.type !== "--" &&
+                        r.type !== "null"
+                          ? TASK_SEEDS[r.methodology]?.[r.type] || []
+                          : [];
 
-                      const canEditType = canEdit && (isTeam || (r.methodology !== "--" && r.methodology !== "null" && r.phase !== "--" && r.phase !== "null"));
-                      const canEditTask = canEdit && (isTeam || (r.type !== "--" && r.type !== "null"));
+                      const canEditType =
+                        canEdit &&
+                        (isTeam ||
+                          (r.methodology !== "--" &&
+                            r.methodology !== "null" &&
+                            r.phase !== "--" &&
+                            r.phase !== "null"));
+                      const canEditTask =
+                        canEdit &&
+                        (isTeam || (r.type !== "--" && r.type !== "null"));
 
                       return (
                         <tr key={r.key} className="border-t border-neutral-200">
@@ -1061,22 +1335,43 @@ const adviserRows = useMemo(() => {
                               disabled={!canEdit}
                             />
                           </td>
-                          <td className="py-2 pr-3">{(page - 1) * pageSize + (gIdx === 0 ? idx + 1 : idx + 1)}.</td>
+                          <td className="py-2 pr-3">
+                            {(page - 1) * pageSize +
+                              (gIdx === 0 ? idx + 1 : idx + 1)}
+                            .
+                          </td>
                           <td className="py-2 pr-3">{g.teamName}</td>
 
-                          {/* Task Type */}
                           <td
-                            className={`py-2 pr-3 ${!canEditType ? "text-neutral-400 cursor-not-allowed" : ""}`}
-                            onDoubleClick={() => canEditType && setEditingCell({ key: r.key, field: "type" })}
-                            title={!canEditType ? "Set Methodology and Phase first" : ""}
+                            className={`py-2 pr-3 ${
+                              !canEditType
+                                ? "text-neutral-400 cursor-not-allowed"
+                                : ""
+                            }`}
+                            onDoubleClick={() =>
+                              canEditType &&
+                              setEditingCell({ key: r.key, field: "type" })
+                            }
+                            title={
+                              !canEditType
+                                ? "Set Methodology and Phase first"
+                                : ""
+                            }
                           >
                             {isEditing("type") ? (
                               <select
                                 autoFocus
                                 className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
-                                defaultValue={(r.type === "--" || r.type === "null") ? "" : r.type}
+                                defaultValue={
+                                  r.type === "--" || r.type === "null"
+                                    ? ""
+                                    : r.type
+                                }
                                 onBlur={(e) => {
-                                  updateTaskRow(r, { type: e.target.value || null, task: null });
+                                  updateTaskRow(r, {
+                                    type: e.target.value || null,
+                                    task: null,
+                                  });
                                   stopEdit();
                                 }}
                                 onKeyDown={(e) => {
@@ -1096,10 +1391,16 @@ const adviserRows = useMemo(() => {
                             )}
                           </td>
 
-                          {/* Task */}
                           <td
-                            className={`py-2 pr-3 ${!canEditTask ? "text-neutral-400 cursor-not-allowed" : ""}`}
-                            onDoubleClick={() => canEditTask && setEditingCell({ key: r.key, field: "task" })}
+                            className={`py-2 pr-3 ${
+                              !canEditTask
+                                ? "text-neutral-400 cursor-not-allowed"
+                                : ""
+                            }`}
+                            onDoubleClick={() =>
+                              canEditTask &&
+                              setEditingCell({ key: r.key, field: "task" })
+                            }
                             title={!canEditTask ? "Set Task Type first" : ""}
                           >
                             {isEditing("task") ? (
@@ -1127,36 +1428,35 @@ const adviserRows = useMemo(() => {
                             )}
                           </td>
 
-                          {/* Date Created (read-only) */}
                           <td className="py-2 pr-3">{r.created}</td>
-
-                          {/* Due Date (locked in Adviser tab) */}
                           <td className="py-2 pr-3" title="Managed by Adviser">
                             <span className="text-neutral-700">{r.due}</span>
                           </td>
-
-                          {/* Time (locked in Adviser tab) */}
                           <td className="py-2 pr-3" title="Managed by Adviser">
                             <span className="text-neutral-700">{r.time}</span>
                           </td>
 
-                          {/* Revision — LOCKED for PM */}
                           <td className="py-2 pr-3">
-                            {/* Always disable editing of revision in PM view */}
-                            <RevisionSelect value={r.revision} onChange={() => {}} disabled />
+                            <RevisionSelect
+                              value={r.revision}
+                              onChange={() => {}}
+                              disabled
+                            />
                           </td>
 
-                          {/* Status */}
                           <td className="py-2 pr-3">
                             <StatusBadge value={r.status} />
                           </td>
 
-                          {/* Actions */}
                           <td className="py-2 pr-6">
                             <div className="relative flex justify-center">
                               <button
                                 className="p-1.5 rounded-md hover:bg-neutral-100"
-                                onClick={() => setMenuOpenId(menuOpenId === r.key ? null : r.key)}
+                                onClick={() =>
+                                  setMenuOpenId(
+                                    menuOpenId === r.key ? null : r.key
+                                  )
+                                }
                                 aria-label="Row actions"
                               >
                                 <MoreVertical className="w-4 h-4 text-neutral-600" />
@@ -1187,14 +1487,20 @@ const adviserRows = useMemo(() => {
                                       className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50"
                                       onClick={() => {
                                         setMenuOpenId(null);
-                                        alert(r.taskId ? `Open detail: ${r.taskId}` : "No task yet");
+                                        alert(
+                                          r.taskId
+                                            ? `Open detail: ${r.taskId}`
+                                            : "No task yet"
+                                        );
                                       }}
                                     >
                                       View
                                     </button>
                                     <button
                                       className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50 disabled:opacity-50"
-                                      disabled={!r.taskId || deletingId === r.taskId}
+                                      disabled={
+                                        !r.taskId || deletingId === r.taskId
+                                      }
                                       onClick={async () => {
                                         setMenuOpenId(null);
                                         if (!r.taskId) return;
@@ -1221,16 +1527,24 @@ const adviserRows = useMemo(() => {
                   </React.Fragment>
                 ))}
 
-              {/* Team tab: original per-member rows */}
               {isTeam &&
                 pageRows.map((r, idx) => {
-                  const isEditing = (field) => editingCell?.key === r.key && editingCell?.field === field;
+                  const isEditing = (field) =>
+                    editingCell?.key === r.key && editingCell?.field === field;
 
-                  const typeOptions = r.methodology !== "null" ? ["Documentation", "Discussion & Review"] : [];
+                  const typeOptions =
+                    r.methodology !== "null"
+                      ? ["Documentation", "Discussion & Review"]
+                      : [];
                   const taskOptions =
-                    r.methodology !== "null" && r.type !== "null" ? TASK_SEEDS[r.methodology]?.[r.type] || [] : [];
+                    r.methodology !== "null" && r.type !== "null"
+                      ? TASK_SEEDS[r.methodology]?.[r.type] || []
+                      : [];
 
-                  const canEditType = canEdit && (isTeam || (r.methodology !== "null" && r.phase !== "null"));
+                  const canEditType =
+                    canEdit &&
+                    (isTeam ||
+                      (r.methodology !== "null" && r.phase !== "null"));
                   const canEditTask = canEdit && (isTeam || r.type !== "null");
 
                   return (
@@ -1248,22 +1562,37 @@ const adviserRows = useMemo(() => {
                           disabled={!canEdit}
                         />
                       </td>
-                      <td className="py-2 pr-3">{(page - 1) * pageSize + idx + 1}.</td>
+                      <td className="py-2 pr-3">
+                        {(page - 1) * pageSize + idx + 1}.
+                      </td>
                       <td className="py-2 pr-3">{r.memberName}</td>
 
-                      {/* Task Type */}
                       <td
-                        className={`py-2 pr-3 ${!canEditType ? "text-neutral-400 cursor-not-allowed" : ""}`}
-                        onDoubleClick={() => canEditType && setEditingCell({ key: r.key, field: "type" })}
-                        title={!canEditType ? "Set Methodology and Phase first" : ""}
+                        className={`py-2 pr-3 ${
+                          !canEditType
+                            ? "text-neutral-400 cursor-not-allowed"
+                            : ""
+                        }`}
+                        onDoubleClick={() =>
+                          canEditType &&
+                          setEditingCell({ key: r.key, field: "type" })
+                        }
+                        title={
+                          !canEditType ? "Set Methodology and Phase first" : ""
+                        }
                       >
                         {isEditing("type") ? (
                           <select
                             autoFocus
                             className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
-                            defaultValue={(r.type === "--" || r.type === "null") ? "" : r.type}
+                            defaultValue={
+                              r.type === "--" || r.type === "null" ? "" : r.type
+                            }
                             onBlur={(e) => {
-                              updateTaskRow(r, { type: e.target.value || null, task: null });
+                              updateTaskRow(r, {
+                                type: e.target.value || null,
+                                task: null,
+                              });
                               stopEdit();
                             }}
                             onKeyDown={(e) => {
@@ -1283,10 +1612,16 @@ const adviserRows = useMemo(() => {
                         )}
                       </td>
 
-                      {/* Task */}
                       <td
-                        className={`py-2 pr-3 ${!canEditTask ? "text-neutral-400 cursor-not-allowed" : ""}`}
-                        onDoubleClick={() => canEditTask && setEditingCell({ key: r.key, field: "task" })}
+                        className={`py-2 pr-3 ${
+                          !canEditTask
+                            ? "text-neutral-400 cursor-not-allowed"
+                            : ""
+                        }`}
+                        onDoubleClick={() =>
+                          canEditTask &&
+                          setEditingCell({ key: r.key, field: "task" })
+                        }
                         title={!canEditTask ? "Set Task Type first" : ""}
                       >
                         {isEditing("task") ? (
@@ -1314,14 +1649,16 @@ const adviserRows = useMemo(() => {
                         )}
                       </td>
 
-                      {/* Date Created (read-only) */}
                       <td className="py-2 pr-3">{r.created}</td>
 
-                      {/* Due Date (editable in Team tab) */}
                       <td
                         className="py-2 pr-3"
-                        onDoubleClick={() => isTeam && setEditingCell({ key: r.key, field: "due" })}
-                        title={isTeam ? "Double-click to edit" : "Managed by Adviser"}
+                        onDoubleClick={() =>
+                          isTeam && setEditingCell({ key: r.key, field: "due" })
+                        }
+                        title={
+                          isTeam ? "Double-click to edit" : "Managed by Adviser"
+                        }
                       >
                         {isEditing("due") ? (
                           <input
@@ -1336,15 +1673,25 @@ const adviserRows = useMemo(() => {
                             }}
                           />
                         ) : (
-                          <span className={`${isTeam ? "cursor-text" : "text-neutral-700"}`}>{r.due}</span>
+                          <span
+                            className={`${
+                              isTeam ? "cursor-text" : "text-neutral-700"
+                            }`}
+                          >
+                            {r.due}
+                          </span>
                         )}
                       </td>
 
-                      {/* Time (editable in Team tab) */}
                       <td
                         className="py-2 pr-3"
-                        onDoubleClick={() => isTeam && setEditingCell({ key: r.key, field: "time" })}
-                        title={isTeam ? "Double-click to edit" : "Managed by Adviser"}
+                        onDoubleClick={() =>
+                          isTeam &&
+                          setEditingCell({ key: r.key, field: "time" })
+                        }
+                        title={
+                          isTeam ? "Double-click to edit" : "Managed by Adviser"
+                        }
                       >
                         {isEditing("time") ? (
                           <input
@@ -1359,17 +1706,24 @@ const adviserRows = useMemo(() => {
                             }}
                           />
                         ) : (
-                          <span className={`${isTeam ? "cursor-text" : "text-neutral-700"}`}>{r.time}</span>
+                          <span
+                            className={`${
+                              isTeam ? "cursor-text" : "text-neutral-700"
+                            }`}
+                          >
+                            {r.time}
+                          </span>
                         )}
                       </td>
 
-                      {/* Revision — LOCKED for PM */}
                       <td className="py-2 pr-3">
-                        {/* Always disable editing of revision in PM view */}
-                        <RevisionSelect value={r.revision} onChange={() => {}} disabled />
+                        <RevisionSelect
+                          value={r.revision}
+                          onChange={() => {}}
+                          disabled
+                        />
                       </td>
 
-                      {/* Status (editable select on Team tab) */}
                       <td className="py-2 pr-3">
                         {isTeam ? (
                           <select
@@ -1377,7 +1731,12 @@ const adviserRows = useMemo(() => {
                             defaultValue={r.status}
                             onChange={(e) => saveStatus(r, e.target.value)}
                           >
-                            {["To Do", "In Progress", "To Review", "Completed"].map((s) => (
+                            {[
+                              "To Do",
+                              "In Progress",
+                              "To Review",
+                              "Completed",
+                            ].map((s) => (
                               <option key={s} value={s}>
                                 {s}
                               </option>
@@ -1388,12 +1747,13 @@ const adviserRows = useMemo(() => {
                         )}
                       </td>
 
-                      {/* Actions (unchanged) */}
                       <td className="py-2 pr-6">
                         <div className="relative flex justify-center">
                           <button
                             className="p-1.5 rounded-md hover:bg-neutral-100"
-                            onClick={() => setMenuOpenId(menuOpenId === r.key ? null : r.key)}
+                            onClick={() =>
+                              setMenuOpenId(menuOpenId === r.key ? null : r.key)
+                            }
                             aria-label="Row actions"
                           >
                             <MoreVertical className="w-4 h-4 text-neutral-600" />
@@ -1406,7 +1766,7 @@ const adviserRows = useMemo(() => {
                                   className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50"
                                   onClick={() => {
                                     setMenuOpenId(null);
-                                    openModalEditor(r); // edit if task; create if placeholder
+                                    openModalEditor(r);
                                   }}
                                 >
                                   {r.taskId ? "Edit task" : "Create task"}
@@ -1416,7 +1776,7 @@ const adviserRows = useMemo(() => {
                                     className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50"
                                     onClick={() => {
                                       setMenuOpenId(null);
-                                      openModalCreate(r); // add another task for same member
+                                      openModalCreate(r);
                                     }}
                                   >
                                     Create new task
@@ -1426,14 +1786,20 @@ const adviserRows = useMemo(() => {
                                   className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50"
                                   onClick={() => {
                                     setMenuOpenId(null);
-                                    alert(r.taskId ? `Open detail: ${r.taskId}` : "No task yet");
+                                    alert(
+                                      r.taskId
+                                        ? `Open detail: ${r.taskId}`
+                                        : "No task yet"
+                                    );
                                   }}
                                 >
                                   View
                                 </button>
                                 <button
                                   className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50 disabled:opacity-50"
-                                  disabled={!r.taskId || deletingId === r.taskId}
+                                  disabled={
+                                    !r.taskId || deletingId === r.taskId
+                                  }
                                   onClick={async () => {
                                     setMenuOpenId(null);
                                     if (!r.taskId) return;
@@ -1460,7 +1826,10 @@ const adviserRows = useMemo(() => {
 
               {pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="py-10 text-center text-neutral-500">
+                  <td
+                    colSpan={11}
+                    className="py-10 text-center text-neutral-500"
+                  >
                     No {isTeam ? "members" : "tasks"} found.
                   </td>
                 </tr>
@@ -1469,7 +1838,6 @@ const adviserRows = useMemo(() => {
           </table>
         </div>
 
-        {/* pagination (FinalDefense-like) */}
         <div className="flex items-center justify-end gap-2 px-4 py-3">
           <button
             className="inline-flex items-center gap-1 rounded-full border border-neutral-300 px-3 py-1 text-xs hover:bg-neutral-50 disabled:opacity-50"
@@ -1490,7 +1858,6 @@ const adviserRows = useMemo(() => {
         </div>
       </div>
 
-      {/* modal editor with FinalDefense-style header */}
       <EditTaskDialog
         open={!!editingModal}
         onClose={() => setEditingModal(null)}
@@ -1500,7 +1867,7 @@ const adviserRows = useMemo(() => {
         members={members}
         seedMember={editingModal?.seedMember || null}
         existingTask={editingModal?.existingTask || null}
-        mode={mode} // Add this line to pass the current mode
+        mode={mode}
       />
     </div>
   );
