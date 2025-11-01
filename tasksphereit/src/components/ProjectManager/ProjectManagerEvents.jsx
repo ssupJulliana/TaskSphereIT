@@ -273,46 +273,7 @@ function ProjectManagerEvents() {
           </CardTable>
         </section>
 
-        {/* Final Defense */}
-        <section>
-          <SectionTitle icon={GraduationCap}>Final Defense</SectionTitle>
-          <CardTable>
-            <thead>
-              <tr className="bg-neutral-50/80 text-neutral-600">
-                <th className="text-left py-2 pl-6 pr-3">NO</th>
-                <th className="text-left py-2 pr-3">Team</th>
-                <th className="text-left py-2 pr-3">Title</th>
-                <th className="text-left py-2 pr-3">Date</th>
-                <th className="text-left py-2 pr-3">Time</th>
-                <th className="text-left py-2 pr-3">Panelist</th>
-                <th className="text-left py-2 pr-6">Verdict</th>
-              </tr>
-            </thead>
-            <tbody>
-              {hasFinal ? (
-                data.finalDefense.map((r) => (
-                  <tr key={`fd-${r.no}`} className="border-t border-neutral-200">
-                    <td className="py-2 pl-6 pr-3">{r.no}.</td>
-                    <td className="py-2 pr-3">{r.team}</td>
-                    <td className="py-2 pr-3">{r.title}</td>
-                    <td className="py-2 pr-3">{r.date}</td>
-                    <td className="py-2 pr-3">{r.time}</td>
-                    <td className="py-2 pr-3">{r.panelist}</td>
-                    <td className="py-2 pr-6">
-                      <Pill>{r.verdict || "Pending"}</Pill>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr className="border-t border-neutral-200">
-                  <td className="py-6 text-center text-neutral-500" colSpan={7}>
-                    No final defense items yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </CardTable>
-        </section>
+        
       </div>
     </div>
   );

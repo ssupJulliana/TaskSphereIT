@@ -1,6 +1,7 @@
 import React from "react";
-import { Menu, Bell, User, NotebookText } from "lucide-react";
+import { Menu, User, NotebookText } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import NotiBell from "../common/NotiBell";
 
 export default function ProjectManagerHeader({ onOpenProfile }) {
   const navigate = useNavigate(); // sample usage of useNavigate
@@ -19,14 +20,12 @@ export default function ProjectManagerHeader({ onOpenProfile }) {
         <div className="flex items-center gap-4">
           <button
             className="p-2 rounded-full hover:bg-neutral-100 cursor-pointer"
-            onClick={() => navigate("/projectManager/notes")}
+            onClick={() => navigate("/projectmanager/notes")}
             title="Notes"
           >
             <NotebookText className="w-6 h-6 text-[#6A0F14]" />
           </button>
-          <button className="relative p-2 rounded-full hover:bg-neutral-100 cursor-pointer">
-            <Bell className="w-6 h-6 text-[#6A0F14]" />
-          </button>
+          <NotiBell role="Project Manager" to="/projectmanager/notifications" />
           <button
             className="p-2 rounded-full hover:bg-neutral-100 cursor-pointer"
             onClick={onOpenProfile}

@@ -1,6 +1,7 @@
 import React from "react";
-import { Menu, Bell, User, NotebookText } from "lucide-react";
+import { Menu, User, NotebookText } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import NotiBell from "../common/NotiBell";
 
 const MemberHeader = ({ onOpenProfile }) => {
   const navigate = useNavigate();
@@ -24,9 +25,7 @@ const MemberHeader = ({ onOpenProfile }) => {
           >
             <NotebookText className="w-6 h-6 text-[#6A0F14]" />
           </button>
-          <button className="relative p-2 rounded-full hover:bg-neutral-100 cursor-pointer">
-            <Bell className="w-6 h-6 text-[#6A0F14]" />
-          </button>
+          <NotiBell role="Member" to="/member/notifications" />
           <button
             className="p-2 rounded-full hover:bg-neutral-100 cursor-pointer"
             onClick={onOpenProfile}
