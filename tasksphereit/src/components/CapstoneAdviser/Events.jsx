@@ -1,5 +1,5 @@
 // src/components/CapstoneAdviser/AdviserEvents.jsx
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ClipboardList,
   BookOpenCheck,
@@ -9,45 +9,15 @@ import {
 
 const MAROON = "#6A0F14";
 
-const data = {
-  titleDefense: [
-    {
-      no: 1,
-      team: "Mendoza, Et Al",
-      date: "Mar 25, 2025",
-      time: "8:00 AM",
-      panelist: "Grayson Tolentino",
-      verdict: "Pending",
-    },
-  ],
-  manuscript: [
-    {
-      no: 1,
-      team: "Mendoza, Et Al",
-      title: "TaskSphere IT",
-      dueDate: "Mar 25, 2025",
-      time: "8:00 AM",
-      plagiarism: "6%",
-      ai: "6%",
-      uploaded: true,
-      status: "Passed",
-    },
-  ],
-  oralDefense: [
-    {
-      no: 1,
-      team: "Aguas, Et Al",
-      title: "FitTrack",
-      date: "Mar 25, 2025",
-      time: "8:00 AM",
-      panelist: "Grayson Tolentino",
-      verdict: "Pending",
-    },
-  ],
-  finalDefense: [
-    // Add items as needed
-  ],
-};
+import { getAdviserEvents } from "../../services/events";
+
+function to12h(t) {
+  if (!t) return "";
+  const [H, M] = String(t).split(":").map(Number);
+  const ampm = H >= 12 ? "PM" : "AM";
+  const hh = ((H + 11) % 12) + 1;
+  return `${hh}:${String(M || 0).padStart(2, "0")} ${ampm}`;
+}
 
 /* ---------- tiny ui helpers ---------- */
 const SectionTitle = ({ icon: Icon, children }) => (
@@ -80,7 +50,28 @@ const CardTable = ({ children }) => (
 );
 
 function AdviserEvents() {
-  const hasFinal = useMemo(() => data.finalDefense.length > 0, []);
+  const [rows, setRows] = useState({ titleDefense: [], manuscript: [], oralDefense: [], finalDefense: [], finalRedefense: [] });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await getAdviserEvents();
+        if (alive) setRows(res);
+      } catch (e) {
+        console.error("Failed to load events:", e);
+        if (alive) setRows({ titleDefense: [], manuscript: [], oralDefense: [], finalDefense: [], finalRedefense: [] });
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const hasFinal = useMemo(() => rows.finalDefense.length > 0, [rows.finalDefense.length]);
+  const hasReFinal = useMemo(() => rows.finalRedefense.length > 0, [rows.finalRedefense.length]);
 
   return (
     <div className="space-y-4">
@@ -113,13 +104,13 @@ function AdviserEvents() {
               </tr>
             </thead>
             <tbody>
-              {data.titleDefense.map((r) => (
-                <tr key={`td-${r.no}`} className="border-t border-neutral-200">
-                  <td className="py-2 pl-6 pr-3">{r.no}.</td>
-                  <td className="py-2 pr-3">{r.team}</td>
+              {(loading ? [] : rows.titleDefense).map((r, idx) => (
+                <tr key={`td-${r.id}`} className="border-t border-neutral-200">
+                  <td className="py-2 pl-6 pr-3">{idx + 1}.</td>
+                  <td className="py-2 pr-3">{r.teamName}</td>
                   <td className="py-2 pr-3">{r.date}</td>
-                  <td className="py-2 pr-3">{r.time}</td>
-                  <td className="py-2 pr-3">{r.panelist}</td>
+                  <td className="py-2 pr-3">{r.timeStart ? to12h(r.timeStart) : ""}</td>
+                  <td className="py-2 pr-3">{Array.isArray(r.panelists) ? r.panelists.join(", ") : ""}</td>
                   <td className="py-2 pr-6">
                     <Pill>{r.verdict}</Pill>
                   </td>
@@ -147,18 +138,18 @@ function AdviserEvents() {
               </tr>
             </thead>
             <tbody>
-              {data.manuscript.map((r) => (
-                <tr key={`ms-${r.no}`} className="border-t border-neutral-200">
-                  <td className="py-2 pl-6 pr-3">{r.no}.</td>
-                  <td className="py-2 pr-3">{r.team}</td>
+              {(loading ? [] : rows.manuscript).map((r, idx) => (
+                <tr key={`ms-${r.id}`} className="border-t border-neutral-200">
+                  <td className="py-2 pl-6 pr-3">{idx + 1}.</td>
+                  <td className="py-2 pr-3">{r.teamName}</td>
                   <td className="py-2 pr-3">{r.title}</td>
-                  <td className="py-2 pr-3">{r.dueDate}</td>
-                  <td className="py-2 pr-3">{r.time}</td>
-                  <td className="py-2 pr-3">{r.plagiarism}</td>
-                  <td className="py-2 pr-3">{r.ai}</td>
-                  <td className="py-2 pr-3">{r.uploaded ? "Yes" : "No"}</td>
+                  <td className="py-2 pr-3">{r.date}</td>
+                  <td className="py-2 pr-3">{to12h(r.timeStart)}</td>
+                  <td className="py-2 pr-3">{`${r.plag ?? 0}%`}</td>
+                  <td className="py-2 pr-3">{`${r.ai ?? 0}%`}</td>
+                  <td className="py-2 pr-3">{r.file ? "Yes" : "No"}</td>
                   <td className="py-2 pr-6">
-                    <Pill tone="success">{r.status}</Pill>
+                    <Pill tone="success">{r.verdict}</Pill>
                   </td>
                 </tr>
               ))}
@@ -182,14 +173,14 @@ function AdviserEvents() {
               </tr>
             </thead>
             <tbody>
-              {data.oralDefense.map((r) => (
-                <tr key={`od-${r.no}`} className="border-t border-neutral-200">
-                  <td className="py-2 pl-6 pr-3">{r.no}.</td>
-                  <td className="py-2 pr-3">{r.team}</td>
+              {(loading ? [] : rows.oralDefense).map((r, idx) => (
+                <tr key={`od-${r.id}`} className="border-t border-neutral-200">
+                  <td className="py-2 pl-6 pr-3">{idx + 1}.</td>
+                  <td className="py-2 pr-3">{r.teamName}</td>
                   <td className="py-2 pr-3">{r.title}</td>
                   <td className="py-2 pr-3">{r.date}</td>
-                  <td className="py-2 pr-3">{r.time}</td>
-                  <td className="py-2 pr-3">{r.panelist}</td>
+                  <td className="py-2 pr-3">{r.timeStart ? to12h(r.timeStart) : ""}</td>
+                  <td className="py-2 pr-3">{Array.isArray(r.panelists) ? r.panelists.join(", ") : ""}</td>
                   <td className="py-2 pr-6">
                     <Pill>{r.verdict}</Pill>
                   </td>
@@ -216,14 +207,14 @@ function AdviserEvents() {
             </thead>
             <tbody>
               {hasFinal ? (
-                data.finalDefense.map((r) => (
-                  <tr key={`fd-${r.no}`} className="border-t border-neutral-200">
-                    <td className="py-2 pl-6 pr-3">{r.no}.</td>
-                    <td className="py-2 pr-3">{r.team}</td>
+                rows.finalDefense.map((r, idx) => (
+                  <tr key={`fd-${r.id}`} className="border-t border-neutral-200">
+                    <td className="py-2 pl-6 pr-3">{idx + 1}.</td>
+                    <td className="py-2 pr-3">{r.teamName}</td>
                     <td className="py-2 pr-3">{r.title}</td>
                     <td className="py-2 pr-3">{r.date}</td>
-                    <td className="py-2 pr-3">{r.time}</td>
-                    <td className="py-2 pr-3">{r.panelist}</td>
+                    <td className="py-2 pr-3">{r.timeStart ? to12h(r.timeStart) : ""}</td>
+                    <td className="py-2 pr-3">{Array.isArray(r.panelists) ? r.panelists.join(", ") : ""}</td>
                     <td className="py-2 pr-6">
                       <Pill>{r.verdict || "Pending"}</Pill>
                     </td>
@@ -233,6 +224,47 @@ function AdviserEvents() {
                 <tr className="border-t border-neutral-200">
                   <td className="py-6 text-center text-neutral-500" colSpan={7}>
                     No final defense items yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </CardTable>
+        </section>
+
+        {/* Final Re-Defense */}
+        <section>
+          <SectionTitle icon={GraduationCap}>Final Re-Defense</SectionTitle>
+          <CardTable>
+            <thead>
+              <tr className="bg-neutral-50/80 text-neutral-600">
+                <th className="text-left py-2 pl-6 pr-3">NO</th>
+                <th className="text-left py-2 pr-3">Team</th>
+                <th className="text-left py-2 pr-3">Title</th>
+                <th className="text-left py-2 pr-3">Date</th>
+                <th className="text-left py-2 pr-3">Time</th>
+                <th className="text-left py-2 pr-3">Panelist</th>
+                <th className="text-left py-2 pr-6">Verdict</th>
+              </tr>
+            </thead>
+            <tbody>
+              {hasReFinal ? (
+                rows.finalRedefense.map((r, idx) => (
+                  <tr key={`frd-${r.id}`} className="border-t border-neutral-200">
+                    <td className="py-2 pl-6 pr-3">{idx + 1}.</td>
+                    <td className="py-2 pr-3">{r.teamName}</td>
+                    <td className="py-2 pr-3">{r.title}</td>
+                    <td className="py-2 pr-3">{r.date}</td>
+                    <td className="py-2 pr-3">{r.timeStart ? to12h(r.timeStart) : ""}</td>
+                    <td className="py-2 pr-3">{Array.isArray(r.panelists) ? r.panelists.join(", ") : ""}</td>
+                    <td className="py-2 pr-6">
+                      <Pill>{r.verdict || "Pending"}</Pill>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="border-t border-neutral-200">
+                  <td className="py-6 text-center text-neutral-500" colSpan={7}>
+                    No final re-defense items yet.
                   </td>
                 </tr>
               )}

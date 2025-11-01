@@ -105,12 +105,6 @@ const AdviserLayout = () => {
             >
               <Calendar className="w-5 h-5" /> Events
             </NavLink>
-            <NavLink
-              to="/adviser/notifications"
-              className={({ isActive }) => item(isActive)}
-            >
-              <Bell className="w-5 h-5" /> Notifications
-            </NavLink>
           </nav>
 
           <div className="mt-auto px-4">
