@@ -135,10 +135,11 @@ export async function notifyTeamSchedule({ kind, teamId, teamName, date, timeSta
     if (timeRange) bodyParts.push(timeRange);
     const body = bodyParts.join(" • ");
 
+    const viewParam = kind === "Manuscript Submission" ? "manuscript" : "defenses";
     const entries = [
-      { role: "Project Manager", link: "/projectmanager/events" },
-      { role: "Adviser", link: "/adviser/events" },
-      { role: "Member", link: "/member/events" },
+      { role: "Project Manager", link: `/projectmanager/events?view=${viewParam}` },
+      { role: "Adviser", link: `/adviser/events?view=${viewParam}` },
+      { role: "Member", link: `/member/events?view=${viewParam}` },
     ];
 
     await Promise.all(

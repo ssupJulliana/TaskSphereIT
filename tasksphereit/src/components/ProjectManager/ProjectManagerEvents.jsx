@@ -1,5 +1,6 @@
 // src/components/ProjectManager/ProjectManagerEvents.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   ClipboardList,
   BookOpenCheck,
@@ -52,6 +53,9 @@ const CardTable = ({ children }) => (
 function ProjectManagerEvents() {
   const [rows, setRows] = useState({ titleDefense: [], manuscript: [], oralDefense: [], finalDefense: [], finalRedefense: [] });
   const [loading, setLoading] = useState(true);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initView = (searchParams.get("view") || "menu").toLowerCase();
+  const [view, setView] = useState(initView);
 
   useEffect(() => {
     let alive = true;
@@ -71,22 +75,52 @@ function ProjectManagerEvents() {
     return () => { alive = false; };
   }, []);
 
+  // keep URL in sync
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (view === "menu") next.delete("view"); else next.set("view", view);
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+
   const hasFinal = useMemo(() => rows.finalDefense.length > 0, [rows.finalDefense.length]);
   const hasReFinal = useMemo(() => rows.finalRedefense.length > 0, [rows.finalRedefense.length]);
 
+  const CategoryCard = ({ title, icon: Icon, onClick }) => (
+    <button onClick={onClick} className="w-[220px] h-[120px] rounded-xl border border-neutral-200 bg-white shadow hover:shadow-md text-left overflow-hidden">
+      <div className="h-full flex">
+        <div className="w-2" style={{ backgroundColor: MAROON }} />
+        <div className="flex-1 p-4 flex items-center gap-3">
+          <Icon className="w-8 h-8 text-neutral-800" />
+          <div className="text-[14px] font-semibold text-neutral-800">{title}</div>
+        </div>
+      </div>
+    </button>
+  );
+
+  const Header = (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 text-[18px] font-semibold" style={{ color: MAROON }}>
+        <ClipboardList className="w-5 h-5" />
+        <span>Events</span>
+      </div>
+      <div className="h-[3px] w-full" style={{ backgroundColor: MAROON }} />
+    </div>
+  );
+
   return (
+    view === "menu" ? (
+      <div className="space-y-4">
+        {Header}
+        <div className="flex gap-4">
+          <CategoryCard title="Manuscript Results" icon={BookOpenCheck} onClick={() => setView("manuscript")} />
+          <CategoryCard title="Capstone Defenses" icon={Presentation} onClick={() => setView("defenses")} />
+        </div>
+      </div>
+    ) : (
     <div className="space-y-4">
       {/* ===== Header (match ProjectManagerTasks) ===== */}
-      <div className="space-y-2">
-        <div
-          className="flex items-center gap-2 text-[18px] font-semibold"
-          style={{ color: MAROON }}
-        >
-          <ClipboardList className="w-5 h-5" />
-          <span>Events</span>
-        </div>
-        <div className="h-[3px] w-full" style={{ backgroundColor: MAROON }} />
-      </div>
+      {Header}
 
       {/* ===== Content ===== */}
       <div className="flex-1 min-w-0 max-w-full overflow-hidden space-y-8">
@@ -276,6 +310,7 @@ function ProjectManagerEvents() {
         
       </div>
     </div>
+    )
   );
 }
 
