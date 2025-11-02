@@ -15,7 +15,9 @@ import {
   Check,
   X as CloseIcon,
 } from "lucide-react";
+
 import { getAdviserEvents } from "../../services/events";
+import { auth } from "../../config/firebase";
 
 /* ===== Firebase ===== */
 import { db } from "../../config/firebase";
@@ -635,12 +637,16 @@ export default function AdviserEvents() {
   // Inline editing state
   const [editingCells, setEditingCells] = useState(new Set()); // Set of 'docId-field' strings
 
+  const uid =
+    auth?.currentUser?.uid ??
+    (typeof window !== "undefined" ? localStorage.getItem("uid") : null);
+
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
         setLoading(true);
-        const res = await getAdviserEvents();
+        const res = await getAdviserEvents(uid);
         const manus = (res.manuscript || []).map((m) => ({
           ...m,
           fileUrl: Array.isArray(m.fileUrl) ? m.fileUrl : [],
