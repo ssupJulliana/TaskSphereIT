@@ -10,16 +10,20 @@ import {
   updateDoc,
   getDocs,
   query,
-  where
+  where,
+  writeBatch, // <-- NEW
 } from "firebase/firestore";
 
 /* ---------- helpers (exported in case you want them elsewhere) ---------- */
 export const fullNameOf = (u = {}) => {
   const m = u.middleName ? ` ${u.middleName}` : "";
-  return `${u.firstName || ""}${m} ${u.lastName || ""}`.replace(/\s+/g, " ").trim();
+  return `${u.firstName || ""}${m} ${u.lastName || ""}`
+    .replace(/\s+/g, " ")
+    .trim();
 };
 export const roleKey = (r = "") => r.toLowerCase();
-export const isPM = (r) => ["project manager", "project_manager", "pm", "manager"].includes(roleKey(r));
+export const isPM = (r) =>
+  ["project manager", "project_manager", "pm", "manager"].includes(roleKey(r));
 export const isMember = (r) => ["member", "student"].includes(roleKey(r));
 export const isAdviser = (r) => ["adviser", "advisor"].includes(roleKey(r));
 
@@ -117,90 +121,128 @@ export function useInstructorTeams() {
     setCtMemberPick("");
   };
 
-  const removeMember = (uid) => setCtMemberIds((v) => v.filter((x) => x !== uid));
+  const removeMember = (uid) =>
+    setCtMemberIds((v) => v.filter((x) => x !== uid));
 
-    const saveCreateTeam = async () => {
-        const pm =
-            managers.find((m) => (m.uid || m.id) === ctManagerId) ||
-            availableManagers.find((m) => (m.uid || m.id) === ctManagerId);
-        if (!pm) return false;
+  // ⬇️ UPDATED: promote PM + create team + placeholders in ONE batch
+  const saveCreateTeam = async () => {
+    try {
+      if (!ctManagerId) return false;
 
-        const pickedMembers = members.filter((m) => ctMemberIds.includes(m.uid || m.id));
-        const teamName = (ctTeamName || `${pm.lastName}, Et Al`).trim();
+      // resolve selected PM from any list
+      const pm =
+        allUsers.find((u) => (u.uid || u.id) === ctManagerId) ||
+        managers.find((u) => (u.uid || u.id) === ctManagerId) ||
+        null;
+      if (!pm) return false;
 
-        // 1) Create the team doc
-        const teamDocRef = await addDoc(collection(db, "teams"), {
-            name: teamName,
-            manager: {
-            uid: pm.uid || pm.id,
-            fullName: pm.fullName,
-            },
-            memberUids: pickedMembers.map((m) => m.uid || m.id),
-            memberNames: pickedMembers.map((m) => m.fullName),
-            adviser: null,
-            createdAt: serverTimestamp(),
-        });
+      // team name
+      const teamName = (
+        ctTeamName ||
+        (pm.lastName
+          ? `${pm.lastName}, Et Al`
+          : `${pm.fullName || "Team"}, Et Al`)
+      ).trim();
 
-        // 2) Create placeholder schedule/docs (Title Defense already existed; kept)
-        await Promise.all([
-            // Title Defense (existing pattern)
-            addDoc(collection(db, "titleDefenseSchedules"), {
-            teamId: teamDocRef.id,
-            teamName,
-            date: "",
-            timeStart: "",
-            timeEnd: "",
-            panelists: [],
-            verdict: "Pending",
-            createdAt: serverTimestamp(),
-            }),
+      // members (exclude the PM if accidentally selected)
+      const pickedMembers = members
+        .filter((m) => ctMemberIds.includes(m.uid || m.id))
+        .filter((m) => (m.uid || m.id) !== (pm.uid || pm.id));
 
-            // Manuscript Submissions (extra params)
-            addDoc(collection(db, "manuscriptSubmissions"), {
-            teamId: teamDocRef.id,
-            teamName,
-            title: "",
-            date: "",
-            time: "",
-            plag: 0,
-            ai: 0,
-            file: "",
-            verdict: "Pending",
-            createdAt: serverTimestamp(),
-            }),
+      const memberUids = pickedMembers.map((m) => m.uid || m.id);
+      const memberNames = pickedMembers.map((m) => m.fullName);
 
-            // Oral Defense
-            addDoc(collection(db, "oralDefenseSchedules"), {
-            teamId: teamDocRef.id,
-            teamName,
-            date: "",
-            timeStart: "",
-            timeEnd: "",
-            panelists: [],
-            verdict: "Pending",
-            createdAt: serverTimestamp(),
-            }),
+      const batch = writeBatch(db);
 
-            // Final Defense
-            addDoc(collection(db, "finalDefenseSchedules"), {
-            teamId: teamDocRef.id,
-            teamName,
-            date: "",
-            timeStart: "",
-            timeEnd: "",
-            panelists: [],
-            verdict: "Pending",
-            createdAt: serverTimestamp(),
-            }),
-        ]);
+      // 1) Promote selected user to Project Manager
+      const managerDocRef = doc(db, "users", pm.id);
+      batch.update(managerDocRef, {
+        role: "Project Manager",
+        updatedAt: serverTimestamp(),
+      });
 
-        // 3) reset UI state
-        setCtManagerId("");
-        setCtTeamName("");
-        setCtMemberIds([]);
-        return true;
-    };
+      // 2) Create team document
+      const teamRef = doc(collection(db, "teams"));
+      batch.set(teamRef, {
+        name: teamName,
+        manager: {
+          uid: pm.uid || pm.id,
+          fullName: pm.fullName,
+        },
+        memberUids,
+        memberNames,
+        adviser: null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
 
+      // 3) Placeholders (same fields as your previous code)
+      const tdRef = doc(collection(db, "titleDefenseSchedules"));
+      batch.set(tdRef, {
+        teamId: teamRef.id,
+        teamName,
+        date: "",
+        timeStart: "",
+        timeEnd: "",
+        panelists: [],
+        verdict: "Pending",
+        createdAt: serverTimestamp(),
+      });
+
+      const msRef = doc(collection(db, "manuscriptSubmissions"));
+      batch.set(msRef, {
+        teamId: teamRef.id,
+        teamName,
+        title: "",
+        date: "",
+        time: "",
+        plag: 0,
+        ai: 0,
+        file: "",
+        verdict: "Pending",
+        createdAt: serverTimestamp(),
+      });
+
+      const odRef = doc(collection(db, "oralDefenseSchedules"));
+      batch.set(odRef, {
+        teamId: teamRef.id,
+        teamName,
+        date: "",
+        timeStart: "",
+        timeEnd: "",
+        panelists: [],
+        verdict: "Pending",
+        createdAt: serverTimestamp(),
+      });
+
+      const fdRef = doc(collection(db, "finalDefenseSchedules"));
+      batch.set(fdRef, {
+        teamId: teamRef.id,
+        teamName,
+        date: "",
+        timeStart: "",
+        timeEnd: "",
+        panelists: [],
+        verdict: "Pending",
+        createdAt: serverTimestamp(),
+      });
+
+      // 4) Commit all changes atomically
+      await batch.commit();
+
+      // 5) reset UI state
+      setCtManagerId("");
+      setCtTeamName("");
+      setCtMemberPick("");
+      setCtMemberIds([]);
+
+      return true;
+    } catch (err) {
+      console.error("saveCreateTeam failed", err);
+      alert(err?.message || "Failed to create team");
+      return false;
+    }
+  };
 
   const saveAssign = async () => {
     if (!asTeamId || !asAdviserUid) return false;
@@ -220,39 +262,36 @@ export function useInstructorTeams() {
     return true;
   };
 
-    const dissolveTeam = async (teamId) => {
-  try {
-    // 1) Delete the team document
-    await deleteDoc(doc(db, "teams", teamId));
+  const dissolveTeam = async (teamId) => {
+    try {
+      // 1) Delete the team document
+      await deleteDoc(doc(db, "teams", teamId));
 
-    // 2) Delete related schedules from all the necessary collections
-    const collectionsToDelete = [
-      "titleDefenseSchedules",
-      "manuscriptSubmissions",
-      "oralDefenseSchedules",
-      "finalDefenseSchedules"
-    ];
+      // 2) Delete related schedules from all the necessary collections
+      const collectionsToDelete = [
+        "titleDefenseSchedules",
+        "manuscriptSubmissions",
+        "oralDefenseSchedules",
+        "finalDefenseSchedules",
+      ];
 
-    // 2.1) Loop through each collection and delete documents that contain teamId as a field
-    await Promise.all(
-      collectionsToDelete.map(async (collectionName) => {
-        const snapshot = await getDocs(
-          query(collection(db, collectionName), where("teamId", "==", teamId))
-        );
-        snapshot.forEach((doc) => deleteDoc(doc.ref)); // delete each matched document
-      })
-    );
+      await Promise.all(
+        collectionsToDelete.map(async (collectionName) => {
+          const snapshot = await getDocs(
+            query(collection(db, collectionName), where("teamId", "==", teamId))
+          );
+          snapshot.forEach((docSnap) => deleteDoc(docSnap.ref));
+        })
+      );
 
-    setMenuOpenId(null); // Close the team menu after dissolution
-  } catch (err) {
-    console.error("Failed to dissolve team:", err);
-    alert("Failed to dissolve team. See console for details.");
-  }
-};
+      setMenuOpenId(null);
+    } catch (err) {
+      console.error("Failed to dissolve team:", err);
+      alert("Failed to dissolve team. See console for details.");
+    }
+  };
 
-
-
-  /* === NEW: edit team (rename / change PM / members) === */
+  /* === edit team (rename / change PM / members) === */
   const editTeam = async (teamId, { managerUid, teamName, memberUids }) => {
     if (!teamId) return false;
 
@@ -263,15 +302,17 @@ export function useInstructorTeams() {
       null;
 
     // resolve member names
-    const picked = (memberUids || []).map((uid) =>
-      allUsers.find((u) => (u.uid || u.id) === uid) ||
-      members.find((u) => (u.uid || u.id) === uid) ||
-      { uid, fullName: uid }
+    const picked = (memberUids || []).map(
+      (uid) =>
+        allUsers.find((u) => (u.uid || u.id) === uid) ||
+        members.find((u) => (u.uid || u.id) === uid) || { uid, fullName: uid }
     );
 
     await updateDoc(doc(db, "teams", teamId), {
       ...(teamName ? { name: teamName } : {}),
-      ...(pm ? { manager: { uid: pm.uid || pm.id, fullName: pm.fullName } } : {}),
+      ...(pm
+        ? { manager: { uid: pm.uid || pm.id, fullName: pm.fullName } }
+        : {}),
       memberUids: picked.map((m) => m.uid || m.id),
       memberNames: picked.map((m) => m.fullName),
     });
@@ -315,7 +356,7 @@ export function useInstructorTeams() {
     setMenuOpenId,
     dissolveTeam,
 
-    // NEW
+    // edit
     editTeam,
   };
 }

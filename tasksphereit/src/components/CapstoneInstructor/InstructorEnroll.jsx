@@ -61,7 +61,7 @@ export const downloadTemplate = async () => {
   // For a PUBLIC bucket
   const { data } = supabase.storage
     .from("template")
-    .getPublicUrl("Template-list.xlsx");
+    .getPublicUrl("Template.xlsx");
   const url = data.publicUrl;
 
   const res = await fetch(url);
@@ -70,7 +70,7 @@ export const downloadTemplate = async () => {
   const blob = await res.blob();
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "Template-list.xlsx";
+  a.download = "Template.xlsx";
   document.body.appendChild(a);
   a.click();
   URL.revokeObjectURL(a.href);

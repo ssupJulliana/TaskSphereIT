@@ -14,9 +14,64 @@ const ExcelModal = {
     onFileChange,
     onClose,
     selectedType = "Student", // Default type as Student
-    saveImportedRows,
+    saveImportedRows, // (kept for signature compatibility)
   }) => {
     let currentType = selectedType;
+
+    // -- keep ONLY the four fields we care about; ignore everything else ----
+    const pick = (obj, candidates = []) => {
+      for (const k of candidates) {
+        if (obj && obj[k] != null && String(obj[k]).trim() !== "")
+          return String(obj[k]).trim();
+      }
+      return "";
+    };
+
+    const normalizeOne = (r = {}) => {
+      // accept common header variants from spreadsheets
+      const idNumber = pick(r, [
+        "idNumber",
+        "ID Number",
+        "Id Number",
+        "ID",
+        "Id",
+        "Student Number",
+      ]);
+      const lastName = pick(r, [
+        "lastName",
+        "Last Name",
+        "Lastname",
+        "SURNAME",
+      ]);
+      const firstName = pick(r, [
+        "firstName",
+        "First Name",
+        "Firstname",
+        "Given Name",
+        "Given",
+      ]);
+      const middleName = pick(r, [
+        "middleName",
+        "Middle Name",
+        "Middlename",
+        "Middle",
+        "MI",
+        "Middle Initial",
+      ]);
+
+      return {
+        _select: r._select ?? true,
+        idNumber,
+        lastName,
+        firstName,
+        middleName, // keep full middle name; we render it as-is
+      };
+    };
+
+    // sanitize the incoming rows in-place list for consistent usage below
+    let rowsData = Array.isArray(rows) ? rows.map(normalizeOne) : [];
+
+    // ----------------------------------------------------------------------
 
     const handleAttachFile = () => {
       const input = document.createElement("input");
@@ -28,7 +83,7 @@ const ExcelModal = {
     };
 
     const handleReset = () => {
-      rows.length = 0;
+      rowsData = [];
       ExcelModal.show({
         rows: [],
         parsing: false,
@@ -37,7 +92,7 @@ const ExcelModal = {
         onFileChange,
         onClose,
         selectedType: currentType,
-        saveImportedRows, // Make sure to pass saveImportedRows here
+        saveImportedRows,
       });
     };
 
@@ -66,28 +121,6 @@ const ExcelModal = {
       </div>
     `;
 
-    const renderContent = () => {
-      let content = renderRadioButtons();
-
-      if (err) {
-        content += `
-          <div class="mb-4 text-sm text-red-600">${err}</div>
-          ${rows.length === 0 ? renderAttachButton() : renderTable()}
-        `;
-      } else if (parsing) {
-        content += `<div class="py-10 text-center text-sm text-neutral-600">Reading file…</div>`;
-      } else if (rows.length === 0) {
-        content += ` 
-          <div class="text-center mb-4">${renderAttachButton()}</div>
-          <div class="py-10 text-center text-sm text-neutral-600">No rows found.</div>
-        `;
-      } else {
-        content += renderTable();
-      }
-
-      return content;
-    };
-
     const renderAttachButton = () => `
       <button
         id="attach-file-btn"
@@ -101,56 +134,79 @@ const ExcelModal = {
     `;
 
     const renderTable = () => {
-      const rowsHtml = rows
+      const rowsHtml = rowsData
         .map(
           (r, i) => `
-        <tr class="text-sm">
-          <td class="px-4 py-2 text-left">
-            <input type="checkbox" class="row-checkbox" data-index="${i}" ${
+            <tr class="text-sm">
+              <td class="px-4 py-2 text-left">
+                <input type="checkbox" class="row-checkbox" data-index="${i}" ${
             r._select ? "checked" : ""
           } />
-          </td>
-          <td class="px-4 py-2 text-left">${r.idNumber || ""}</td>
-          <td class="px-4 py-2 text-left">${r.lastName || ""}</td>
-          <td class="px-4 py-2 text-left">${r.firstName || ""}</td>
-          <td class="px-4 py-2 text-left">${
-            r.middleName ? `${r.middleName[0].toUpperCase()}.` : ""
-          }</td>
-        </tr>
-      `
+              </td>
+              <td class="px-4 py-2 text-left">${r.idNumber || ""}</td>
+              <td class="px-4 py-2 text-left">${r.lastName || ""}</td>
+              <td class="px-4 py-2 text-left">${r.firstName || ""}</td>
+              <td class="px-4 py-2 text-left">${r.middleName || ""}</td>
+            </tr>
+          `
         )
         .join("");
 
-      const allChecked = rows.every((r) => r._select);
+      const allChecked =
+        rowsData.length > 0 && rowsData.every((r) => r._select);
 
       return `
-    <div class="border border-neutral-200 rounded-xl overflow-hidden">
-      <div class="overflow-auto max-h-96">
-        <table class="min-w-full divide-y divide-neutral-200">
-          <thead class="bg-neutral-100">
-            <tr>
-              <th class="px-4 py-2 text-left text-xs font-semibold text-neutral-700">
-                <input type="checkbox" id="select-all" ${
-                  allChecked ? "checked" : ""
-                } />
-              </th>
-              <th class="px-4 py-2 text-left text-xs font-semibold text-neutral-700">ID Number</th>
-              <th class="px-4 py-2 text-left text-xs font-semibold text-neutral-700">Last Name</th>
-              <th class="px-4 py-2 text-left text-xs font-semibold text-neutral-700">First Name</th>
-              <th class="px-4 py-2 text-left text-xs font-semibold text-neutral-700">Middle Initial</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-neutral-200">${rowsHtml}</tbody>
-        </table>
-      </div>
-    </div>
-  `;
+        <div class="border border-neutral-200 rounded-xl overflow-hidden">
+          <div class="overflow-auto max-h-96">
+            <table class="min-w-full divide-y divide-neutral-200">
+              <thead class="bg-neutral-100">
+                <tr>
+                  <th class="px-4 py-2 text-left text-xs font-semibold text-neutral-700">
+                    <input type="checkbox" id="select-all" ${
+                      allChecked ? "checked" : ""
+                    } />
+                  </th>
+                  <th class="px-4 py-2 text-left text-xs font-semibold text-neutral-700">ID Number</th>
+                  <th class="px-4 py-2 text-left text-xs font-semibold text-neutral-700">Last Name</th>
+                  <th class="px-4 py-2 text-left text-xs font-semibold text-neutral-700">First Name</th>
+                  <th class="px-4 py-2 text-left text-xs font-semibold text-neutral-700">Middle Name</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-neutral-200">${rowsHtml}</tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    };
+
+    const renderContent = () => {
+      let content = renderRadioButtons();
+
+      if (err) {
+        content += `
+          <div class="mb-4 text-sm text-red-600">${err}</div>
+          ${rowsData.length === 0 ? renderAttachButton() : renderTable()}
+        `;
+      } else if (parsing) {
+        content += `<div class="py-10 text-center text-sm text-neutral-600">Reading file…</div>`;
+      } else if (rowsData.length === 0) {
+        content += ` 
+          <div class="text-center mb-4">${renderAttachButton()}</div>
+          <div class="py-10 text-center text-sm text-neutral-600">No rows found.</div>
+        `;
+      } else {
+        content += renderTable();
+      }
+
+      return content;
     };
 
     MySwal.fire({
       title: `
-    <span class="text-[#6A0F14] text-xl font-semibold" style="display: block; text-align: left;">Import Preview (${rows.length})</span>
-  `,
+        <span class="text-[#6A0F14] text-xl font-semibold" style="display: block; text-align: left;">
+          Import Preview (${rowsData.length})
+        </span>
+      `,
       html: renderContent(),
       width: "56rem",
       showCancelButton: true,
@@ -183,56 +239,56 @@ const ExcelModal = {
           });
 
         const attachBtn = document.getElementById("attach-file-btn");
-        if (attachBtn) {
-          attachBtn.addEventListener("click", handleAttachFile);
-        }
+        if (attachBtn) attachBtn.addEventListener("click", handleAttachFile);
 
         const selectAll = document.getElementById("select-all");
         if (selectAll) {
           selectAll.addEventListener("change", (e) => {
             const checked = e.target.checked;
-            rows.forEach((r) => {
-              r._select = checked;
-            });
-            document.querySelectorAll(".row-checkbox").forEach((cb) => {
-              cb.checked = checked;
-            });
+            rowsData.forEach((r) => (r._select = checked));
+            document
+              .querySelectorAll(".row-checkbox")
+              .forEach((cb) => (cb.checked = checked));
           });
         }
 
         document.querySelectorAll(".row-checkbox").forEach((cb) => {
           cb.addEventListener("change", (e) => {
-            const index = parseInt(e.target.dataset.index);
-            rows[index]._select = e.target.checked;
+            const index = parseInt(e.target.dataset.index, 10);
+            rowsData[index]._select = e.target.checked;
 
             const selectAllCheckbox = document.getElementById("select-all");
             if (selectAllCheckbox) {
-              selectAllCheckbox.checked = rows.every((r) => r._select);
+              selectAllCheckbox.checked = rowsData.every((r) => r._select);
             }
           });
         });
       },
     }).then(async (result) => {
       if (result.isConfirmed) {
-        // Show loading state
         MySwal.fire({
           title: "Saving Users...",
           text: "Please wait while users are being saved.",
           icon: "info",
           allowOutsideClick: false,
           showConfirmButton: false,
-          didOpen: () => {
-            MySwal.showLoading();
-          },
+          didOpen: () => MySwal.showLoading(),
         });
 
-        console.log(saveImportedUsers);
-
         try {
-          // Call saveImportedRows function with rows and role
-          await saveImportedUsers(rows, currentType);
+          // Only send the four fields (+ _select) and ignore everything else
+          const payload = rowsData.map(
+            ({ _select, idNumber, lastName, firstName, middleName }) => ({
+              _select,
+              idNumber,
+              lastName,
+              firstName,
+              middleName,
+            })
+          );
 
-          // Close loading and show success message
+          await saveImportedUsers(payload, currentType);
+
           MySwal.fire({
             title: "Success!",
             text: "Users have been saved successfully.",
