@@ -10,6 +10,10 @@ import {
   X,
   Download,
   ExternalLink,
+  MoreVertical,
+  Edit,
+  Check,
+  X as CloseIcon,
 } from "lucide-react";
 import { getAdviserEvents } from "../../services/events";
 
@@ -43,11 +47,267 @@ const CardTable = ({ children }) => (
   </div>
 );
 
-const Pill = ({ children }) => (
-  <span className="px-3 py-1 rounded-full text-xs inline-flex border border-neutral-300 text-neutral-700">
+const Pill = ({ children, editable, onClick }) => (
+  <span
+    onClick={onClick}
+    className={`px-3 py-1 rounded-full text-xs inline-flex border border-neutral-300 text-neutral-700 ${
+      editable
+        ? "cursor-pointer hover:bg-neutral-50 hover:border-neutral-400"
+        : ""
+    }`}
+  >
     {children}
   </span>
 );
+
+/* ============ Editable Cell ============ */
+function EditableCell({
+  value,
+  row,
+  field,
+  onSave,
+  editing,
+  onEdit,
+  onCancel,
+  type = "number",
+}) {
+  const [editValue, setEditValue] = useState(
+    value?.toString() || (type === "number" ? "0" : "")
+  );
+
+  useEffect(() => {
+    setEditValue(value?.toString() || (type === "number" ? "0" : ""));
+  }, [value, type]);
+
+  const handleChange = (newValue) => {
+    if (type === "number") {
+      // Only allow numbers and limit to 100
+      const numValue = newValue.replace(/[^0-9]/g, "");
+      if (
+        numValue === "" ||
+        (parseInt(numValue) >= 0 && parseInt(numValue) <= 100)
+      ) {
+        setEditValue(numValue === "" ? "" : numValue);
+      }
+    } else {
+      setEditValue(newValue);
+    }
+  };
+
+  const handleSave = () => {
+    let finalValue;
+    if (type === "number") {
+      finalValue = editValue === "" ? 0 : parseInt(editValue);
+    } else {
+      finalValue = editValue.trim();
+    }
+    onSave(row.id, field, finalValue);
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.key === "Enter") {
+      handleSave();
+    } else if (e.key === "Escape") {
+      onCancel();
+    }
+  };
+
+  if (editing) {
+    if (type === "select") {
+      return (
+        <div className="flex items-center gap-1">
+          <select
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={handleKeyPress}
+            className="px-2 py-1 border border-neutral-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+            autoFocus
+          >
+            <option value="Pending">Pending</option>
+            <option value="Passed">Passed</option>
+            <option value="Failed">Failed</option>
+            <option value="Revision">Revision</option>
+          </select>
+          <button
+            onClick={handleSave}
+            className="p-1 text-green-600 hover:bg-green-50 rounded"
+            title="Save"
+          >
+            <Check className="w-3 h-3" />
+          </button>
+          <button
+            onClick={onCancel}
+            className="p-1 text-red-600 hover:bg-red-50 rounded"
+            title="Cancel"
+          >
+            <CloseIcon className="w-3 h-3" />
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex items-center gap-1">
+        <input
+          type="text"
+          value={editValue}
+          onChange={(e) => handleChange(e.target.value)}
+          onKeyDown={handleKeyPress}
+          className={`px-2 py-1 border border-neutral-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+            type === "number" ? "w-16" : "w-24"
+          }`}
+          autoFocus
+        />
+        <button
+          onClick={handleSave}
+          className="p-1 text-green-600 hover:bg-green-50 rounded"
+          title="Save"
+        >
+          <Check className="w-3 h-3" />
+        </button>
+        <button
+          onClick={onCancel}
+          className="p-1 text-red-600 hover:bg-red-50 rounded"
+          title="Cancel"
+        >
+          <CloseIcon className="w-3 h-3" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1 group">
+      <span>{type === "number" ? `${value ?? 0}%` : value}</span>
+      <button
+        onClick={() => onEdit(row.id, field)}
+        className="p-1 opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-neutral-600 rounded transition-opacity"
+        title="Edit"
+      >
+        <Edit className="w-3 h-3" />
+      </button>
+    </div>
+  );
+}
+
+/* ============ Editable Verdict ============ */
+function EditableVerdict({ value, row, onSave, editing, onEdit, onCancel }) {
+  const [editValue, setEditValue] = useState(value || "Pending");
+
+  useEffect(() => {
+    setEditValue(value || "Pending");
+  }, [value]);
+
+  const handleSave = () => {
+    onSave(row.id, "verdict", editValue);
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.key === "Enter") {
+      handleSave();
+    } else if (e.key === "Escape") {
+      onCancel();
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1">
+        <select
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onKeyDown={handleKeyPress}
+          className="px-2 py-1 border border-neutral-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+          autoFocus
+        >
+          <option value="Pending">Pending</option>
+          <option value="Passed">Passed</option>
+          <option value="Failed">Failed</option>
+          <option value="Revision">Revision</option>
+        </select>
+        <button
+          onClick={handleSave}
+          className="p-1 text-green-600 hover:bg-green-50 rounded"
+          title="Save"
+        >
+          <Check className="w-3 h-3" />
+        </button>
+        <button
+          onClick={onCancel}
+          className="p-1 text-red-600 hover:bg-red-50 rounded"
+          title="Cancel"
+        >
+          <CloseIcon className="w-3 h-3" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1 group">
+      <Pill>{value || "Pending"}</Pill>
+      <button
+        onClick={() => onEdit(row.id, "verdict")}
+        className="p-1 opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-neutral-600 rounded transition-opacity"
+        title="Edit"
+      >
+        <Edit className="w-3 h-3" />
+      </button>
+    </div>
+  );
+}
+
+/* ============ Kebab Menu ============ */
+function KebabMenu({ row, onEdit, canEdit }) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="p-1 rounded-md hover:bg-neutral-100 text-neutral-500"
+        aria-label="More options"
+      >
+        <MoreVertical className="w-4 h-4" />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-6 bg-white border border-neutral-200 rounded-md shadow-lg z-10 min-w-[120px]">
+          <button
+            onClick={() => {
+              onEdit(row);
+              setOpen(false);
+            }}
+            disabled={!canEdit}
+            className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-neutral-50 text-left ${
+              !canEdit ? "opacity-50 cursor-not-allowed" : ""
+            }`}
+            title={
+              !canEdit
+                ? "Cannot edit: Due date and time not set"
+                : "Update scores"
+            }
+          >
+            <Edit className="w-4 h-4" />
+            Update
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ============ Upload helpers ============ */
 const safeName = (name = "") =>
@@ -87,7 +347,7 @@ async function upsertFileUrl(docId, nextList) {
   }
 }
 
-/* ============ Modal ============ */
+/* ============ Upload Modal ============ */
 function UploadModal({ open, row, onClose, onSaved }) {
   const [pendingFiles, setPendingFiles] = useState([]);
   const [existing, setExisting] = useState([]);
@@ -262,7 +522,7 @@ function UploadModal({ open, row, onClose, onSaved }) {
                   </ul>
                 ) : (
                   <div className="text-sm text-neutral-600">
-                    There’s no uploaded file yet.
+                    There's no uploaded file yet.
                   </div>
                 )}
               </div>
@@ -372,6 +632,9 @@ export default function AdviserEvents() {
   // Upload modal state
   const [uploadRow, setUploadRow] = useState(null);
 
+  // Inline editing state
+  const [editingCells, setEditingCells] = useState(new Set()); // Set of 'docId-field' strings
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -411,6 +674,63 @@ export default function AdviserEvents() {
     setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, defTab]);
+
+  const canEditRow = (row) => {
+    return !!(row.date && row.time);
+  };
+
+  const handleSaveScore = async (docId, field, value) => {
+    try {
+      const ref = doc(db, MANUSCRIPT_COLLECTION, docId);
+      await updateDoc(ref, { [field]: value });
+
+      // Update local state
+      setRows((prev) => ({
+        ...prev,
+        manuscript: prev.manuscript.map((m) =>
+          m.id === docId ? { ...m, [field]: value } : m
+        ),
+      }));
+
+      // Remove from editing set
+      setEditingCells((prev) => {
+        const next = new Set(prev);
+        next.delete(`${docId}-${field}`);
+        return next;
+      });
+    } catch (error) {
+      console.error("Failed to update score:", error);
+      alert("Failed to update score. Please try again.");
+    }
+  };
+
+  const handleEditCell = (docId, field) => {
+    const row = rows.manuscript.find((m) => m.id === docId);
+    if (row && canEditRow(row)) {
+      setEditingCells((prev) => new Set(prev).add(`${docId}-${field}`));
+    }
+  };
+
+  const handleBulkEdit = (row) => {
+    if (canEditRow(row)) {
+      // Enable editing for all three fields at once
+      setEditingCells(
+        new Set([`${row.id}-plag`, `${row.id}-ai`, `${row.id}-verdict`])
+      );
+    }
+  };
+
+  const handleCancelEdit = (docId, field) => {
+    setEditingCells((prev) => {
+      const next = new Set(prev);
+      next.delete(`${docId}-${field}`);
+      return next;
+    });
+  };
+
+  const isEditing = (docId, field) => {
+    return editingCells.has(`${docId}-${field}`);
+  };
 
   const Header = (
     <div className="space-y-2">
@@ -474,6 +794,17 @@ export default function AdviserEvents() {
               Manuscript Results
             </h2>
           </div>
+
+          {/* Instructions */}
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-800">
+              <strong>Note:</strong> You can only edit scores and verdict when a
+              due date and time are set by the instructor. Click the edit icons
+              next to each field or use the "Update" action to edit all fields
+              at once.
+            </p>
+          </div>
+
           <CardTable>
             <thead>
               <tr className="bg-neutral-50/80 text-neutral-600">
@@ -484,38 +815,104 @@ export default function AdviserEvents() {
                 <th className="text-left py-2 pr-3">Time</th>
                 <th className="text-left py-2 pr-3">Plagiarism</th>
                 <th className="text-left py-2 pr-3">AI</th>
+                <th className="text-left py-2 pr-3">Verdict</th>
                 <th className="text-left py-2 pr-3">File Uploaded</th>
-                <th className="text-left py-2 pr-6">Status</th>
+                <th className="text-left py-2 pr-6">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {(loading ? [] : rows.manuscript).map((r, idx) => (
-                <tr key={`ms-${r.id}`} className="border-t border-neutral-200">
-                  <td className="py-2 pl-6 pr-3">{idx + 1}.</td>
-                  <td className="py-2 pr-3">{r.teamName}</td>
-                  <td className="py-2 pr-3">{r.title}</td>
-                  <td className="py-2 pr-3">{r.date}</td>
-                  <td className="py-2 pr-3">{to12h(r.time)}</td>
-                  <td className="py-2 pr-3">{`${r.plag ?? 0}%`}</td>
-                  <td className="py-2 pr-3">{`${r.ai ?? 0}%`}</td>
+              {(loading ? [] : rows.manuscript).map((r, idx) => {
+                const canEdit = canEditRow(r);
+                const editingPlag = isEditing(r.id, "plag");
+                const editingAI = isEditing(r.id, "ai");
+                const editingVerdict = isEditing(r.id, "verdict");
 
-                  {/* Upload button + modal */}
-                  <td className="py-2 pr-3">
-                    <button
-                      type="button"
-                      onClick={() => setUploadRow(r)}
-                      className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-50"
-                    >
-                      <Paperclip className="w-4 h-4" />
-                      Upload File
-                    </button>
-                  </td>
+                return (
+                  <tr
+                    key={`ms-${r.id}`}
+                    className="border-t border-neutral-200"
+                  >
+                    <td className="py-2 pl-6 pr-3">{idx + 1}.</td>
+                    <td className="py-2 pr-3">{r.teamName}</td>
+                    <td className="py-2 pr-3">{r.title}</td>
+                    <td className="py-2 pr-3">
+                      {r.date || (
+                        <span className="text-red-500 text-xs">Not set</span>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3">
+                      {r.time ? (
+                        to12h(r.time)
+                      ) : (
+                        <span className="text-red-500 text-xs">Not set</span>
+                      )}
+                    </td>
 
-                  <td className="py-2 pr-6">
-                    <Pill>{r.verdict}</Pill>
-                  </td>
-                </tr>
-              ))}
+                    {/* Plagiarism Score - Editable */}
+                    <td className="py-2 pr-3">
+                      <EditableCell
+                        value={r.plag}
+                        row={r}
+                        field="plag"
+                        onSave={handleSaveScore}
+                        editing={editingPlag}
+                        onEdit={handleEditCell}
+                        onCancel={() => handleCancelEdit(r.id, "plag")}
+                        type="number"
+                      />
+                    </td>
+
+                    {/* AI Score - Editable */}
+                    <td className="py-2 pr-3">
+                      <EditableCell
+                        value={r.ai}
+                        row={r}
+                        field="ai"
+                        onSave={handleSaveScore}
+                        editing={editingAI}
+                        onEdit={handleEditCell}
+                        onCancel={() => handleCancelEdit(r.id, "ai")}
+                        type="number"
+                      />
+                    </td>
+
+                    {/* Verdict - Editable */}
+                    <td className="py-2 pr-3">
+                      <EditableCell
+                        value={r.verdict}
+                        row={r}
+                        field="verdict"
+                        onSave={handleSaveScore}
+                        editing={editingVerdict}
+                        onEdit={handleEditCell}
+                        onCancel={() => handleCancelEdit(r.id, "verdict")}
+                        type="select"
+                      />
+                    </td>
+
+                    {/* Upload button + modal */}
+                    <td className="py-2 pr-3">
+                      <button
+                        type="button"
+                        onClick={() => setUploadRow(r)}
+                        className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-50"
+                      >
+                        <Paperclip className="w-4 h-4" />
+                        Upload File
+                      </button>
+                    </td>
+
+                    {/* Kebab Menu */}
+                    <td className="py-2 pr-6">
+                      <KebabMenu
+                        row={r}
+                        onEdit={handleBulkEdit}
+                        canEdit={canEdit}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </CardTable>
 

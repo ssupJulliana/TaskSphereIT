@@ -63,6 +63,30 @@ const DOC_TASKS = [
 ];
 const DISCUSS_TASKS = ["Capstone Meeting"];
 
+const STATUS_OPTIONS = ["To Do", "To Review", "In Progress", "Completed"];
+
+/* ---------- helpers ---------- */
+const localTodayStr = () => {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+  return local.toISOString().split("T")[0];
+};
+
+const ordinal = (n) => {
+  if (n % 100 >= 11 && n % 100 <= 13) return `${n}th`;
+  const r = n % 10;
+  if (r === 1) return `${n}st`;
+  if (r === 2) return `${n}nd`;
+  if (r === 3) return `${n}rd`;
+  return `${n}th`;
+};
+const parseRevCount = (rev) => {
+  const m = String(rev || "").match(/^(\d+)(st|nd|rd|th)\s+Revision$/i);
+  return m ? parseInt(m[1], 10) : 0;
+};
+const nextRevision = (prev = "No Revision") =>
+  `${ordinal(parseRevCount(prev) + 1)} Revision`;
+
 const StatusBadge = ({ value }) => {
   if (!value || value === "null") return <span>null</span>;
   const map = {
@@ -148,6 +172,8 @@ function EditTaskDialog({
   const [filesToDelete, setFilesToDelete] = useState([]);
   const fileInputRef = useRef(null);
 
+  const today = localTodayStr();
+
   useEffect(() => {
     if (!open) return;
     setTeamId(existingTask?.team?.id || teams[0]?.id || "");
@@ -199,7 +225,7 @@ function EditTaskDialog({
     return [];
   }, [type]);
 
-  const canSave = teamId && type && task && assignees.length > 0;
+  const canSave = teamId && type && task && assignees.length > 0 && !!time;
 
   const handleAttachClick = () => fileInputRef.current?.click();
   const onFilePicked = (e) => {
@@ -257,6 +283,14 @@ function EditTaskDialog({
 
       const finalFileUrl = [...attachedFiles, ...uploaded];
 
+      // compute revision bump if date/time changed on edit
+      let revision = (existingTask && existingTask.revision) || "No Revision";
+      const dueChanged = existingTask && due !== (existingTask.dueDate || "");
+      const timeChanged = existingTask && time !== (existingTask.dueTime || "");
+      if (existingTask && (dueChanged || timeChanged)) {
+        revision = nextRevision(revision);
+      }
+
       const basePayload = {
         phase: "Planning",
         type,
@@ -266,7 +300,7 @@ function EditTaskDialog({
         dueTime: time || null,
         dueAtMs: due && time ? new Date(`${due}T${time}:00`).getTime() : null,
         status: existingTask?.status || "To Do",
-        revision: existingTask?.revision || "No Revision",
+        revision,
         assignees: assignees.map((a) => ({ uid: a.uid, name: a.name })),
         team: team ? { id: team.id, name: team.name } : null,
         comment: comment || "",
@@ -412,6 +446,7 @@ function EditTaskDialog({
                 </label>
                 <input
                   type="date"
+                  min={today}
                   className="w-full rounded-lg border border-neutral-300 px-3 py-2"
                   value={due}
                   onChange={(e) => setDue(e.target.value)}
@@ -423,9 +458,40 @@ function EditTaskDialog({
                 </label>
                 <input
                   type="time"
+                  step={600} // 10 minutes
                   className="w-full rounded-lg border border-neutral-300 px-3 py-2"
                   value={time}
-                  onChange={(e) => setTime(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (!v) return setTime("");
+                    const [H, M] = v.split(":").map(Number);
+                    let mm = Math.round(M / 10) * 10;
+                    let hh = H;
+                    if (mm === 60) {
+                      mm = 0;
+                      hh = (hh + 1) % 24;
+                    }
+                    const snapped = `${String(hh).padStart(2, "0")}:${String(
+                      mm
+                    ).padStart(2, "0")}`;
+                    setTime(snapped);
+                  }}
+                  onBlur={(e) => {
+                    const v = e.target.value;
+                    if (!v) return;
+                    const [H, M] = v.split(":").map(Number);
+                    let mm = Math.round(M / 10) * 10;
+                    let hh = H;
+                    if (mm === 60) {
+                      mm = 0;
+                      hh = (hh + 1) % 24;
+                    }
+                    const snapped = `${String(hh).padStart(2, "0")}:${String(
+                      mm
+                    ).padStart(2, "0")}`;
+                    if (snapped !== v) e.target.value = snapped;
+                    setTime(snapped);
+                  }}
                 />
               </div>
             </div>
@@ -642,10 +708,10 @@ const TitleDefense = ({ onBack }) => {
   const [deletingId, setDeletingId] = useState(null); // task id
 
   // which cell is being inline-edited
-  const [editingCell, setEditingCell] = useState(null); // {key, field:'type'|'task'|'due'|'time'}
+  const [editingCell, setEditingCell] = useState(null); // {key, field:'type'|'task'|'due'|'time'|'status'}
 
   // Optimistic overlay
-  const [optimistic, setOptimistic] = useState({}); // {[memberUid]: {type?, task?, due?, time?}}
+  const [optimistic, setOptimistic] = useState({}); // {[memberUid]: {type?, task?, due?, time?, status?}}
 
   // current PM
   const pmUid = auth.currentUser?.uid || localStorage.getItem("uid") || "";
@@ -656,6 +722,8 @@ const TitleDefense = ({ onBack }) => {
 
   // raw task docs created by this PM
   const [tasks, setTasks] = useState([]);
+
+  const today = localTodayStr();
 
   /* PM profile */
   useEffect(() => {
@@ -756,51 +824,50 @@ const TitleDefense = ({ onBack }) => {
     return () => unsub && unsub();
   }, [pmUid]);
 
-  /* Build table rows: per member, latest task (if any) + optimistic overlay */
+  /* Build table rows: only members who have non-completed tasks (each task = 1 row) */
   const rows = useMemo(() => {
-    const latestByMember = new Map(); // uid -> task
-    for (const t of tasks) {
-      for (const a of t.assignees || []) {
-        if (!a?.uid) continue;
-        const prev = latestByMember.get(a.uid);
-        const prevTs = prev?.createdAt?.toDate?.() ?? null;
-        const curTs = t?.createdAt?.toDate?.() ?? null;
-        if (!prev || (curTs && prevTs && curTs > prevTs))
-          latestByMember.set(a.uid, t);
-      }
-    }
+    const rowsWithTasks = [];
 
-    return members.map((m) => {
-      const t = latestByMember.get(m.uid) || null;
-      const base = {
-        key: m.uid,
-        memberUid: m.uid,
-        memberName: m.name,
-        taskId: t?.id || null,
-        type: t?.type || "null",
-        task: t?.task || "null",
-        created: t?.createdAt?.toDate?.()?.toLocaleDateString?.() || "null",
-        due: t?.dueDate || "null",
-        time: t?.dueTime || "null",
-        revision: t ? t.revision || "No Revision" : "null",
-        status: t ? t.status || "To Do" : "null",
-        phase: t?.phase || "Planning",
-        existingTask: t || null,
-      };
+    members.forEach((m) => {
+      const relatedTasks = tasks.filter(
+        (t) =>
+          (t.assignees || []).some((a) => a.uid === m.uid) &&
+          (t.status || "To Do") !== "Completed"
+      );
 
-      const opt = optimistic[m.uid];
-      if (opt) {
-        if (opt.type !== undefined) base.type = opt.type || "null";
-        if (opt.task !== undefined) base.task = opt.task || "null";
-        if (opt.due !== undefined) base.due = opt.due || "null";
-        if (opt.time !== undefined) base.time = opt.time || "null";
-      }
+      relatedTasks.forEach((t) => {
+        const base = {
+          key: `${m.uid}-${t.id}`,
+          memberUid: m.uid,
+          memberName: m.name,
+          taskId: t.id,
+          type: t.type || "null",
+          task: t.task || "null",
+          created: t?.createdAt?.toDate?.()?.toLocaleDateString?.() || "null",
+          due: t.dueDate || "null",
+          time: t.dueTime || "null",
+          revision: t.revision || "No Revision",
+          status: t.status || "To Do",
+          phase: t.phase || "Planning",
+          existingTask: t,
+        };
 
-      return base;
+        const opt = optimistic[m.uid];
+        if (opt) {
+          if (opt.type !== undefined) base.type = opt.type || "null";
+          if (opt.task !== undefined) base.task = opt.task || "null";
+          if (opt.due !== undefined) base.due = opt.due || "null";
+          if (opt.time !== undefined) base.time = opt.time || "null";
+          if (opt.status !== undefined) base.status = opt.status || "To Do";
+        }
+
+        rowsWithTasks.push(base);
+      });
     });
+
+    return rowsWithTasks;
   }, [members, tasks, optimistic]);
 
-  /* Search + paging */
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return rows;
@@ -892,9 +959,18 @@ const TitleDefense = ({ onBack }) => {
     const time = currentVal(row, "time"); // HH:mm or ""
     const dueAtMs =
       newDate && time ? new Date(`${newDate}T${time}:00`).getTime() : null;
+
+    // bump revision if changed
+    const changed = (row.existingTask?.dueDate || "") !== (newDate || "");
+    const rev = changed ? nextRevision(row.revision) : row.revision;
+
     await upsertForMember(
       row,
-      { dueDate: newDate || null, dueAtMs },
+      {
+        dueDate: newDate || null,
+        dueAtMs,
+        ...(changed ? { revision: rev } : {}),
+      },
       { due: newDate || "null", ...(newDate ? {} : { time: "null" }) }
     );
     stopEdit();
@@ -904,10 +980,28 @@ const TitleDefense = ({ onBack }) => {
     const due = currentVal(row, "due"); // YYYY-MM-DD or ""
     const dueAtMs =
       due && newTime ? new Date(`${due}T${newTime}:00`).getTime() : null;
+
+    // bump revision if changed
+    const changed = (row.existingTask?.dueTime || "") !== (newTime || "");
+    const rev = changed ? nextRevision(row.revision) : row.revision;
+
     await upsertForMember(
       row,
-      { dueTime: newTime || null, dueAtMs },
+      {
+        dueTime: newTime || null,
+        dueAtMs,
+        ...(changed ? { revision: rev } : {}),
+      },
       { time: newTime || "null" }
+    );
+    stopEdit();
+  };
+
+  const saveStatus = async (row, newStatus) => {
+    await upsertForMember(
+      row,
+      { status: newStatus || "To Do" },
+      { status: newStatus || "To Do" }
     );
     stopEdit();
   };
@@ -955,6 +1049,21 @@ const TitleDefense = ({ onBack }) => {
                 className="w-full pl-9 pr-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-neutral-300"
               />
             </div>
+          </div>
+          <div className="flex items-center justify-between px-5 pt-3 pb-2">
+            <button
+              onClick={() =>
+                setEditingModal({
+                  seedMember: null,
+                  existingTask: null,
+                })
+              }
+              className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow hover:opacity-90"
+              style={{ backgroundColor: "#6A0F14" }}
+            >
+              <PlusCircle className="w-4 h-4" />
+              Create Task
+            </button>
           </div>
         </div>
 
@@ -1023,6 +1132,8 @@ const TitleDefense = ({ onBack }) => {
                   editingCell?.key === r.key && editingCell?.field === "due";
                 const isEditingTime =
                   editingCell?.key === r.key && editingCell?.field === "time";
+                const isEditingStatus =
+                  editingCell?.key === r.key && editingCell?.field === "status";
 
                 const taskOptions =
                   r.type === "Documentation"
@@ -1124,6 +1235,7 @@ const TitleDefense = ({ onBack }) => {
                       {isEditingDue ? (
                         <input
                           type="date"
+                          min={today}
                           autoFocus
                           className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
                           defaultValue={r.due === "null" ? "" : r.due}
@@ -1151,6 +1263,7 @@ const TitleDefense = ({ onBack }) => {
                       {isEditingTime ? (
                         <input
                           type="time"
+                          step="600"
                           autoFocus
                           className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
                           defaultValue={r.time === "null" ? "" : r.time}
@@ -1168,9 +1281,35 @@ const TitleDefense = ({ onBack }) => {
                     <td className="py-2 pr-3">
                       <RevisionPill value={r.revision} />
                     </td>
-                    <td className="py-2 pr-6">
-                      <StatusBadge value={r.status} />
+
+                    {/* Status (dropdown) */}
+                    <td
+                      className="py-2 pr-6"
+                      onDoubleClick={() => startEdit(r, "status")}
+                      title="Double-click to edit"
+                    >
+                      {isEditingStatus ? (
+                        <select
+                          autoFocus
+                          className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+                          defaultValue={r.status}
+                          onBlur={(e) => saveStatus(r, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") e.currentTarget.blur();
+                            if (e.key === "Escape") stopEdit();
+                          }}
+                        >
+                          {STATUS_OPTIONS.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <StatusBadge value={r.status} />
+                      )}
                     </td>
+
                     <td className="py-2 pr-6">{r.phase || "Planning"}</td>
 
                     <td className="py-2 pr-6">
@@ -1210,8 +1349,6 @@ const TitleDefense = ({ onBack }) => {
                               >
                                 View
                               </button>
-                              {/* Delete here doesn't remove Supabase files.
-                                  If you also want to purge files, we can add a fetch of fileUrl and call deleteTaskFileFromSupabase. */}
                               <button
                                 className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50 disabled:opacity-50"
                                 disabled={!r.taskId || deletingId === r.taskId}
