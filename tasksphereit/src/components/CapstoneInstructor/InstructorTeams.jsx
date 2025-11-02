@@ -29,6 +29,8 @@ const InstructorTeams = () => {
   const [etMemberPick, setEtMemberPick] = useState("");
   const [etMemberIds, setEtMemberIds] = useState([]);
 
+  const idOf = (u) => u?.uid || u?.id;
+
   const {
     allUsers,
     members,
@@ -151,7 +153,10 @@ const InstructorTeams = () => {
 
   const AdviserCard = ({ name }) => (
     <div className="relative bg-white border border-neutral-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow overflow-hidden">
-      <div className="absolute inset-y-0 left-0 w-3" style={{ background: MAROON }} />
+      <div
+        className="absolute inset-y-0 left-0 w-3"
+        style={{ background: MAROON }}
+      />
       <div className="px-6 py-8 flex flex-col items-center justify-center gap-4">
         <img src={AdviserIcon} alt="" className="w-14 h-14 object-contain" />
         <div className="text-neutral-900 font-semibold text-lg text-center leading-snug">
@@ -273,11 +278,16 @@ const InstructorTeams = () => {
                     <select
                       className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                       value={ctManagerId}
-                      onChange={(e) => setCtManagerId(e.target.value)}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setCtManagerId(id);
+                        // if the chosen manager is already in the members list, remove them
+                        if (ctMemberIds.includes(id)) removeMember(id);
+                      }}
                     >
                       <option value="">Select</option>
-                      {availableManagers.map((m) => (
-                        <option key={m.uid || m.id} value={m.uid || m.id}>
+                      {members.map((m) => (
+                        <option key={idOf(m)} value={idOf(m)}>
                           {m.fullName}
                         </option>
                       ))}
@@ -309,11 +319,14 @@ const InstructorTeams = () => {
                       onChange={(e) => setCtMemberPick(e.target.value)}
                     >
                       <option value="">Select</option>
-                      {availableMembers.map((s) => (
-                        <option key={s.uid || s.id} value={s.uid || s.id}>
-                          {s.fullName}
-                        </option>
-                      ))}
+                      {availableMembers
+                        .filter((s) => idOf(s) !== ctManagerId) // exclude manager
+                        .filter((s) => !ctMemberIds.includes(idOf(s))) // exclude already picked
+                        .map((s) => (
+                          <option key={idOf(s)} value={idOf(s)}>
+                            {s.fullName}
+                          </option>
+                        ))}
                     </select>
                     <button
                       type="button"

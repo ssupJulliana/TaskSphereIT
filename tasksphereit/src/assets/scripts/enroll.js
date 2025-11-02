@@ -37,6 +37,13 @@ function getSecondaryAuth() {
   return _secondaryAuth;
 }
 
+const enforceRole = (role) => {
+  const r = String(role || "").toLowerCase();
+  if (r === "adviser" || r === "advisor") return "Adviser";
+  // Treat anything else (student, project manager, pm, blank, typos) as Member
+  return "Member";
+};
+
 /* ------------ helpers ------------ */
 const generateRandomEmail = () => {
   const s = Math.random().toString(36).slice(2, 12);
@@ -68,13 +75,19 @@ const shapeUserDoc = (userData, uid) => ({
 export const createUser = async (userData) => {
   const secAuth = getSecondaryAuth();
   try {
+    const email = (userData.email || "").trim();
     const cred = await createUserWithEmailAndPassword(
       secAuth,
-      (userData.email || "").trim(),
+      email,
       DEFAULT_PASSWORD
     );
 
-    await addDoc(collection(db, "users"), shapeUserDoc(userData, cred.user.uid));
+    const safeRole = enforceRole(userData.role);
+
+    await addDoc(
+      collection(db, "users"),
+      shapeUserDoc({ ...userData, role: safeRole }, cred.user.uid)
+    );
   } catch (error) {
     const msg =
       error?.code === "auth/email-already-in-use"
@@ -84,7 +97,6 @@ export const createUser = async (userData) => {
         : error?.message || "Failed to add user.";
     throw new Error(msg);
   } finally {
-    // do not keep a session for the newly created account
     try {
       await signOutAuth(secAuth);
     } catch {}
@@ -92,13 +104,18 @@ export const createUser = async (userData) => {
 };
 
 /* ------------ bulk import (Excel) ------------ */
-export const saveImportedUsers = async (rows, selectedRole) => {
+export const saveImportedUsers = async (rows, selectedTabOrRole) => {
   if (!Array.isArray(rows) || rows.length === 0) return;
   const secAuth = getSecondaryAuth();
 
+  // Map the context to a valid DB role
+  const roleForImport =
+    String(selectedTabOrRole || "").toLowerCase() === "student"
+      ? "Member"
+      : "Adviser";
+
   try {
     for (const r of rows) {
-      // if your modal marks selected rows as _select, respect it
       if (typeof r._select === "boolean" && !r._select) continue;
 
       const email = (r.email || "").trim() || generateRandomEmail();
@@ -109,6 +126,7 @@ export const saveImportedUsers = async (rows, selectedRole) => {
         DEFAULT_PASSWORD
       );
 
+      // We *override* any role from Excel to enforce our two-role model.
       await addDoc(
         collection(db, "users"),
         shapeUserDoc(
@@ -118,14 +136,13 @@ export const saveImportedUsers = async (rows, selectedRole) => {
             firstName: r.firstName || "",
             middleName: r.middleName || "",
             lastName: r.lastName || "",
-            role: selectedRole,
+            role: roleForImport, // <- always "Member" on Student tab, else "Adviser"
           },
           cred.user.uid
         )
       );
     }
   } catch (error) {
-    // bubble up so caller can show a modal/toast
     throw new Error(error?.message || "Error saving imported users.");
   } finally {
     try {
