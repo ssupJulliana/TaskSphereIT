@@ -76,8 +76,13 @@ const ExcelModal = {
     const handleAttachFile = () => {
       const input = document.createElement("input");
       input.type = "file";
-      input.accept =
-        ".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+      input.accept = [
+        ".xlsx",
+        ".xlsb",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel.sheet.binary.macroEnabled.12",
+        "application/vnd.ms-excel.sheet.binary.macroenabled.12",
+      ].join(",");
       input.onchange = (e) => onFileChange(e);
       input.click();
     };

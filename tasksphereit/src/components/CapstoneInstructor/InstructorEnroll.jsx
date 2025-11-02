@@ -61,7 +61,7 @@ export const downloadTemplate = async () => {
   // For a PUBLIC bucket
   const { data } = supabase.storage
     .from("template")
-    .getPublicUrl("Template.xlsx");
+    .getPublicUrl("User-Template.xlsx");
   const url = data.publicUrl;
 
   const res = await fetch(url);
@@ -70,7 +70,7 @@ export const downloadTemplate = async () => {
   const blob = await res.blob();
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "Template.xlsx";
+  a.download = "User-Template.xlsx";
   document.body.appendChild(a);
   a.click();
   URL.revokeObjectURL(a.href);
@@ -165,7 +165,7 @@ const InstructorEnroll = () => {
         rows: [],
         parsing: false,
         saving: false,
-        err: "Please select a .xlsx Excel file.",
+        err: "Please select a .xlsx or .xlsb Excel file.",
         onFileChange: handleImportChange,
         onSave: saveImportedRows,
         onClose: () => {},
@@ -435,7 +435,7 @@ const InstructorEnroll = () => {
       <input
         ref={fileRef}
         type="file"
-        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        accept=".xlsx,.xlsb,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.binary.macroEnabled.12"
         className="hidden"
         onChange={handleImportChange}
       />
