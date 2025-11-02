@@ -129,94 +129,205 @@ const RevisionSelect = ({ value, onChange, disabled }) => (
   </select>
 );
 
-/* -------------------- CASCADING OPTIONS FOR FINAL RE-DEFENSE -------------------- */
+/* -------------------- METHODOLOGIES / PHASES / TYPES / TASKS (from your doc) -------------------- */
+/* Methodologies */
 const METHODOLOGIES = [
   "Agile",
+  "Extreme Programming (XP)",
   "Rapid Application Development (RAD)",
+  "Prototyping",
   "Spiral",
 ];
 
+/* Phases by Methodology */
 const PHASE_OPTIONS = {
+  Agile: ["Develop", "Test", "Deploy", "Review"],
+  "Extreme Programming (XP)": ["Coding", "Testing", "Deploy", "Listening"],
+  "Rapid Application Development (RAD)": [
+    "Construction",
+    "System Development",
+    "Cutover",
+  ],
+  Prototyping: ["Refining Prototype", "Implement Product & Maintain"],
+  Spiral: ["Engineering", "System Development", "Evaluate"],
+};
+
+/* Task Types by Methodology */
+const TYPES_BY_METHODOLOGY = {
   Agile: [
-    "Revisions",
-    "Validation",
-    "Implementation",
+    "Documentation",
+    "System Development",
+    "Test",
+    "Deploy",
+    "Review",
+    "Discussion & Review",
+  ],
+  "Extreme Programming (XP)": [
+    "Documentation",
+    "System Development",
     "Testing",
-    "Final Review",
+    "Deploy",
+    "Listening",
+    "Discussion & Review",
   ],
   "Rapid Application Development (RAD)": [
-    "Revisions",
-    "Validation",
-    "Prototyping",
-    "Final Review",
+    "Documentation",
+    "System Development",
+    "Cutover",
+    "Discussion & Review",
+  ],
+  Prototyping: [
+    "Documentation",
+    "Implement Product & Maintain",
+    "Discussion & Review",
   ],
   Spiral: [
-    "Risk Analysis",
-    "Revisions",
-    "Validation",
-    "Evaluation",
-    "Final Review",
+    "Documentation",
+    "System Development",
+    "Evaluate",
+    "Discussion & Review",
   ],
 };
 
+/* Common groups to avoid duplication (summarized from the doc’s tables) */
+const DOC_REPOLISH = [
+  "Re-Polishing: Chapter 1",
+  "Re-Polishing: Chapter 2",
+  "Re-Polishing: Chapter 3",
+  "Re-Polishing: Chapter 4",
+  "Re-Polishing: Development",
+  "Re-Polishing: Verification and Testing",
+  "Re-Polishing: Implementation Plan",
+  "Re-Polishing: Installation Process",
+  "Re-Polishing: Chapter 5",
+  "Re-Polishing Supporting Sections",
+  "Review Documentation & System Details",
+];
+
+const QA_LIST = [
+  "Re-Defense System QA",
+  "Unit Testing",
+  "Compatibility Testing",
+  "Performance Testing",
+  "Stress Testing",
+  "Load Testing",
+  "Concurrent Testing",
+  "Pacing Time",
+  "Response Time",
+  "Network Testing",
+];
+
+const DISCUSS_PREP = [
+  "Capstone Meeting",
+  "Adviser Consultation",
+  "Meeting with the User/Client",
+  "Final Re-Defense Preparation: System Testing Request Letter",
+  "PowerPoint Presentation",
+  "Mock Defense",
+  "Manuscript Printing",
+];
+
+/* Tasks by Methodology + Type (top-level tasks from your tables) */
 const TASK_SEEDS = {
   Agile: {
-    Documentation: [
-      "Fixes from Panel",
-      "Revisions on Chapter 4",
-      "Revisions on Chapter 5",
-      "Update Documentation",
-      "Final Manuscript Review",
-      "PowerPoint Presentation",
-      "Mock Re-Defense",
-      "Manuscript Printing",
+    Documentation: [...DOC_REPOLISH, "Re-Defense: Manuscript Submission"],
+    "System Development": [
+      "UI Enhancement",
+      "Functionality Enhancement",
+      "Bug Fixing",
+    ],
+    Test: [...QA_LIST, "Bug Fixing and Final Adjustments"],
+    Deploy: ["Patch Update"],
+    Review: [
+      "Review Users Feedback",
       "Final Re-Defense",
+      "Final Re-Defense Feedback Integration",
+      "Manuscript Re-Submission for AI and Plagiarism Check",
     ],
-    "Discussion & Review": [
-      "Capstone Meeting",
-      "Adviser Consultation",
-      "Panel Feedback Integration",
-      "Dry Run",
-    ],
+    "Discussion & Review": [...DISCUSS_PREP],
   },
+
+  "Extreme Programming (XP)": {
+    Documentation: [...DOC_REPOLISH, "Re-Defense: Manuscript Submission"],
+    "System Development": [
+      "Iterative UI Refinement",
+      "Continuous Feature Improvement",
+      "Ongoing Refactoring and Defect Resolution",
+    ],
+    Testing: [...QA_LIST, "Bug Fixing and Final Adjustments", "Patch Update"],
+    Deploy: ["Patch Update"],
+    Listening: [
+      "Review Users Feedback",
+      "Gather Users/Client Feedback",
+      "Finalization of the System",
+      "Final Re-Defense",
+      "Final Re-Defense Feedback Integration",
+      "Manuscript Re-Submission for AI and Plagiarism Check",
+    ],
+    "Discussion & Review": [...DISCUSS_PREP],
+  },
+
   "Rapid Application Development (RAD)": {
-    Documentation: [
-      "Fixes from Panel",
-      "UI Revisions",
-      "Prototype Updates",
-      "Update Documentation",
-      "Final Manuscript Review",
-      "PowerPoint Presentation",
-      "Mock Re-Defense",
-      "Manuscript Printing",
+    Documentation: [...DOC_REPOLISH, "Re-Defense: Manuscript Submission"],
+    "System Development": [
+      "UI Enhancement",
+      "Functionality Enhancement",
+      "Bug Fixing",
+      ...QA_LIST,
+      "Bug Fixing and Final Adjustments",
+    ],
+    Cutover: [
+      "Patch Update",
+      "System Update Orientation for End Users",
+      "Review Users Feedback",
+      "System Completion and Cutover Activities",
       "Final Re-Defense",
+      "Final Re-Defense Feedback Integration",
+      "Manuscript Re-Submission for AI and Plagiarism Check",
     ],
-    "Discussion & Review": [
-      "Capstone Meeting",
-      "Adviser Consultation",
-      "Panel Feedback Integration",
-      "Client Feedback Session",
-      "Dry Run",
-    ],
+    "Discussion & Review": [...DISCUSS_PREP],
   },
-  Spiral: {
+
+  Prototyping: {
     Documentation: [
-      "Fixes from Panel",
-      "Risk Analysis Updates",
-      "Prototype Revisions",
-      "Update Documentation",
-      "Final Manuscript Review",
-      "PowerPoint Presentation",
-      "Mock Re-Defense",
-      "Manuscript Printing",
+      "Final Defense Response: UI Polishing & Functional Optimization",
+      ...DOC_REPOLISH,
+      "Re-Defense: Manuscript Submission",
+    ],
+    "Implement Product & Maintain": [
+      "Improved visual design and layout",
+      "Feature & Workflow Improvements",
+      "Bug Fixing",
+      ...QA_LIST,
+      "Bug Fixing and Final Adjustments",
+      "System Patch",
+      "Review Users Feedback",
+      "Finalization of the System",
       "Final Re-Defense",
+      "Final Re-Defense Feedback Integration",
+      "Manuscript Re-Submission for AI and Plagiarism Check",
     ],
-    "Discussion & Review": [
-      "Capstone Meeting",
-      "Adviser Consultation",
-      "Panel Feedback Integration",
-      "Dry Run",
+    "Discussion & Review": [...DISCUSS_PREP],
+  },
+
+  Spiral: {
+    Documentation: [...DOC_REPOLISH, "Re-Defense: Manuscript Submission"],
+    "System Development": [
+      "Refine User Interface Based on Feedback",
+      "Feature Improvement Implementation",
+      "System Issue Resolution",
+      ...QA_LIST,
+      "Bug Fixing and Final Adjustments",
+      "Patch Update",
     ],
+    Evaluate: [
+      "Review Users Feedback",
+      "Finalization of the System",
+      "Final Re-Defense",
+      "Final Re-Defense Feedback Integration",
+      "Manuscript Re- Submission for AI and Plagiarism Check",
+    ],
+    "Discussion & Review": [...DISCUSS_PREP],
   },
 };
 
@@ -286,7 +397,7 @@ async function uploadAttachmentSmart(file, { teamId }) {
   return await uploadToFirebase(file, { teamId });
 }
 
-/* ======= Edit/Create Task Dialog for Final Re-Defense ======= */
+/* ======= Edit/Create Task Dialog (SCROLLABLE + PM controls due/time) ======= */
 function EditTaskDialog({
   open,
   onClose,
@@ -362,6 +473,10 @@ function EditTaskDialog({
     () => (methodology ? PHASE_OPTIONS[methodology] || [] : []),
     [methodology]
   );
+  const typesForMethod = useMemo(
+    () => (methodology ? TYPES_BY_METHODOLOGY[methodology] || [] : []),
+    [methodology]
+  );
 
   const canSave =
     teamId && methodology && phase && type && task && assignees.length > 0;
@@ -414,6 +529,8 @@ function EditTaskDialog({
     try {
       const team = teams.find((t) => t.id === teamId) || null;
       const taskManager = mode === "adviser" ? "Adviser" : "Project Manager";
+      const dueAtMs =
+        due && time ? new Date(`${due}T${time}:00`).getTime() : null;
 
       const payload = {
         methodology,
@@ -422,9 +539,9 @@ function EditTaskDialog({
         task,
         subtask: subtask || "--",
         element: element || "--",
-        dueDate: existingTask ? existingTask.dueDate ?? null : null,
-        dueTime: existingTask ? existingTask.dueTime ?? null : null,
-        dueAtMs: existingTask ? existingTask.dueAtMs ?? null : null,
+        dueDate: due || null,
+        dueTime: time || null,
+        dueAtMs,
         status: existingTask?.status || "To Do",
         revision: existingTask?.revision || "No Revision",
         assignees: assignees.map((a) => ({ uid: a.uid, name: a.name })),
@@ -465,10 +582,10 @@ function EditTaskDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50">
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 md:p-6 overscroll-contain">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative z-10 mx-auto mt-10 w-[980px] max-w-[95vw]">
-        <div className="bg-white rounded-2xl shadow-2xl border border-neutral-200 overflow-hidden">
+      <div className="relative z-10 w-full max-w-[980px]">
+        <div className="bg-white rounded-2xl shadow-2xl border border-neutral-200 flex flex-col max-h-[85vh]">
           <div className="h-[2px] w-full" style={{ backgroundColor: MAROON }} />
           <div className="flex items-center justify-between px-5 pt-3 pb-2">
             <div
@@ -487,10 +604,11 @@ function EditTaskDialog({
             </button>
           </div>
 
-          <div className="px-5 pb-5 space-y-5">
+          {/* CONTENT — scrollable */}
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-5 space-y-5">
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
-              <b>Reminder:</b> Due Date and Time are{" "}
-              <b>managed by the Adviser</b>.
+              <b>Note:</b> Due Date and Time are{" "}
+              <b>set by the Project Manager</b>.
             </div>
 
             <div className="grid grid-cols-12 gap-4">
@@ -573,7 +691,7 @@ function EditTaskDialog({
                   <option value="">
                     {methodology ? "Select" : "Pick Methodology first"}
                   </option>
-                  {["Documentation", "Discussion & Review"].map((t) => (
+                  {(TYPES_BY_METHODOLOGY[methodology] || []).map((t) => (
                     <option key={t} value={t}>
                       {t}
                     </option>
@@ -582,7 +700,7 @@ function EditTaskDialog({
               </div>
 
               <div className="col-span-4">
-                <label className="block text sm font-medium text-neutral-700 mb-1">
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
                   Tasks
                 </label>
                 <select
@@ -613,7 +731,7 @@ function EditTaskDialog({
                   className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                   value={subtask}
                   onChange={(e) => setSubtask(e.target.value)}
-                  placeholder="e.g., Revisions"
+                  placeholder="e.g., Integration Testing"
                 />
               </div>
 
@@ -634,29 +752,28 @@ function EditTaskDialog({
               </div>
             </div>
 
+            {/* PM sets Due Date & Time */}
             <div className="grid grid-cols-12 gap-4">
               <div className="col-span-4">
                 <label className="block text-sm font-medium text-neutral-700 mb-1">
-                  Due Date (Adviser-managed)
+                  Due Date
                 </label>
                 <input
                   type="date"
-                  className="w-full rounded-lg border border-neutral-300 px-3 py-2 bg-neutral-50 text-neutral-600"
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2 bg-white text-neutral-800"
                   value={due}
-                  disabled
-                  readOnly
+                  onChange={(e) => setDue(e.target.value)}
                 />
               </div>
               <div className="col-span-4">
                 <label className="block text-sm font-medium text-neutral-700 mb-1">
-                  Time (Adviser-managed)
+                  Time
                 </label>
                 <input
                   type="time"
-                  className="w-full rounded-lg border border-neutral-300 px-3 py-2 bg-neutral-50 text-neutral-600"
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2 bg-white text-neutral-800"
                   value={time}
-                  disabled
-                  readOnly
+                  onChange={(e) => setTime(e.target.value)}
                 />
               </div>
             </div>
@@ -800,35 +917,36 @@ function EditTaskDialog({
                 )}
               </div>
             </div>
+          </div>
 
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 rounded-md border border-neutral-300 text-sm hover:bg-neutral-100"
-                disabled={saving}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={save}
-                disabled={!canSave || saving}
-                className="px-4 py-2 rounded-md text-sm text-white shadow disabled:opacity-50"
-                style={{ backgroundColor: MAROON }}
-              >
-                {saving ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Saving…
-                  </span>
-                ) : existingTask ? (
-                  "Save"
-                ) : (
-                  "Create"
-                )}
-              </button>
-            </div>
+          {/* footer */}
+          <div className="flex justify-end gap-2 px-5 py-4 border-t border-neutral-200">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-md border border-neutral-300 text-sm hover:bg-neutral-100"
+              disabled={saving}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={!canSave || saving}
+              className="px-4 py-2 rounded-md text-sm text-white shadow disabled:opacity-50"
+              style={{ backgroundColor: MAROON }}
+            >
+              {saving ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Saving…
+                </span>
+              ) : existingTask ? (
+                "Save"
+              ) : (
+                "Create"
+              )}
+            </button>
           </div>
         </div>
       </div>
@@ -843,7 +961,7 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
 
   const [mode, setMode] = useState("team");
   const isTeam = mode === "team";
-  const canEdit = mode === "adviser" || isTeam;
+  const canEdit = true; // PM can edit in both views (incl. due/time)
 
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
@@ -1101,14 +1219,11 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
 
   const startEdit = (row, field) => {
     if (!canEdit) return;
-    const editingDueOrTime = field === "due" || field === "time";
-    if (mode !== "team" && editingDueOrTime) return;
-    if (mode !== "team") {
-      if (field === "phase" && row.methodology === "--") return;
-      if (field === "type" && (row.methodology === "--" || row.phase === "--"))
-        return;
-      if (field === "task" && row.type === "--") return;
-    }
+    // PM can edit everything; just guard cascades like before
+    if (field === "phase" && row.methodology === "--") return;
+    if (field === "type" && (row.methodology === "--" || row.phase === "--"))
+      return;
+    if (field === "task" && row.type === "--") return;
     setEditingCell({ key: row.key, field });
   };
   const stopEdit = () => setEditingCell(null);
@@ -1184,7 +1299,7 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
   };
 
   const deleteSelectedRows = async () => {
-    if (!canEdit || selected.size === 0) return;
+    if (selected.size === 0) return;
     const toDelete = pageRows
       .filter((r) => selected.has(r.key) && r.taskId)
       .map((r) => r.taskId);
@@ -1195,14 +1310,6 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
     setSelected(new Set());
   };
 
-  const openModalEditor = (row) => {
-    setEditingModal({
-      seedMember: row.memberUid
-        ? { uid: row.memberUid, name: row.memberName }
-        : null,
-      existingTask: row.taskId ? { ...row.existingTask, id: row.taskId } : null,
-    });
-  };
   const openModalCreate = (row) => {
     setEditingModal({
       seedMember: row?.memberUid
@@ -1211,44 +1318,6 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
       existingTask: null,
     });
   };
-
-  const handleCreateClick = () => {
-    // Gate creation behind your verdict check upstream via isReOral prop
-    // (kept same behavior as your version)
-    // If you want to enforce here: pass isReOral and show alert if false.
-    // This line preserves your existing UX:
-    // if (!isReOral) { alert("Cannot create Final Re-Defense tasks until the team's verdict is Re-Oral."); return; }
-
-    if (mode === "team") {
-      const selectedKey = Array.from(selected)[0] || null;
-      let seedRow =
-        (selectedKey && filtered.find((r) => r.key === selectedKey)) ||
-        filtered.find((r) => r.memberUid);
-      if (!seedRow) {
-        alert("Select a member row first to create a task for.");
-        return;
-      }
-      openModalCreate(seedRow);
-    } else {
-      openModalCreate(null);
-    }
-  };
-
-  const adviserGroups = useMemo(() => {
-    if (mode === "team") return null;
-    const groups = new Map();
-    for (const r of pageRows) {
-      const key = r.teamId || "no-team";
-      if (!groups.has(key))
-        groups.set(key, {
-          teamId: key,
-          teamName: r.teamName || "No Team",
-          rows: [],
-        });
-      groups.get(key).rows.push(r);
-    }
-    return Array.from(groups.values());
-  }, [mode, pageRows]);
 
   return (
     <div className="space-y-4">
@@ -1285,7 +1354,13 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
               !isReOral ? "opacity-60 cursor-not-allowed" : ""
             }`}
             style={{ background: MAROON }}
-            onClick={handleCreateClick}
+            onClick={() => {
+              const selectedKey = Array.from(selected)[0] || null;
+              let seedRow =
+                (selectedKey && filtered.find((r) => r.key === selectedKey)) ||
+                filtered.find((r) => r.memberUid);
+              openModalCreate(seedRow || null);
+            }}
             disabled={!isReOral}
           >
             + Create Task
@@ -1310,10 +1385,7 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
         <div className="flex items-center gap-2">
           <button
             onClick={deleteSelectedRows}
-            disabled={!canEdit}
-            className={`inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50 ${
-              !canEdit ? "opacity-60 cursor-not-allowed" : ""
-            }`}
+            className={`inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50`}
             title="Delete"
           >
             <Trash2 className="w-4 h-4" />
@@ -1339,7 +1411,6 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
                   <input
                     type="checkbox"
                     onChange={(e) => {
-                      if (!canEdit) return;
                       if (e.target.checked)
                         setSelected(new Set(pageRows.map((r) => r.key)));
                       else setSelected(new Set());
@@ -1348,7 +1419,6 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
                       pageRows.length > 0 &&
                       pageRows.every((r) => selected.has(r.key))
                     }
-                    disabled={!canEdit}
                   />
                 </th>
                 <th className="py-2 pr-3 w-16">NO</th>
@@ -1417,7 +1487,7 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
 
                         const typeOptions =
                           r.methodology !== "--"
-                            ? ["Documentation", "Discussion & Review"]
+                            ? TYPES_BY_METHODOLOGY[r.methodology] || []
                             : [];
                         const taskOptions =
                           r.methodology !== "--" && r.type !== "--"
@@ -1425,11 +1495,8 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
                             : [];
 
                         const canEditType =
-                          canEdit &&
-                          (mode === "team" ||
-                            (r.methodology !== "--" && r.phase !== "--"));
-                        const canEditTask =
-                          canEdit && (mode === "team" || r.type !== "--");
+                          r.methodology !== "--" && r.phase !== "--";
+                        const canEditTask = r.type !== "--";
 
                         return (
                           <tr
@@ -1441,12 +1508,10 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
                                 type="checkbox"
                                 checked={selected.has(r.key)}
                                 onChange={() => {
-                                  if (!canEdit) return;
                                   const s = new Set(selected);
                                   s.has(r.key) ? s.delete(r.key) : s.add(r.key);
                                   setSelected(s);
                                 }}
-                                disabled={!canEdit}
                               />
                             </td>
                             <td className="py-2 pr-3">
@@ -1456,9 +1521,7 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
 
                             <td
                               className={`py-2 pr-3 ${
-                                !canEditType
-                                  ? "text-neutral-400 cursor-not-allowed"
-                                  : ""
+                                !canEditType ? "text-neutral-400" : ""
                               }`}
                               onDoubleClick={() =>
                                 canEditType &&
@@ -1502,9 +1565,7 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
 
                             <td
                               className={`py-2 pr-3 ${
-                                !canEditTask
-                                  ? "text-neutral-400 cursor-not-allowed"
-                                  : ""
+                                !canEditTask ? "text-neutral-400" : ""
                               }`}
                               onDoubleClick={() =>
                                 canEditTask &&
@@ -1558,7 +1619,6 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
                                 <span
                                   className="cursor-text"
                                   onDoubleClick={() =>
-                                    canEdit &&
                                     setEditingCell({
                                       key: r.key,
                                       field: "subtask",
@@ -1594,7 +1654,6 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
                                 <span
                                   className="cursor-text"
                                   onDoubleClick={() =>
-                                    canEdit &&
                                     setEditingCell({
                                       key: r.key,
                                       field: "element",
@@ -1608,18 +1667,56 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
 
                             <td className="py-2 pr-3">{r.created}</td>
 
+                            {/* Due Date — inline edit for PM */}
                             <td
                               className="py-2 pr-3"
-                              title="Managed by Adviser"
+                              onDoubleClick={() =>
+                                setEditingCell({ key: r.key, field: "due" })
+                              }
+                              title="Double-click to edit"
                             >
-                              <span className="text-neutral-700">{r.due}</span>
+                              {isEditing("due") ? (
+                                <input
+                                  autoFocus
+                                  type="date"
+                                  defaultValue={r.due === "--" ? "" : r.due}
+                                  className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+                                  onBlur={(e) => saveDue(r, e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter")
+                                      e.currentTarget.blur();
+                                    if (e.key === "Escape") stopEdit();
+                                  }}
+                                />
+                              ) : (
+                                <span className="cursor-text">{r.due}</span>
+                              )}
                             </td>
 
+                            {/* Time — inline edit for PM */}
                             <td
                               className="py-2 pr-3"
-                              title="Managed by Adviser"
+                              onDoubleClick={() =>
+                                setEditingCell({ key: r.key, field: "time" })
+                              }
+                              title="Double-click to edit"
                             >
-                              <span className="text-neutral-700">{r.time}</span>
+                              {isEditing("time") ? (
+                                <input
+                                  autoFocus
+                                  type="time"
+                                  defaultValue={r.time === "--" ? "" : r.time}
+                                  className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+                                  onBlur={(e) => saveTime(r, e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter")
+                                      e.currentTarget.blur();
+                                    if (e.key === "Escape") stopEdit();
+                                  }}
+                                />
+                              ) : (
+                                <span className="cursor-text">{r.time}</span>
+                              )}
                             </td>
 
                             <td className="py-2 pr-3">
@@ -1659,7 +1756,17 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
                                   ))}
                                 </select>
                               ) : (
-                                <span>{r.methodology}</span>
+                                <span
+                                  className="cursor-text"
+                                  onDoubleClick={() =>
+                                    setEditingCell({
+                                      key: r.key,
+                                      field: "methodology",
+                                    })
+                                  }
+                                >
+                                  {r.methodology}
+                                </span>
                               )}
                             </td>
 
@@ -1686,7 +1793,17 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
                                   )}
                                 </select>
                               ) : (
-                                <span>{r.phase}</span>
+                                <span
+                                  className="cursor-text"
+                                  onDoubleClick={() =>
+                                    setEditingCell({
+                                      key: r.key,
+                                      field: "phase",
+                                    })
+                                  }
+                                >
+                                  {r.phase}
+                                </span>
                               )}
                             </td>
                           </tr>
@@ -1704,7 +1821,7 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
 
                   const typeOptions =
                     r.methodology !== "--"
-                      ? ["Documentation", "Discussion & Review"]
+                      ? TYPES_BY_METHODOLOGY[r.methodology] || []
                       : [];
                   const taskOptions =
                     r.methodology !== "--" && r.type !== "--"
@@ -1712,11 +1829,8 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
                       : [];
 
                   const canEditType =
-                    canEdit &&
-                    (mode === "team" ||
-                      (r.methodology !== "--" && r.phase !== "--"));
-                  const canEditTask =
-                    canEdit && (mode === "team" || r.type !== "--");
+                    r.methodology !== "--" && r.phase !== "--";
+                  const canEditTask = r.type !== "--";
 
                   return (
                     <tr key={r.key} className="border-t border-neutral-200">
@@ -1725,12 +1839,10 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
                           type="checkbox"
                           checked={selected.has(r.key)}
                           onChange={() => {
-                            if (!canEdit) return;
                             const s = new Set(selected);
                             s.has(r.key) ? s.delete(r.key) : s.add(r.key);
                             setSelected(s);
                           }}
-                          disabled={!canEdit}
                         />
                       </td>
                       <td className="py-2 pr-3">
@@ -1740,9 +1852,7 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
 
                       <td
                         className={`py-2 pr-3 ${
-                          !canEditType
-                            ? "text-neutral-400 cursor-not-allowed"
-                            : ""
+                          !canEditType ? "text-neutral-400" : ""
                         }`}
                         onDoubleClick={() =>
                           canEditType &&
@@ -1783,9 +1893,7 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
 
                       <td
                         className={`py-2 pr-3 ${
-                          !canEditTask
-                            ? "text-neutral-400 cursor-not-allowed"
-                            : ""
+                          !canEditTask ? "text-neutral-400" : ""
                         }`}
                         onDoubleClick={() =>
                           canEditTask &&
@@ -1835,7 +1943,6 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
                           <span
                             className="cursor-text"
                             onDoubleClick={() =>
-                              canEdit &&
                               setEditingCell({ key: r.key, field: "subtask" })
                             }
                           >
@@ -1865,7 +1972,6 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
                           <span
                             className="cursor-text"
                             onDoubleClick={() =>
-                              canEdit &&
                               setEditingCell({ key: r.key, field: "element" })
                             }
                           >
@@ -1876,17 +1982,13 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
 
                       <td className="py-2 pr-3">{r.created}</td>
 
+                      {/* Due Date — inline edit */}
                       <td
                         className="py-2 pr-3"
                         onDoubleClick={() =>
-                          mode === "team" &&
                           setEditingCell({ key: r.key, field: "due" })
                         }
-                        title={
-                          mode === "team"
-                            ? "Double-click to edit"
-                            : "Managed by Adviser"
-                        }
+                        title="Double-click to edit"
                       >
                         {isEditing("due") ? (
                           <input
@@ -1901,29 +2003,17 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
                             }}
                           />
                         ) : (
-                          <span
-                            className={`${
-                              mode === "team"
-                                ? "cursor-text"
-                                : "text-neutral-700"
-                            }`}
-                          >
-                            {r.due}
-                          </span>
+                          <span className="cursor-text">{r.due}</span>
                         )}
                       </td>
 
+                      {/* Time — inline edit */}
                       <td
                         className="py-2 pr-3"
                         onDoubleClick={() =>
-                          mode === "team" &&
                           setEditingCell({ key: r.key, field: "time" })
                         }
-                        title={
-                          mode === "team"
-                            ? "Double-click to edit"
-                            : "Managed by Adviser"
-                        }
+                        title="Double-click to edit"
                       >
                         {isEditing("time") ? (
                           <input
@@ -1938,47 +2028,35 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
                             }}
                           />
                         ) : (
-                          <span
-                            className={`${
-                              mode === "team"
-                                ? "cursor-text"
-                                : "text-neutral-700"
-                            }`}
-                          >
-                            {r.time}
-                          </span>
+                          <span className="cursor-text">{r.time}</span>
                         )}
                       </td>
 
                       <td className="py-2 pr-3">
                         <RevisionSelect
                           value={r.revision}
-                          onChange={() => {}}
+                          onChange={(v) => saveRevision(r, v)}
                           disabled
                         />
                       </td>
 
                       <td className="py-2 pr-3">
-                        {mode === "team" ? (
-                          <select
-                            className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
-                            defaultValue={r.status}
-                            onChange={(e) => saveStatus(r, e.target.value)}
-                          >
-                            {[
-                              "To Do",
-                              "In Progress",
-                              "To Review",
-                              "Completed",
-                            ].map((s) => (
-                              <option key={s} value={s}>
-                                {s}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <StatusBadge value={r.status} />
-                        )}
+                        <select
+                          className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+                          defaultValue={r.status}
+                          onChange={(e) => saveStatus(r, e.target.value)}
+                        >
+                          {[
+                            "To Do",
+                            "In Progress",
+                            "To Review",
+                            "Completed",
+                          ].map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
                       </td>
 
                       <td className="py-2 pr-3">
@@ -2003,7 +2081,17 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
                             ))}
                           </select>
                         ) : (
-                          <span>{r.methodology}</span>
+                          <span
+                            className="cursor-text"
+                            onDoubleClick={() =>
+                              setEditingCell({
+                                key: r.key,
+                                field: "methodology",
+                              })
+                            }
+                          >
+                            {r.methodology}
+                          </span>
                         )}
                       </td>
 
@@ -2027,7 +2115,14 @@ const FinalRedefense = ({ onBack, isReOral = false }) => {
                             ))}
                           </select>
                         ) : (
-                          <span>{r.phase}</span>
+                          <span
+                            className="cursor-text"
+                            onDoubleClick={() =>
+                              setEditingCell({ key: r.key, field: "phase" })
+                            }
+                          >
+                            {r.phase}
+                          </span>
                         )}
                       </td>
                     </tr>

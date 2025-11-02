@@ -13,7 +13,6 @@ import PMOralDefense from "./tasks/OralDefense.jsx";
 import PMFinalDefense from "./tasks/FinalDefense.jsx";
 import PMFinalRedefense from "./tasks/FinalRedefense.jsx";
 
-
 const MAROON = "#6A0F14";
 
 /* --------------------------- Card configuration --------------------------- */

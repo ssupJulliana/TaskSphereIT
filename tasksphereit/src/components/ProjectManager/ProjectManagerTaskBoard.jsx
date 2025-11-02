@@ -156,7 +156,6 @@ function ChatBubble({ m, meUid, onEdit, onDelete, editingId, setEditingId }) {
     "max-w-[80%] px-3 py-2 rounded-lg text-sm leading-snug shadow border border-neutral-200";
   const isEditing = editingId === m.id && mine;
 
-  // (Text-only bubble; attachments are shown in Attachments tab.)
   return (
     <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
       <div
@@ -232,13 +231,12 @@ function DetailView({ me, card, onBack }) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [tab, setTab] = useState("conversation"); // "conversation" | "attachments"
-  const [pendingFiles, setPendingFiles] = useState([]); // File[]
-  const [attRows, setAttRows] = useState([]); // merged attachments
+  const [tab, setTab] = useState("conversation");
+  const [pendingFiles, setPendingFiles] = useState([]);
+  const [attRows, setAttRows] = useState([]);
   const [hydrating, setHydrating] = useState(false);
   const listRef = useRef(null);
 
-  // live messages for this task (no threadKey; simplest: by collection + taskId (+teamId))
   useEffect(() => {
     if (!card?.id) return;
     const filters = [
@@ -263,14 +261,12 @@ function DetailView({ me, card, onBack }) {
     return () => typeof stop === "function" && stop();
   }, [card]);
 
-  // merged attachments from: task.fileUrl[] + chats.sender.fileUrl[] (or top-level fileUrl[])
   const hydrateAttachments = async () => {
     setHydrating(true);
     try {
       const merged = [];
       const folder = buildTaskFolder(card);
 
-      // 1) Task doc files
       const taskSnap = await getDoc(doc(db, card._collection, card.id));
       if (taskSnap.exists()) {
         const data = taskSnap.data() || {};
@@ -293,7 +289,6 @@ function DetailView({ me, card, onBack }) {
         }
       }
 
-      // 2) Chat files (bundle saved on sender.fileUrl[])
       const filters = [
         where("taskCollection", "==", card._collection),
         where("taskId", "==", card.id),
@@ -357,7 +352,6 @@ function DetailView({ me, card, onBack }) {
     const uploads = [];
 
     try {
-      // upload staged files (all in one go; one chat message will contain them)
       const folder = buildTaskFolder(card);
 
       for (const f of pendingFiles) {
@@ -382,7 +376,6 @@ function DetailView({ me, card, onBack }) {
         });
       }
 
-      // optimistic local message (keeps UI snappy)
       const optimistic = {
         id: `tmp-${Date.now()}`,
         text,
@@ -401,7 +394,6 @@ function DetailView({ me, card, onBack }) {
       setDraft("");
       setPendingFiles([]);
 
-      // write the real message (single chat doc with all files)
       await addDoc(collection(db, "chats"), {
         text,
         role: me?.role || "Project Manager",
@@ -530,7 +522,6 @@ function DetailView({ me, card, onBack }) {
         </div>
 
         <div className="bg-white border border-neutral-200 rounded-xl shadow p-0 overflow-hidden relative">
-          {/* Tabs */}
           <div className="px-4 pt-3">
             <div className="flex gap-6 text-sm">
               <button
@@ -558,7 +549,6 @@ function DetailView({ me, card, onBack }) {
           </div>
           <div className="h-[1px] bg-neutral-200" />
 
-          {/* Conversation */}
           {tab === "conversation" && (
             <>
               <div className="p-4">
@@ -582,7 +572,6 @@ function DetailView({ me, card, onBack }) {
                       }}
                     />
 
-                    {/* Staged files (before Send) */}
                     {pendingFiles.length > 0 && (
                       <div className="mt-2 space-y-2">
                         {pendingFiles.map((f, i) => (
@@ -668,7 +657,6 @@ function DetailView({ me, card, onBack }) {
             </>
           )}
 
-          {/* Attachments */}
           {tab === "attachments" && (
             <div className="p-4">
               <div className="rounded-lg border border-neutral-200 overflow-hidden">
@@ -741,13 +729,12 @@ function DetailView({ me, card, onBack }) {
 
 /* ============================ Main ============================ */
 export default function ProjectManagerTaskBoard() {
-  const [me, setMe] = useState(null); // { uid, name, role, photoURL }
+  const [me, setMe] = useState(null);
   const [teams, setTeams] = useState([]);
   const [cards, setCards] = useState([]);
   const [selected, setSelected] = useState(null);
   const [managerTab, setManagerTab] = useState("Adviser"); // "Adviser" | "Project Manager"
 
-  // Identify user
   useEffect(() => {
     const stop = onAuthStateChanged(auth, async (u) => {
       const uid = u?.uid || localStorage.getItem("uid") || "";
@@ -774,7 +761,6 @@ export default function ProjectManagerTaskBoard() {
     return () => stop();
   }, []);
 
-  // Load my teams (support both projectManager.uid and legacy manager.uid)
   useEffect(() => {
     if (!me?.uid) return;
 
@@ -799,7 +785,6 @@ export default function ProjectManagerTaskBoard() {
     };
   }, [me?.uid]);
 
-  // Subscribe tasks for my teams; union two subset queries to avoid flicker
   const unsubsRef = useRef([]);
   useEffect(() => {
     unsubsRef.current.forEach((u) => typeof u === "function" && u());
@@ -820,6 +805,7 @@ export default function ProjectManagerTaskBoard() {
       titleDefenseTasks: { A: new Map(), B: new Map() },
       oralDefenseTasks: { A: new Map(), B: new Map() },
       finalDefenseTasks: { A: new Map(), B: new Map() },
+      finalRedefenseTasks: { A: new Map(), B: new Map() }, // ← added
     };
 
     const normalize = (collectionName, d) => {
@@ -872,6 +858,7 @@ export default function ProjectManagerTaskBoard() {
         "titleDefenseTasks",
         "oralDefenseTasks",
         "finalDefenseTasks",
+        "finalRedefenseTasks", // ← added
       ]) {
         for (const subset of ["A", "B"]) {
           store[coll][subset].forEach((val, key) =>
@@ -884,7 +871,6 @@ export default function ProjectManagerTaskBoard() {
 
     const attach = (collectionName) => {
       chunks(teamIds, 10).forEach((ids) => {
-        // team.id subset (A)
         const qa = query(
           collection(db, collectionName),
           where("taskManager", "==", managerTab),
@@ -899,7 +885,6 @@ export default function ProjectManagerTaskBoard() {
           publish();
         });
 
-        // teamId subset (B)
         const qb = query(
           collection(db, collectionName),
           where("taskManager", "==", managerTab),
@@ -921,6 +906,7 @@ export default function ProjectManagerTaskBoard() {
     attach("titleDefenseTasks");
     attach("oralDefenseTasks");
     attach("finalDefenseTasks");
+    attach("finalRedefenseTasks"); // ← added
 
     return () => {
       unsubsRef.current.forEach((u) => typeof u === "function" && u());
@@ -928,7 +914,6 @@ export default function ProjectManagerTaskBoard() {
     };
   }, [teams, managerTab]);
 
-  // group by column
   const grouped = useMemo(() => {
     const map = Object.fromEntries(COLUMNS.map((c) => [c.id, []]));
     for (const c of cards) map[c._colId]?.push(c);
@@ -949,7 +934,6 @@ export default function ProjectManagerTaskBoard() {
       </div>
       <div className="h-[2px] w-full" style={{ backgroundColor: MAROON }} />
 
-      {/* Tabs for taskManager filter */}
       <div className="flex items-center gap-2">
         <button
           onClick={() => setManagerTab("Adviser")}
