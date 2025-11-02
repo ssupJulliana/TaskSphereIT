@@ -595,10 +595,40 @@ function EditTaskDialog({
                 </label>
                 <input
                   type="time"
-                  className="w-full rounded-lg border border-neutral-300 px-3 py-2 bg-neutral-50 text-neutral-600"
+                  step={600} // 10 minutes
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2"
                   value={time}
-                  disabled
-                  readOnly
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (!v) return setTime("");
+                    const [H, M] = v.split(":").map(Number);
+                    let mm = Math.round(M / 10) * 10;
+                    let hh = H;
+                    if (mm === 60) {
+                      mm = 0;
+                      hh = (hh + 1) % 24;
+                    }
+                    const snapped = `${String(hh).padStart(2, "0")}:${String(
+                      mm
+                    ).padStart(2, "0")}`;
+                    setTime(snapped);
+                  }}
+                  onBlur={(e) => {
+                    const v = e.target.value;
+                    if (!v) return;
+                    const [H, M] = v.split(":").map(Number);
+                    let mm = Math.round(M / 10) * 10;
+                    let hh = H;
+                    if (mm === 60) {
+                      mm = 0;
+                      hh = (hh + 1) % 24;
+                    }
+                    const snapped = `${String(hh).padStart(2, "0")}:${String(
+                      mm
+                    ).padStart(2, "0")}`;
+                    if (snapped !== v) e.target.value = snapped;
+                    setTime(snapped);
+                  }}
                 />
               </div>
             </div>

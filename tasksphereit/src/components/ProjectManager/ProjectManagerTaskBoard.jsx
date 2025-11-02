@@ -817,6 +817,7 @@ export default function ProjectManagerTaskBoard() {
       );
 
     const store = {
+      titleDefenseTasks: { A: new Map(), B: new Map() },
       oralDefenseTasks: { A: new Map(), B: new Map() },
       finalDefenseTasks: { A: new Map(), B: new Map() },
     };
@@ -867,7 +868,11 @@ export default function ProjectManagerTaskBoard() {
 
     const publish = () => {
       const unionMap = new Map();
-      for (const coll of ["oralDefenseTasks", "finalDefenseTasks"]) {
+      for (const coll of [
+        "titleDefenseTasks",
+        "oralDefenseTasks",
+        "finalDefenseTasks",
+      ]) {
         for (const subset of ["A", "B"]) {
           store[coll][subset].forEach((val, key) =>
             unionMap.set(`${coll}:${key}`, val)
@@ -913,6 +918,7 @@ export default function ProjectManagerTaskBoard() {
       });
     };
 
+    attach("titleDefenseTasks");
     attach("oralDefenseTasks");
     attach("finalDefenseTasks");
 

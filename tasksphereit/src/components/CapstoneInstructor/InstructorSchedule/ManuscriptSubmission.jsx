@@ -17,7 +17,11 @@ import {
   X,
   Filter,
   ExternalLink,
+  User2,
+  Check,
+  RotateCcw,
 } from "lucide-react";
+import Swal from "sweetalert2";
 
 /* ===== Firestore ===== */
 import { db } from "../../../config/firebase";
@@ -30,6 +34,8 @@ import {
   getDoc,
   updateDoc,
   deleteDoc,
+  query,
+  where,
 } from "firebase/firestore";
 import { notifyTeamSchedule } from "../../../services/notifications";
 
@@ -73,6 +79,72 @@ const to12h = (t) => {
   return `${hh}:${String(M).padStart(2, "0")} ${ampm}`;
 };
 
+// Generate time options with 30-minute intervals
+const generateTimeOptions = () => {
+  const times = [];
+  for (let hour = 0; hour < 24; hour++) {
+    for (let minute = 0; minute < 60; minute += 30) {
+      const timeString = `${hour.toString().padStart(2, "0")}:${minute
+        .toString()
+        .padStart(2, "0")}`;
+      times.push(timeString);
+    }
+  }
+  return times;
+};
+
+const TIME_OPTIONS = generateTimeOptions();
+
+// Check if date has passed (including time) - for verdict editing
+const isDatePassed = (dateStr, timeStr) => {
+  if (!dateStr) return false;
+
+  const now = new Date();
+  const scheduleDateTime = new Date(dateStr);
+
+  if (timeStr) {
+    const [hours, minutes] = timeStr.split(":").map(Number);
+    scheduleDateTime.setHours(hours, minutes, 0, 0);
+  } else {
+    scheduleDateTime.setHours(23, 59, 59, 999); // End of day if no time
+  }
+
+  return scheduleDateTime < now;
+};
+
+// Get current date in YYYY-MM-DD format for min date
+const getCurrentDate = () => {
+  return new Date().toISOString().split("T")[0];
+};
+
+// Show SweetAlert for various messages
+const showAlert = (title, text, icon = "info") => {
+  Swal.fire({
+    title,
+    text,
+    icon,
+    confirmButtonColor: MAROON,
+  });
+};
+
+const Breadcrumbs = () => {
+  const navigate = useNavigate();
+  return (
+    <div className="flex items-center gap-2 text-neutral-700">
+      <button
+        onClick={() => navigate("/instructor/schedule")}
+        className="text-[15px] font-medium text-neutral-600 hover:underline"
+      >
+        Schedule
+      </button>
+      <ChevronRight size={16} className="text-neutral-400" />
+      <span className="text-[15px] font-semibold">Manuscript Submission</span>
+      <ChevronRight size={16} className="text-neutral-400" />
+      <span className="text-[15px]">Scheduled Teams</span>
+    </div>
+  );
+};
+
 /* ---------- your button (unchanged style) ---------- */
 const Btn = ({
   children,
@@ -99,87 +171,59 @@ const Btn = ({
   );
 };
 
-const VerdictPill = ({ verdict }) => {
-  const v = (verdict || "").toLowerCase();
-  const styles =
-    v === "passed"
-      ? "bg-[#6BA34D] text-white"
-      : v === "recheck"
-      ? "bg-[#F59E0B] text-white"
-      : "bg-[#9CA3AF] text-white"; // Pending
-  return (
-    <span
-      className={`inline-flex items-center px-3 py-1 rounded-md text-xs font-semibold ${styles}`}
-    >
-      {verdict}
-    </span>
-  );
-};
-
-const Breadcrumbs = () => {
-  const navigate = useNavigate();
-  return (
-    <div className="flex items-center gap-2 text-neutral-700">
-      <button
-        onClick={() => navigate("/instructor/schedule")}
-        className="inline-flex items-center gap-2 text-[15px] font-medium text-neutral-600 hover:underline"
-      >
-        <FileText size={16} className="text-neutral-500" />
-        Schedule
-      </button>
-      <ChevronRight size={16} className="text-neutral-400" />
-      <span className="text-[15px] font-semibold">Manuscript Submission</span>
-    </div>
-  );
-};
-
 export default function ManuscriptSubmission() {
   const navigate = useNavigate();
-  const [showCreate, setShowCreate] = useState(false);
+  const [queryText, setQueryText] = useState("");
+  const [filterVerdict, setFilterVerdict] = useState("all");
 
-  /* ===== Teams (for pickers) ===== */
+  const [editingId, setEditingId] = useState(null);
+  const [viewSchedule, setViewSchedule] = useState(null);
+
+  /* ===== Firestore-backed options ===== */
   const [teamOptions, setTeamOptions] = useState([]); // [{id, name}]
   const [loadingTeams, setLoadingTeams] = useState(true);
 
   /* ===== Submissions list ===== */
-  const [rows, setRows] = useState([]); // firestore rows
-  const [loadingRows, setLoadingRows] = useState(true);
+  const [submissions, setSubmissions] = useState([]); // [{id, ...}]
+  const [loadingSubmissions, setLoadingSubmissions] = useState(true);
 
-  /* ===== Row actions ===== */
-  const [query, setQuery] = useState("");
+  // Row menu
   const [menuOpenId, setMenuOpenId] = useState(null);
-  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 }); // fixed menu coords
-  const [editRow, setEditRow] = useState(null);
-  const [viewRow, setViewRow] = useState(null);
+
+  // Filter dropdown state
+  const [filterOpen, setFilterOpen] = useState(false);
+
+  // Tooltip state for verdict
+  const [showVerdictTooltip, setShowVerdictTooltip] = useState(null);
 
   /* ===== Files viewer modal ===== */
   const [filesRow, setFilesRow] = useState(null);
 
-  /* ===== Bulk delete ===== */
+  /* ===== Bulk delete state ===== */
   const [bulkMode, setBulkMode] = useState(false);
   const [selected, setSelected] = useState(new Set());
+
   const exitBulk = () => {
     setBulkMode(false);
     setSelected(new Set());
   };
+  const toggleSelect = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
 
-  // close menu on outside click / ESC
-  useEffect(() => {
-    const onKey = (e) => e.key === "Escape" && setMenuOpenId(null);
-    const onClick = (e) => {
-      if (!(e.target.closest && e.target.closest("[data-menu-root]"))) {
-        setMenuOpenId(null);
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    document.addEventListener("click", onClick);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.removeEventListener("click", onClick);
-    };
-  }, []);
+  // Show tooltip for 5 seconds
+  const showTooltipFor5Sec = (scheduleId) => {
+    setShowVerdictTooltip(scheduleId);
+    setTimeout(() => {
+      setShowVerdictTooltip(null);
+    }, 5000);
+  };
 
-  // Fetch teams that passed title defense and date has passed
+  // Load Teams that passed title defense
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -188,23 +232,16 @@ export default function ManuscriptSubmission() {
         const titleDefenseSnap = await getDocs(
           collection(db, "titleDefenseSchedules")
         );
-        const currentDateTime = new Date();
         const eligibleTeamIds = new Set();
 
         titleDefenseSnap.forEach((docX) => {
           const data = docX.data();
           const teamId = data?.teamId;
           const verdict = data?.verdict;
-          const defenseDate = data?.date;
-          const defenseTime = data?.timeEnd || data?.timeStart;
 
-          if (teamId && verdict === "Passed" && defenseDate && defenseTime) {
-            const defenseDateTime = new Date(
-              `${defenseDate}T${defenseTime}:00`
-            );
-            if (defenseDateTime < currentDateTime) {
-              eligibleTeamIds.add(teamId);
-            }
+          // Only check for Approved verdict
+          if (teamId && verdict === "Approved") {
+            eligibleTeamIds.add(teamId);
           }
         });
 
@@ -220,7 +257,8 @@ export default function ManuscriptSubmission() {
         teams.sort((a, b) => a.name.localeCompare(b.name));
         if (alive) setTeamOptions(teams);
       } catch (e) {
-        console.error("[Manuscripts] Failed to load eligible teams:", e);
+        console.error("Failed to load eligible teams:", e);
+        showAlert("Error", "Failed to load teams. Please try again.", "error");
       } finally {
         if (alive) setLoadingTeams(false);
       }
@@ -230,50 +268,84 @@ export default function ManuscriptSubmission() {
     };
   }, []);
 
-  // Load manuscript submissions with Title Defense filtering
-  const loadRows = async () => {
-    setLoadingRows(true);
+  // Load Manuscript Submissions with Title Defense filtering
+  const loadSubmissions = async () => {
+    setLoadingSubmissions(true);
     try {
       const titleDefenseSnap = await getDocs(
         collection(db, "titleDefenseSchedules")
       );
-      const currentDateTime = new Date();
       const eligibleTeams = new Map();
 
+      // Get all approved teams from title defense
       titleDefenseSnap.forEach((docX) => {
         const data = docX.data();
         const teamId = data?.teamId;
         const teamName = data?.teamName;
         const verdict = data?.verdict;
-        const defenseDate = data?.date;
-        const defenseTime = data?.timeEnd || data?.timeStart;
 
-        if (
-          teamId &&
-          teamName &&
-          verdict === "Passed" &&
-          defenseDate &&
-          defenseTime
-        ) {
-          const defenseDateTime = new Date(`${defenseDate}T${defenseTime}:00`);
-          if (defenseDateTime < currentDateTime) {
-            eligibleTeams.set(teamId, teamName);
-          }
+        if (teamId && teamName && verdict === "Approved") {
+          eligibleTeams.set(teamId, teamName);
         }
       });
 
+      // Get existing manuscript submissions
       const manuscriptSnap = await getDocs(collection(db, COLLECTION));
-      const arr = [];
+      const existingSubmissions = new Map();
 
       manuscriptSnap.forEach((docX) => {
         const d = docX.data();
         const teamId = d?.teamId;
+        existingSubmissions.set(teamId, {
+          id: docX.id,
+          ...d,
+        });
+      });
 
+      // Auto-create manuscript submissions for approved teams that don't have one
+      const creationPromises = [];
+      for (const [teamId, teamName] of eligibleTeams) {
+        if (!existingSubmissions.has(teamId)) {
+          const currentDate = new Date();
+          const manuscriptData = {
+            teamId: teamId,
+            teamName: teamName,
+            title: "", // Empty title to be filled later
+            date: currentDate.toISOString().split("T")[0], // Current date as default
+            time: currentDate.toTimeString().slice(0, 5), // Current time as default
+            plag: 0,
+            ai: 0,
+            file: "—",
+            verdict: "Pending",
+            createdAt: serverTimestamp(),
+            fileUrl: [],
+          };
+
+          creationPromises.push(
+            addDoc(collection(db, COLLECTION), manuscriptData)
+          );
+        }
+      }
+
+      // Wait for all creations to complete
+      if (creationPromises.length > 0) {
+        await Promise.all(creationPromises);
+      }
+
+      // Reload all manuscript submissions after potential creations
+      const updatedManuscriptSnap = await getDocs(collection(db, COLLECTION));
+      const rows = [];
+
+      updatedManuscriptSnap.forEach((docX) => {
+        const d = docX.data();
+        const teamId = d?.teamId;
+
+        // Only include submissions for eligible teams
         if (eligibleTeams.has(teamId)) {
-          arr.push({
+          rows.push({
             id: docX.id,
             teamId: teamId,
-            team: d?.teamName || "",
+            teamName: d?.teamName || "",
             title: d?.title || "",
             date: d?.date || "",
             time: d?.time || "",
@@ -282,56 +354,283 @@ export default function ManuscriptSubmission() {
             file: d?.file || "—",
             verdict: d?.verdict || "Pending",
             createdAt: d?.createdAt,
-            fileUrl: Array.isArray(d?.fileUrl) ? d.fileUrl : [], // <-- include uploaded files
+            fileUrl: Array.isArray(d?.fileUrl) ? d.fileUrl : [],
+            isReSubmission: d?.isReSubmission || false,
+            originalSubmissionId: d?.originalSubmissionId || null,
           });
         }
       });
 
-      arr.sort((a, b) => {
-        const ad = a.date || "";
-        const bd = b.date || "";
+      // Sort by date, then by time (empty times first), then by creation date
+      rows.sort((a, b) => {
+        // First by date
+        const ad = a.date || "",
+          bd = b.date || "";
         if (ad < bd) return -1;
         if (ad > bd) return 1;
-        return (a.time || "").localeCompare(b.time || "");
+
+        // Then by time (empty times come first for re-submissions)
+        const at = a.time || "",
+          bt = b.time || "";
+        if (!at && bt) return -1; // a has no time, b has time -> a comes first
+        if (at && !bt) return 1; // a has time, b has no time -> b comes first
+        if (at && bt) {
+          // Both have times, sort by time
+          if (at < bt) return -1;
+          if (at > bt) return 1;
+        }
+
+        // Finally by creation date (newer first)
+        const ac = a.createdAt?.toDate?.() || new Date(0);
+        const bc = b.createdAt?.toDate?.() || new Date(0);
+        return bc - ac; // Newer first
       });
-      setRows(arr);
+
+      setSubmissions(rows);
     } catch (e) {
-      console.error("[Manuscripts] Failed to load submissions:", e);
-      setRows([]);
+      console.error("Failed to load submissions:", e);
+      showAlert(
+        "Error",
+        "Failed to load submissions. Please try again.",
+        "error"
+      );
     } finally {
-      setLoadingRows(false);
+      setLoadingSubmissions(false);
     }
   };
 
   useEffect(() => {
-    loadRows();
+    loadSubmissions();
   }, []);
 
-  // verdict inline update (Pending / Recheck / Passed)
-  const handleChangeVerdict = async (id, verdict) => {
+  // verdict updater
+  const handleChangeVerdict = async (submissionId, newVerdict) => {
     try {
-      setRows((prev) => prev.map((r) => (r.id === id ? { ...r, verdict } : r)));
-      await updateDoc(doc(db, COLLECTION, id), { verdict });
+      setSubmissions((prev) =>
+        prev.map((s) =>
+          s.id === submissionId ? { ...s, verdict: newVerdict } : s
+        )
+      );
+      await updateDoc(doc(db, COLLECTION, submissionId), {
+        verdict: newVerdict,
+      });
+      showAlert("Success", "Verdict updated successfully.", "success");
     } catch (e) {
-      console.error("[Manuscripts] Verdict update failed:", e);
-      await loadRows();
-      alert("Failed to update verdict.");
+      console.error("Failed to update verdict:", e);
+      await loadSubmissions();
+      showAlert(
+        "Error",
+        "Failed to update verdict. Please try again.",
+        "error"
+      );
     }
   };
 
-  // search filter (client)
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
-      (r) =>
-        r.team.toLowerCase().includes(q) ||
-        r.title.toLowerCase().includes(q) ||
-        (r.file || "").toLowerCase().includes(q)
-    );
-  }, [query, rows]);
+  // Handle inline edit save
+  const handleSaveEdit = async (submissionId, updatedData) => {
+    try {
+      // Validate all required fields
+      if (!updatedData.date) {
+        showAlert("Required Field", "Please select a date.", "warning");
+        return;
+      }
+      if (!updatedData.time) {
+        showAlert("Required Field", "Please select a time.", "warning");
+        return;
+      }
 
-  /* ===== PDF export ===== */
+      const selected = teamOptions.find((t) => t.name === updatedData.teamName);
+      const teamId = selected?.id || null;
+
+      const payload = {
+        teamId,
+        teamName: updatedData.teamName,
+        date: updatedData.date,
+        time: updatedData.time,
+      };
+
+      await updateDoc(doc(db, COLLECTION, submissionId), payload);
+
+      // Notify team (PM, Adviser, Members)
+      await notifyTeamSchedule({
+        kind: "Manuscript Submission",
+        teamId,
+        teamName: updatedData.teamName,
+        date: updatedData.date,
+        time: updatedData.time,
+      });
+
+      setEditingId(null);
+      await loadSubmissions();
+      showAlert("Success", "Submission updated successfully.", "success");
+    } catch (err) {
+      console.error("Failed to update submission:", err);
+      showAlert("Error", "Operation failed. Please try again.", "error");
+      await loadSubmissions();
+    }
+  };
+
+  // Handle submission re-submission
+  const handleScheduleReSubmission = async (originalSubmission) => {
+    try {
+      const newSubmission = {
+        teamId: originalSubmission.teamId,
+        teamName: originalSubmission.teamName,
+        title: originalSubmission.title || "",
+        date: "", // Empty date for re-submission
+        time: "", // Empty time for re-submission
+        plag: 0,
+        ai: 0,
+        verdict: "Pending",
+        createdAt: new Date(),
+        isReSubmission: true,
+        originalSubmissionId: originalSubmission.id,
+        fileUrl: [],
+        file: "—",
+      };
+
+      await addDoc(collection(db, COLLECTION), newSubmission);
+
+      setMenuOpenId(null);
+      await loadSubmissions();
+
+      showAlert(
+        "Success",
+        "Re-submission scheduled successfully. Please set the new date and time.",
+        "success"
+      );
+    } catch (err) {
+      console.error("Failed to schedule re-submission:", err);
+      showAlert(
+        "Error",
+        "Failed to schedule re-submission. Please try again.",
+        "error"
+      );
+    }
+  };
+
+  // Handle single submission deletion
+  const handleDeleteSubmission = async (submission) => {
+    const result = await Swal.fire({
+      title: "Confirm Delete",
+      text: `Delete manuscript submission for "${submission.teamName}"? This cannot be undone.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: MAROON,
+      cancelButtonColor: "#6c757d",
+      confirmButtonText: "Yes, delete it!",
+      cancelButtonText: "Cancel",
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      await deleteDoc(doc(db, COLLECTION, submission.id));
+      setMenuOpenId(null);
+      await loadSubmissions();
+      showAlert("Success", "Submission deleted successfully.", "success");
+    } catch (e) {
+      console.error("Failed to delete submission:", e);
+      showAlert(
+        "Error",
+        "Failed to delete submission. Please try again.",
+        "error"
+      );
+      await loadSubmissions();
+    }
+  };
+
+  // Check if verdict can be edited (date must be passed)
+  const canEditVerdict = (submission) => {
+    return isDatePassed(submission.date, submission.time);
+  };
+
+  // Check if submission details can be edited (verdict must not be "Passed")
+  const canEditSubmission = (submission) => {
+    return submission.verdict !== "Passed";
+  };
+
+  // search filter (client-side) - only search team name and title
+  const filtered = useMemo(() => {
+    let result = submissions;
+
+    // Apply verdict filter
+    if (filterVerdict !== "all") {
+      result = result.filter((s) => s.verdict === filterVerdict);
+    }
+
+    // Apply search text filter - team name and title
+    const q = queryText.trim().toLowerCase();
+    if (q) {
+      result = result.filter(
+        (t) =>
+          t.teamName.toLowerCase().includes(q) ||
+          t.title.toLowerCase().includes(q)
+      );
+    }
+
+    return result;
+  }, [queryText, filterVerdict, submissions]);
+
+  // Select-all works on the filtered (visible) list
+  const allVisibleIds = useMemo(() => filtered.map((s) => s.id), [filtered]);
+  const allSelected =
+    selected.size > 0 && allVisibleIds.every((id) => selected.has(id));
+  const toggleSelectAll = () => {
+    setSelected((prev) => (allSelected ? new Set() : new Set(allVisibleIds)));
+  };
+
+  // Delete button behavior
+  const handleBulkDeleteClick = async () => {
+    if (!bulkMode) {
+      setBulkMode(true);
+      return;
+    }
+    if (selected.size === 0) {
+      showAlert(
+        "Selection Required",
+        "Select at least one submission to delete.",
+        "warning"
+      );
+      return;
+    }
+
+    const result = await Swal.fire({
+      title: "Confirm Delete",
+      text: `Delete ${selected.size} selected submission(s)? This cannot be undone.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: MAROON,
+      cancelButtonColor: "#6c757d",
+      confirmButtonText: "Yes, delete it!",
+      cancelButtonText: "Cancel",
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      await Promise.all(
+        Array.from(selected).map((id) => deleteDoc(doc(db, COLLECTION, id)))
+      );
+      exitBulk();
+      await loadSubmissions();
+      showAlert(
+        "Success",
+        `${selected.size} submission(s) deleted successfully.`,
+        "success"
+      );
+    } catch (e) {
+      console.error("Bulk delete failed:", e);
+      showAlert(
+        "Error",
+        "Failed to delete some submissions. Please try again.",
+        "error"
+      );
+      await loadSubmissions();
+    }
+  };
+
+  /* ===== PDF export with SweetAlert dropdown ===== */
   const loadImage = (src) =>
     new Promise((resolve, reject) => {
       const img = new Image();
@@ -341,7 +640,47 @@ export default function ManuscriptSubmission() {
     });
 
   const handleExportPDF = async () => {
-    const title = "Manuscript Submissions";
+    const { value: exportFilter } = await Swal.fire({
+      title: "Export PDF",
+      text: "Choose which submissions to export:",
+      icon: "question",
+      input: "select",
+      inputOptions: {
+        all: "All Submissions",
+        Pending: "Pending",
+        Recheck: "Recheck",
+        Passed: "Passed",
+      },
+      inputValue: "all",
+      showCancelButton: true,
+      confirmButtonText: "Export",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: MAROON,
+    });
+
+    if (!exportFilter) return;
+
+    // Filter data based on selection
+    let exportData = submissions;
+    if (exportFilter !== "all") {
+      exportData = submissions.filter((s) => s.verdict === exportFilter);
+    }
+
+    if (exportData.length === 0) {
+      Swal.fire({
+        title: "No Data",
+        text: `No ${
+          exportFilter === "all" ? "" : exportFilter + " "
+        }submissions found to export.`,
+        icon: "warning",
+        confirmButtonColor: MAROON,
+      });
+      return;
+    }
+
+    const title = `Manuscript Submissions - ${
+      exportFilter === "all" ? "All" : exportFilter
+    }`;
     const doc = new jsPDF({ unit: "pt", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -356,7 +695,7 @@ export default function ManuscriptSubmission() {
         loadImage(TASKSPHERELOGO),
       ]);
     } catch {
-      // continue even if images fail
+      // continue even if images fail to load
     }
 
     const drawHeader = () => {
@@ -449,17 +788,16 @@ export default function ManuscriptSubmission() {
 
     const tableYStart = drawHeader();
 
-    // proportional column widths (sum = printable width)
     const contentWidth = pageWidth - marginX * 2;
     const W = {
-      no: 0.06 * contentWidth,
+      no: 0.05 * contentWidth,
       team: 0.18 * contentWidth,
-      title: 0.24 * contentWidth,
-      date: 0.1 * contentWidth,
+      title: 0.22 * contentWidth,
+      date: 0.12 * contentWidth,
       time: 0.1 * contentWidth,
-      plag: 0.12 * contentWidth,
-      ai: 0.06 * contentWidth,
-      ver: 0.08 * contentWidth,
+      plag: 0.1 * contentWidth,
+      ai: 0.1 * contentWidth,
+      ver: 0.13 * contentWidth,
     };
 
     const verdictColor = (v) => {
@@ -468,6 +806,7 @@ export default function ManuscriptSubmission() {
       if (s === "recheck") return [217, 168, 30];
       return [106, 15, 20]; // Pending/others
     };
+
     const pctColor = (n) => (Number(n) <= 10 ? [34, 139, 34] : [180, 35, 24]);
 
     autoTable(doc, {
@@ -484,15 +823,15 @@ export default function ManuscriptSubmission() {
           "Verdict",
         ],
       ],
-      body: filtered.map((r, i) => [
+      body: exportData.map((s, i) => [
         `${i + 1}.`,
-        r.team || "—",
-        r.title || "—",
-        fmtDateHuman(r.date) || "—",
-        to12h(r.time) || "—",
-        `${Number(r.plag || 0)}%`,
-        `${Number(r.ai || 0)}%`,
-        r.verdict || "Pending",
+        s.teamName || "",
+        s.title || "",
+        fmtDateHuman(s.date) || "",
+        to12h(s.time) || "",
+        `${Number(s.plag || 0)}%`,
+        `${Number(s.ai || 0)}%`,
+        s.verdict || "",
       ]),
       styles: {
         fontSize: 9,
@@ -509,7 +848,7 @@ export default function ManuscriptSubmission() {
       },
       bodyStyles: { lineWidth: 0.3, lineColor: [235, 235, 235] },
       columnStyles: {
-        0: { cellWidth: W.no },
+        0: { cellWidth: W.no, halign: "left" },
         1: { cellWidth: W.team },
         2: { cellWidth: W.title },
         3: { cellWidth: W.date },
@@ -545,60 +884,163 @@ export default function ManuscriptSubmission() {
     });
 
     doc.save(
-      `manuscript_submissions_${new Date().toISOString().slice(0, 10)}.pdf`
+      `manuscript_submissions_${
+        exportFilter === "all" ? "all" : exportFilter.toLowerCase()
+      }_${new Date().toISOString().slice(0, 10)}.pdf`
     );
-  };
 
-  // bulk helpers
-  const toggleSelect = (id) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
+    Swal.fire({
+      title: "Export Successful!",
+      text: `PDF exported with ${exportData.length} ${
+        exportFilter === "all" ? "" : exportFilter + " "
+      }submission(s).`,
+      icon: "success",
+      confirmButtonColor: MAROON,
     });
   };
-  const allVisibleIds = useMemo(() => filtered.map((r) => r.id), [filtered]);
-  const allSelected =
-    selected.size > 0 && allVisibleIds.every((id) => selected.has(id));
-  const toggleSelectAll = () => {
-    setSelected((prev) => (allSelected ? new Set() : new Set(allVisibleIds)));
-  };
 
-  const handleBulkDeleteClick = async () => {
-    if (!bulkMode) {
-      setBulkMode(true);
-      return;
-    }
-    if (selected.size === 0) {
-      alert("Select at least one submission to delete.");
-      return;
-    }
-    const ok = window.confirm(
-      `Delete ${selected.size} selected submission(s)? This cannot be undone.`
+  // EditableRow component for inline editing
+  const EditableRow = ({ submission, onSave, onCancel }) => {
+    const [editedData, setEditedData] = useState({
+      teamName: submission.teamName || "",
+      date: submission.date || "",
+      time: submission.time || "",
+    });
+
+    const canEdit = canEditSubmission(submission);
+
+    return (
+      <tr className="bg-blue-50">
+        <td className="px-4 py-3 text-neutral-600">
+          {filtered.findIndex((s) => s.id === submission.id) + 1}.
+        </td>
+
+        {/* Team Name (readonly in edit mode) */}
+        <td className="px-4 py-3 font-medium text-neutral-800">
+          {submission.teamName}
+        </td>
+
+        {/* Title (readonly) */}
+        <td className="px-4 py-3 font-medium text-neutral-800">
+          {submission.title || "—"}
+        </td>
+
+        {/* Date */}
+        <td className="px-4 py-3">
+          <div className="relative">
+            <input
+              type="date"
+              value={editedData.date}
+              onChange={(e) =>
+                setEditedData((prev) => ({ ...prev, date: e.target.value }))
+              }
+              disabled={!canEdit}
+              className={`w-full px-2 py-1 rounded border text-sm ${
+                canEdit
+                  ? "border-neutral-300"
+                  : "border-neutral-200 bg-neutral-100 cursor-not-allowed"
+              }`}
+              required
+            />
+          </div>
+        </td>
+
+        {/* Time Dropdown */}
+        <td className="px-4 py-3">
+          <div className="relative">
+            <select
+              value={editedData.time}
+              onChange={(e) =>
+                setEditedData((prev) => ({ ...prev, time: e.target.value }))
+              }
+              disabled={!canEdit}
+              className={`w-full appearance-none pr-8 pl-2 py-1 rounded border text-sm ${
+                canEdit
+                  ? "border-neutral-300 bg-white"
+                  : "border-neutral-200 bg-neutral-100 cursor-not-allowed"
+              }`}
+              required
+            >
+              <option value="">Select Time</option>
+              {TIME_OPTIONS.map((time) => (
+                <option key={time} value={time}>
+                  {to12h(time)}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              size={14}
+              className="absolute right-2 top-1.5 text-neutral-500 pointer-events-none"
+            />
+          </div>
+        </td>
+
+        {/* Plagiarism (readonly) */}
+        <td className={`px-4 py-3 font-semibold ${pctClass(submission.plag)}`}>
+          {submission.plag}%
+        </td>
+
+        {/* AI (readonly) */}
+        <td className={`px-4 py-3 font-semibold ${pctClass(submission.ai)}`}>
+          {submission.ai}%
+        </td>
+
+        {/* Verdict */}
+        <td className="px-4 py-3">
+          <div className="relative inline-flex items-center">
+            <select
+              value={submission.verdict || "Pending"}
+              onChange={(e) =>
+                handleChangeVerdict(submission.id, e.target.value)
+              }
+              disabled={!canEditVerdict(submission)}
+              className={`appearance-none pr-8 pl-3 py-1.5 rounded-md border text-sm ${
+                canEditVerdict(submission)
+                  ? ""
+                  : "opacity-60 cursor-not-allowed"
+              }`}
+              style={{ borderColor: MAROON, color: "#111827" }}
+            >
+              <option>Pending</option>
+              <option>Recheck</option>
+              <option>Passed</option>
+            </select>
+            <ChevronDown
+              size={16}
+              className="absolute right-2 pointer-events-none text-neutral-500"
+            />
+          </div>
+        </td>
+
+        {/* Action buttons */}
+        <td className="px-2 py-3">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onSave(editedData)}
+              className="p-1.5 rounded hover:bg-green-100 text-green-600"
+              title="Save"
+            >
+              <Check size={16} />
+            </button>
+            <button
+              onClick={onCancel}
+              className="p-1.5 rounded hover:bg-red-100 text-red-600"
+              title="Cancel"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </td>
+      </tr>
     );
-    if (!ok) return;
-
-    try {
-      await Promise.all(
-        Array.from(selected).map((id) => deleteDoc(doc(db, COLLECTION, id)))
-      );
-      exitBulk();
-      await loadRows();
-    } catch (e) {
-      console.error("[Manuscripts] Bulk delete failed:", e);
-      alert("Failed to delete some submissions. See console for details.");
-      await loadRows();
-    }
   };
 
-  // open menu & anchor to button (viewport coords)
-  const onOpenMenu = (id, e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const menuWidth = 160;
-    const x = Math.max(8, rect.right - menuWidth);
-    const y = rect.bottom + 4;
-    setMenuPos({ x, y });
-    setMenuOpenId((prev) => (prev === id ? null : id));
+  // Get row background color based on verdict
+  const getRowBackgroundColor = (verdict) => {
+    if (verdict === "Failed") {
+      return "bg-red-600 text-white";
+    }
+    return "";
   };
 
   // cell color helper for ≤10% = green
@@ -607,17 +1049,17 @@ export default function ManuscriptSubmission() {
 
   return (
     <div className="">
-      {/* breadcrumb + maroon divider */}
       <Breadcrumbs />
       <div className="mt-2 h-[2px] w-full bg-neutral-200">
         <div
           className="h-[2px]"
-          style={{ backgroundColor: MAROON, width: 320 }}
+          style={{ backgroundColor: MAROON, width: 260 }}
         />
       </div>
 
-      {/* actions row */}
-      <div className="mt-4 flex items-center justify-between">
+      {/* actions */}
+      <div className="mt-6 space-y-4">
+        {/* Row 1: Back + Export (aligned) */}
         <div className="flex items-center gap-3">
           <Btn
             icon={ChevronLeft}
@@ -634,18 +1076,15 @@ export default function ManuscriptSubmission() {
             Export PDF
           </Btn>
         </div>
-      </div>
 
-      {/* table card */}
-      <div className="mt-4 rounded-xl border border-neutral-200 bg-white shadow-[0_6px_18px_rgba(0,0,0,0.05)]">
-        {/* header tools */}
-        <div className="flex items-center justify-between px-4 pt-4">
+        {/* Row 2: Search (left) + Filter (right) */}
+        <div className="flex items-center justify-between">
           <div className="relative">
             <input
               type="text"
-              placeholder="Search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search team name or title"
+              value={queryText}
+              onChange={(e) => setQueryText(e.target.value)}
               className="pl-10 pr-3 py-2 w-72 rounded-md border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-300"
             />
             <Search
@@ -654,227 +1093,347 @@ export default function ManuscriptSubmission() {
             />
           </div>
 
-          <div className="flex items-center gap-2 pb-2">
-            <Btn icon={Filter} variant="outline" className="!px-2">
-              Filters
-            </Btn>
+          <div className="flex items-center gap-3">
+            {/* Filter Button */}
+            <div className="relative">
+              <button
+                onClick={() => setFilterOpen(!filterOpen)}
+                className="inline-flex items-center gap-2 rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+              >
+                <Filter size={16} />
+                Filter
+                <ChevronDown size={16} />
+              </button>
+
+              {filterOpen && (
+                <div className="absolute right-0 mt-1 z-20 w-48 rounded-md border bg-white shadow-lg">
+                  <div className="py-1">
+                    <button
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-neutral-50 ${
+                        filterVerdict === "all"
+                          ? "bg-neutral-50 font-medium"
+                          : ""
+                      }`}
+                      onClick={() => {
+                        setFilterVerdict("all");
+                        setFilterOpen(false);
+                      }}
+                    >
+                      All Verdicts
+                    </button>
+                    <button
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-neutral-50 ${
+                        filterVerdict === "Pending"
+                          ? "bg-neutral-50 font-medium"
+                          : ""
+                      }`}
+                      onClick={() => {
+                        setFilterVerdict("Pending");
+                        setFilterOpen(false);
+                      }}
+                    >
+                      Pending
+                    </button>
+                    <button
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-neutral-50 ${
+                        filterVerdict === "Recheck"
+                          ? "bg-neutral-50 font-medium"
+                          : ""
+                      }`}
+                      onClick={() => {
+                        setFilterVerdict("Recheck");
+                        setFilterOpen(false);
+                      }}
+                    >
+                      Recheck
+                    </button>
+                    <button
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-neutral-50 ${
+                        filterVerdict === "Passed"
+                          ? "bg-neutral-50 font-medium"
+                          : ""
+                      }`}
+                      onClick={() => {
+                        setFilterVerdict("Passed");
+                        setFilterOpen(false);
+                      }}
+                    >
+                      Passed
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {bulkMode && (
+              <button
+                onClick={exitBulk}
+                className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 border border-neutral-300 bg-white"
+              >
+                Cancel
+              </button>
+            )}
           </div>
         </div>
-
-        {/* table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-neutral-50 text-neutral-600">
-              <tr>
-                {bulkMode ? (
-                  <th className="px-4 py-3 w-10">
-                    <input
-                      type="checkbox"
-                      aria-label="Select all"
-                      checked={allSelected}
-                      onChange={toggleSelectAll}
-                      className="h-4 w-4"
-                    />
-                  </th>
-                ) : (
-                  <th className="text-left px-4 py-3 w-16">NO</th>
-                )}
-                <th className="text-left px-4 py-3">Team</th>
-                <th className="text-left px-4 py-3">Title</th>
-                <th className="text-left px-4 py-3">
-                  <div className="inline-flex items-center gap-2">
-                    <CalIcon size={16} /> Due Date
-                  </div>
-                </th>
-                <th className="text-left px-4 py-3">
-                  <div className="inline-flex items-center gap-2">
-                    <Clock size={16} /> Time
-                  </div>
-                </th>
-                <th className="text-left px-4 py-3">Plagiarism</th>
-                <th className="text-left px-4 py-3">AI</th>
-                <th className="text-left px-4 py-3">File Uploaded</th>
-                <th className="text-left px-4 py-3">Verdict</th>
-                <th className="text-left px-4 py-3 w-16">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loadingRows ? (
-                <tr>
-                  <td className="px-4 py-8 text-neutral-500" colSpan={10}>
-                    Loading manuscript submissions…
-                  </td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td className="px-4 py-6 text-neutral-500" colSpan={10}>
-                    {rows.length === 0
-                      ? "No manuscript submissions found for teams that passed Title Defense."
-                      : 'No matches for "' + query + '".'}
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((r, idx) => {
-                  const isChecked = selected.has(r.id);
-                  const fileCount = Array.isArray(r.fileUrl)
-                    ? r.fileUrl.length
-                    : 0;
-                  return (
-                    <tr
-                      key={r.id}
-                      className={idx % 2 ? "bg-neutral-50/60" : "bg-white"}
-                    >
-                      {bulkMode ? (
-                        <td className="px-4 py-3">
-                          <input
-                            type="checkbox"
-                            aria-label={`Select ${r.title || r.team}`}
-                            checked={isChecked}
-                            onChange={() => toggleSelect(r.id)}
-                            className="h-4 w-4"
-                          />
-                        </td>
-                      ) : (
-                        <td className="px-4 py-3 text-neutral-600">
-                          {idx + 1}.
-                        </td>
-                      )}
-
-                      <td className="px-4 py-3 font-medium text-neutral-800">
-                        {r.team}
-                      </td>
-                      <td className="px-4 py-3 text-neutral-800">
-                        {r.title || "—"}
-                      </td>
-                      <td className="px-4 py-3 text-neutral-700">
-                        {fmtDateHuman(r.date) || "—"}
-                      </td>
-                      <td className="px-4 py-3 text-neutral-700">
-                        {to12h(r.time) || "—"}
-                      </td>
-                      <td
-                        className={`px-4 py-3 font-semibold ${pctClass(
-                          r.plag
-                        )}`}
-                      >
-                        {r.plag}%
-                      </td>
-                      <td
-                        className={`px-4 py-3 font-semibold ${pctClass(r.ai)}`}
-                      >
-                        {r.ai}%
-                      </td>
-
-                      {/* View-only files modal trigger */}
-                      <td className="px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={() => setFilesRow(r)}
-                          className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-50"
-                          title="View uploaded files"
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                          View Files{fileCount ? ` (${fileCount})` : ""}
-                        </button>
-                      </td>
-
-                      <td className="px-4 py-3">
-                        <div className="relative inline-flex items-center">
-                          <select
-                            value={r.verdict || "Pending"}
-                            onChange={(e) =>
-                              handleChangeVerdict(r.id, e.target.value)
-                            }
-                            disabled={bulkMode}
-                            className={`appearance-none pr-8 pl-3 py-1.5 rounded-md border text-sm ${
-                              bulkMode ? "opacity-60 cursor-not-allowed" : ""
-                            }`}
-                            style={{ borderColor: MAROON, color: "#111827" }}
-                          >
-                            <option>Pending</option>
-                            <option>Recheck</option>
-                            <option>Passed</option>
-                          </select>
-                          <ChevronDown
-                            size={16}
-                            className="absolute right-2 pointer-events-none text-neutral-500"
-                          />
-                        </div>
-                      </td>
-
-                      <td className="px-2 py-3">
-                        <button
-                          data-menu-root
-                          disabled={bulkMode}
-                          className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${
-                            bulkMode
-                              ? "opacity-40 cursor-not-allowed"
-                              : "hover:bg-neutral-100"
-                          }`}
-                          onClick={(e) => onOpenMenu(r.id, e)}
-                        >
-                          <MoreVertical size={18} />
-                        </button>
-                        {!bulkMode && menuOpenId === r.id && (
-                          <div
-                            data-menu-root
-                            className="fixed z-50 w-40 rounded-md border bg-white shadow"
-                            style={{ left: menuPos.x, top: menuPos.y }}
-                          >
-                            <button
-                              className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
-                              onClick={() => {
-                                setViewRow(r);
-                                setMenuOpenId(null);
-                              }}
-                            >
-                              View
-                            </button>
-                            <button
-                              className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
-                              onClick={() => {
-                                setEditRow(r);
-                                setMenuOpenId(null);
-                              }}
-                            >
-                              Edit
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="h-2" />
       </div>
 
-      {/* dialogs */}
-      {showCreate && (
-        <CreateOrEditDialog
-          mode="create"
-          onClose={() => setShowCreate(false)}
-          onSaved={loadRows}
-          teamOptions={teamOptions}
-          loadingTeams={loadingTeams}
-        />
+      {/* Active Filter Badge */}
+      {filterVerdict !== "all" && (
+        <div className="mt-4 flex items-center gap-2">
+          <span className="text-sm text-neutral-600">Active filter:</span>
+          <div className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1 text-sm text-blue-800">
+            {filterVerdict}
+            <button
+              onClick={() => setFilterVerdict("all")}
+              className="ml-1 rounded-full hover:bg-blue-200 p-0.5"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
       )}
-      {editRow && (
-        <CreateOrEditDialog
-          mode="edit"
-          initial={editRow}
-          onClose={() => setEditRow(null)}
-          onSaved={loadRows}
-          teamOptions={teamOptions}
-          loadingTeams={loadingTeams}
+
+      {/* table */}
+      <div className="mt-5 rounded-xl border border-neutral-200 bg-white shadow-[0_6px_18px_rgba(0,0,0,0.05)]">
+        <table className="w-full text-sm">
+          <thead className="bg-neutral-50 text-neutral-600">
+            <tr>
+              {bulkMode ? (
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all"
+                    checked={allSelected}
+                    onChange={toggleSelectAll}
+                    className="h-4 w-4"
+                  />
+                </th>
+              ) : (
+                <th className="text-left px-4 py-3 w-16">NO</th>
+              )}
+              <th className="text-left px-4 py-3">Team</th>
+              <th className="text-left px-4 py-3">Title</th>
+              <th className="text-left px-4 py-3">
+                <div className="inline-flex items-center gap-2">
+                  <CalIcon size={16} /> Due Date
+                </div>
+              </th>
+              <th className="text-left px-4 py-3">
+                <div className="inline-flex items-center gap-2">
+                  <Clock size={16} /> Time
+                </div>
+              </th>
+              <th className="text-left px-4 py-3">Plagiarism</th>
+              <th className="text-left px-4 py-3">AI</th>
+              <th className="text-left px-4 py-3">File Uploaded</th>
+              <th className="text-left px-4 py-3">Verdict</th>
+              <th className="text-left px-4 py-3 w-16">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loadingSubmissions ? (
+              <tr>
+                <td className="px-4 py-6 text-neutral-500" colSpan={10}>
+                  Loading submissions…
+                </td>
+              </tr>
+            ) : submissions.length === 0 ? (
+              <tr>
+                <td className="px-4 py-6 text-neutral-500" colSpan={10}>
+                  No manuscript submissions found for teams that passed Title
+                  Defense. Make sure teams have 'Approved' verdict in Title
+                  Defense schedule.
+                </td>
+              </tr>
+            ) : filtered.length === 0 ? (
+              <tr>
+                <td className="px-4 py-6 text-neutral-500" colSpan={10}>
+                  {filterVerdict !== "all"
+                    ? `No ${filterVerdict.toLowerCase()} submissions found${
+                        queryText ? ` for "${queryText}"` : ""
+                      }.`
+                    : `No matches found for "${queryText}".`}
+                </td>
+              </tr>
+            ) : (
+              filtered.map((s, idx) => {
+                if (editingId === s.id) {
+                  return (
+                    <EditableRow
+                      key={s.id}
+                      submission={s}
+                      onSave={(updatedData) =>
+                        handleSaveEdit(s.id, updatedData)
+                      }
+                      onCancel={() => setEditingId(null)}
+                    />
+                  );
+                }
+
+                const isChecked = selected.has(s.id);
+                const rowColor = getRowBackgroundColor(s.verdict);
+                const canEditVerdictNow = canEditVerdict(s);
+                const canEditSubmissionNow = canEditSubmission(s);
+                const fileCount = Array.isArray(s.fileUrl)
+                  ? s.fileUrl.length
+                  : 0;
+
+                return (
+                  <tr key={s.id} className={`${rowColor}`}>
+                    {/* first column: checkbox or row number */}
+                    {bulkMode ? (
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${s.teamName}`}
+                          checked={isChecked}
+                          onChange={() => toggleSelect(s.id)}
+                          className="h-4 w-4"
+                        />
+                      </td>
+                    ) : (
+                      <td className="px-4 py-3">{idx + 1}.</td>
+                    )}
+
+                    <td className="px-4 py-3 font-medium">{s.teamName}</td>
+                    <td className="px-4 py-3">{s.title || "—"}</td>
+
+                    {/* Date */}
+                    <td className="px-4 py-3">{fmtDateHuman(s.date) || "—"}</td>
+
+                    {/* Time */}
+                    <td className="px-4 py-3">{to12h(s.time) || "—"}</td>
+
+                    {/* Plagiarism */}
+                    <td
+                      className={`px-4 py-3 font-semibold ${pctClass(s.plag)}`}
+                    >
+                      {s.plag}%
+                    </td>
+
+                    {/* AI */}
+                    <td className={`px-4 py-3 font-semibold ${pctClass(s.ai)}`}>
+                      {s.ai}%
+                    </td>
+
+                    {/* View-only files modal trigger */}
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => setFilesRow(s)}
+                        className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-50"
+                        title="View uploaded files"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        View Files{fileCount ? ` (${fileCount})` : ""}
+                      </button>
+                    </td>
+
+                    {/* Verdict */}
+                    <td className="px-4 py-3">
+                      <div className="relative inline-flex items-center">
+                        <select
+                          value={s.verdict || "Pending"}
+                          onChange={(e) =>
+                            handleChangeVerdict(s.id, e.target.value)
+                          }
+                          onFocus={() => {
+                            if (!canEditVerdictNow && s.verdict === "Pending") {
+                              showTooltipFor5Sec(s.id);
+                            }
+                          }}
+                          disabled={!canEditVerdictNow || bulkMode}
+                          className={`appearance-none pr-8 pl-3 py-1.5 rounded-md border text-sm ${
+                            !canEditVerdictNow || bulkMode
+                              ? "opacity-60 cursor-not-allowed"
+                              : ""
+                          }`}
+                          style={{
+                            borderColor: MAROON,
+                            color: s.verdict === "Failed" ? "white" : "#111827",
+                            backgroundColor:
+                              s.verdict === "Failed" ? "transparent" : "white",
+                          }}
+                        >
+                          <option>Pending</option>
+                          <option>Recheck</option>
+                          <option>Passed</option>
+                        </select>
+                        <ChevronDown
+                          size={16}
+                          className="absolute right-2 pointer-events-none text-neutral-500"
+                        />
+                        {showVerdictTooltip === s.id &&
+                          !canEditVerdictNow &&
+                          s.verdict === "Pending" && (
+                            <div className="absolute -top-8 left-0 text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded border border-orange-200 shadow-sm z-10">
+                              Set verdict after submission date
+                            </div>
+                          )}
+                      </div>
+                    </td>
+
+                    {/* Row actions - Kebab menu with Update, Schedule Re-Submission, and Remove */}
+                    <td className="px-2 py-3 relative">
+                      <button
+                        disabled={bulkMode}
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${
+                          bulkMode
+                            ? "opacity-40 cursor-not-allowed"
+                            : "hover:bg-neutral-100"
+                        }`}
+                        onClick={() =>
+                          setMenuOpenId(menuOpenId === s.id ? null : s.id)
+                        }
+                      >
+                        <MoreVertical size={18} />
+                      </button>
+
+                      {!bulkMode && menuOpenId === s.id && (
+                        <div className="absolute right-2 mt-1 z-20 w-48 rounded-md border bg-white shadow">
+                          <button
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50 flex items-center gap-2"
+                            onClick={() => {
+                              setEditingId(s.id);
+                              setMenuOpenId(null);
+                            }}
+                            disabled={!canEditSubmissionNow}
+                          >
+                            <Check size={14} />
+                            Update
+                          </button>
+                          <button
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50 flex items-center gap-2"
+                            onClick={() => handleScheduleReSubmission(s)}
+                            disabled={s.verdict === "Passed"}
+                          >
+                            <RotateCcw size={14} />
+                            Schedule Re-Submission
+                          </button>
+                          <button
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50 flex items-center gap-2 text-red-600"
+                            onClick={() => handleDeleteSubmission(s)}
+                          >
+                            <Trash2 size={14} />
+                            Remove
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* View Team Dialog */}
+      {viewSchedule && (
+        <ViewTeamDialog
+          schedule={viewSchedule}
+          onClose={() => setViewSchedule(null)}
         />
-      )}
-      {viewRow && (
-        <ViewTeamDialog row={viewRow} onClose={() => setViewRow(null)} />
       )}
 
       {/* View-only Uploaded Files modal */}
@@ -885,261 +1444,8 @@ export default function ManuscriptSubmission() {
   );
 }
 
-/* ---------------- Create/Edit Dialog ---------------- */
-function CreateOrEditDialog({
-  mode = "create",
-  initial = null,
-  onClose,
-  onSaved,
-  teamOptions = [],
-  loadingTeams = false,
-}) {
-  const isEdit = mode === "edit";
-
-  // Get the current date and time
-  const currentDate = new Date();
-  const currentDateString = currentDate.toISOString().split("T")[0]; // YYYY-MM-DD
-  const currentTimeString = currentDate
-    .toTimeString()
-    .split(" ")[0]
-    .slice(0, 5); // HH:MM
-
-  // Set defaults if empty
-  const [teamName, setTeamName] = useState(initial?.team || "");
-  const [title, setTitle] = useState(initial?.title || "");
-  const [date, setDate] = useState(initial?.date || currentDateString);
-  const [time, setTime] = useState(initial?.time || currentTimeString);
-  const [plag, setPlag] = useState(String(initial?.plag ?? 0));
-  const [ai, setAi] = useState(String(initial?.ai ?? 0));
-
-  const fileVal = "—";
-
-  const disabled =
-    !teamName || !title || !date || !time || Number(plag) < 0 || Number(ai) < 0;
-
-  const handleSubmit = async () => {
-    try {
-      const team = teamOptions.find((t) => t.name === teamName);
-      const payload = {
-        teamId: team?.id || null,
-        teamName,
-        title,
-        date,
-        time,
-        plag: Number(plag) || 0,
-        ai: Number(ai) || 0,
-        file: fileVal,
-      };
-
-      if (isEdit) {
-        await updateDoc(doc(db, COLLECTION, initial.id), payload);
-      } else {
-        await addDoc(collection(db, COLLECTION), {
-          ...payload,
-          verdict: "Pending",
-          createdAt: serverTimestamp(),
-        });
-      }
-
-      // Notify team subscribers
-      await notifyTeamSchedule({
-        kind: "Manuscript Submission",
-        teamId: payload.teamId,
-        teamName: payload.teamName,
-        date: payload.date,
-        timeStart: payload.time,
-        timeEnd: "",
-      });
-
-      if (typeof onSaved === "function") onSaved();
-      onClose();
-    } catch (e) {
-      console.error(
-        isEdit
-          ? "[Manuscripts] Update failed:"
-          : "[Manuscripts] Create failed:",
-        e
-      );
-      alert("Operation failed. See console for details.");
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50">
-      {/* backdrop */}
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-
-      {/* panel */}
-      <div className="absolute left-1/2 top-1/2 w-[560px] -translate-x-1/2 -translate-y-1/2">
-        <div className="rounded-2xl bg-white border border-neutral-200 shadow-2xl">
-          {/* header */}
-          <div className="flex items-center justify-between px-5 pt-4">
-            <div
-              className="text-[16px] font-semibold"
-              style={{ color: MAROON }}
-            >
-              {isEdit ? "Edit Submission" : "Create Submission"}
-            </div>
-            <button
-              onClick={onClose}
-              className="h-8 w-8 grid place-items-center rounded-md hover:bg-neutral-100"
-            >
-              <X size={18} className="text-neutral-500" />
-            </button>
-          </div>
-          <div className="mt-3 h-[2px] w-full bg-neutral-200">
-            <div
-              className="h-[2px]"
-              style={{ backgroundColor: MAROON, width: isEdit ? 150 : 160 }}
-            />
-          </div>
-
-          {/* body */}
-          <div className="px-5 py-5">
-            <div className="grid grid-cols-2 gap-5">
-              {/* Team */}
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Assign Team
-                </label>
-                <div className="relative">
-                  <select
-                    value={teamName}
-                    onChange={(e) => setTeamName(e.target.value)}
-                    className="w-full appearance-none pr-8 pl-3 py-2 rounded-md border border-neutral-300 text-sm bg-white"
-                    disabled={loadingTeams}
-                  >
-                    <option value="">Select</option>
-                    {loadingTeams && <option>Loading…</option>}
-                    {!loadingTeams &&
-                      teamOptions.map((t) => (
-                        <option key={t.id} value={t.name}>
-                          {t.name}
-                        </option>
-                      ))}
-                  </select>
-                  <ChevronDown
-                    size={16}
-                    className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none"
-                  />
-                </div>
-              </div>
-
-              {/* Title */}
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Manuscript Title
-                </label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="w-full pl-3 pr-3 py-2 rounded-md border border-neutral-300 text-sm"
-                  placeholder="e.g., FitTrack"
-                />
-              </div>
-
-              {/* Date / Time */}
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Due Date
-                </label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    className="w-full pr-10 pl-3 py-2 rounded-md border border-neutral-300 text-sm"
-                  />
-                  <Calendar
-                    size={16}
-                    className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Time
-                </label>
-                <div className="relative">
-                  <input
-                    type="time"
-                    value={time}
-                    onChange={(e) => setTime(e.target.value)}
-                    className="w-full pr-10 pl-3 py-2 rounded-md border border-neutral-300 text-sm"
-                  />
-                  <Clock
-                    size={16}
-                    className="absolute right-3 top-2.5 text-neutral-500 pointer-events-none"
-                  />
-                </div>
-              </div>
-
-              {/* Plag / AI */}
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Plagiarism %
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  value={plag}
-                  onChange={(e) => setPlag(e.target.value)}
-                  className="w-full pl-3 pr-3 py-2 rounded-md border border-neutral-300 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text sm font-medium text-neutral-700 mb-2">
-                  AI %
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  value={ai}
-                  onChange={(e) => setAi(e.target.value)}
-                  className="w-full pl-3 pr-3 py-2 rounded-md border border-neutral-300 text-sm"
-                />
-              </div>
-
-              {/* File name (read-only note) */}
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  File Uploaded (name)
-                </label>
-                <div className="w-full pl-3 pr-3 py-2 rounded-md border border-neutral-200 bg-neutral-50 text-sm text-neutral-500">
-                  — (handled by uploader)
-                </div>
-              </div>
-            </div>
-
-            {/* footer */}
-            <div className="mt-6 flex items-center justify-end gap-3">
-              <button
-                onClick={onClose}
-                className="inline-flex items-center justify-center rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={disabled}
-                className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white ${
-                  disabled ? "opacity-60 cursor-not-allowed" : ""
-                }`}
-                style={{ backgroundColor: MAROON }}
-              >
-                {isEdit ? "Save" : "Create"}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ---------------- View Team Dialog ---------------- */
-function ViewTeamDialog({ row, onClose }) {
+/* ------- View Team Dialog ------- */
+function ViewTeamDialog({ schedule, onClose }) {
   const [loading, setLoading] = useState(true);
   const [adviser, setAdviser] = useState("-");
   const [manager, setManager] = useState("-");
@@ -1149,8 +1455,8 @@ function ViewTeamDialog({ row, onClose }) {
     let alive = true;
     (async () => {
       try {
-        if (row?.teamId) {
-          const ref = doc(db, "teams", row.teamId);
+        if (schedule?.teamId) {
+          const ref = doc(db, "teams", schedule.teamId);
           const snap = await getDoc(ref);
           const data = snap.exists() ? snap.data() : null;
           if (alive && data) {
@@ -1166,7 +1472,7 @@ function ViewTeamDialog({ row, onClose }) {
           setMembers([]);
         }
       } catch (e) {
-        console.error("[Manuscripts] View team failed:", e);
+        console.error("Failed to load team for view:", e);
       } finally {
         if (alive) setLoading(false);
       }
@@ -1174,44 +1480,44 @@ function ViewTeamDialog({ row, onClose }) {
     return () => {
       alive = false;
     };
-  }, [row?.teamId]);
+  }, [schedule?.teamId]);
 
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[760px] max-w-[92vw]">
         <div className="rounded-2xl bg-white border border-neutral-200 shadow-2xl focus:outline-none p-0">
-          <div className="flex items-center justify-between px-5 pt-4">
+          {/* header */}
+          <div className="px-6 pt-5 pb-3">
             <div
-              className="text-[16px] font-semibold"
+              className="flex items-center gap-2 text-[16px] font-semibold"
               style={{ color: MAROON }}
             >
+              <FileText size={18} />
               View Team
             </div>
-            <button
-              onClick={onClose}
-              className="h-8 w-8 grid place-items-center rounded-md hover:bg-neutral-100"
-            >
-              <X size={18} className="text-neutral-500" />
-            </button>
-          </div>
-          <div className="mt-3 h-[2px] w-full bg-neutral-200">
-            <div
-              className="h-[2px]"
-              style={{ backgroundColor: MAROON, width: 110 }}
-            />
+            <div className="mt-3 h-[2px] w-full bg-neutral-200">
+              <div
+                className="h-[2px]"
+                style={{ backgroundColor: MAROON, width: 110 }}
+              />
+            </div>
           </div>
 
+          {/* body */}
           <div className="px-6 pb-6">
             <div className="grid grid-cols-2 gap-x-10 gap-y-6">
+              {/* Team Name */}
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
                   Team
                 </label>
                 <div className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm">
-                  {row?.team || "-"}
+                  {schedule?.teamName || "-"}
                 </div>
               </div>
+
+              {/* Adviser */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
                   Adviser
@@ -1220,6 +1526,8 @@ function ViewTeamDialog({ row, onClose }) {
                   {loading ? "Loading…" : adviser}
                 </div>
               </div>
+
+              {/* Project Manager */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
                   Project Manager
@@ -1228,6 +1536,8 @@ function ViewTeamDialog({ row, onClose }) {
                   {loading ? "Loading…" : manager}
                 </div>
               </div>
+
+              {/* Members */}
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
                   Members
@@ -1248,6 +1558,7 @@ function ViewTeamDialog({ row, onClose }) {
               </div>
             </div>
 
+            {/* footer */}
             <div className="mt-8 flex items-center justify-end">
               <button
                 onClick={onClose}
@@ -1294,7 +1605,7 @@ function FilesViewerModal({ row, onClose }) {
               style={{ color: MAROON }}
             >
               <span>●</span>
-              <span>Uploaded Files — {row?.team || row?.teamName}</span>
+              <span>Uploaded Files — {row?.teamName}</span>
             </div>
             <button
               onClick={onClose}
@@ -1358,7 +1669,7 @@ function FilesViewerModal({ row, onClose }) {
                   </ul>
                 ) : (
                   <div className="text-sm text-neutral-600">
-                    There’s no uploaded file yet.
+                    There's no uploaded file yet.
                   </div>
                 )}
               </div>

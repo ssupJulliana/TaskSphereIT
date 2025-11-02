@@ -29,7 +29,11 @@ const CATEGORIES = [
   { id: "title", title: "Title Defense", coll: "titleDefenseTasks" },
   { id: "oral", title: "Oral Defense", coll: "oralDefenseTasks" },
   { id: "final", title: "Final Defense", coll: "finalDefenseTasks" },
-  { id: "finalRedefense", title: "Final Re-defense", coll: "finalRedefenseTasks" },
+  {
+    id: "finalRedefense",
+    title: "Final Re-defense",
+    coll: "finalRedefenseTasks",
+  },
 ];
 
 /* --------------------------- UI helpers -------------------------- */
@@ -38,8 +42,14 @@ const Card = ({ title, onClick }) => (
     onClick={onClick}
     className="cursor-pointer relative w-56 h-44 text-left bg-white border border-neutral-200 rounded-2xl shadow-[0_6px_12px_rgba(0,0,0,0.12)] overflow-hidden hover:translate-y-[-2px] transition-transform"
   >
-    <div className="absolute left-0 top-0 h-full w-8" style={{ backgroundColor: MAROON }} />
-    <div className="absolute bottom-0 left-0 right-0 h-5" style={{ backgroundColor: MAROON }} />
+    <div
+      className="absolute left-0 top-0 h-full w-8"
+      style={{ backgroundColor: MAROON }}
+    />
+    <div
+      className="absolute bottom-0 left-0 right-0 h-5"
+      style={{ backgroundColor: MAROON }}
+    />
     <div className="pl-12 pr-4 pt-6">
       <CalendarDays className="w-12 h-12 text-neutral-900" />
       <p className="mt-3 font-medium">{title}</p>
@@ -55,14 +65,6 @@ const Toolbar = ({ onBack, onCreate, onPage, page, onSearch }) => (
     >
       <ChevronLeft className="w-4 h-4" />
       Back to Records
-    </button>
-
-    <button
-      onClick={onCreate}
-      className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100 cursor-pointer"
-    >
-      <FileText className="w-4 h-4" />
-      Create Tasks
     </button>
 
     <div className="relative ml-2">
@@ -89,13 +91,17 @@ const Toolbar = ({ onBack, onCreate, onPage, page, onSearch }) => (
       <div className="inline-flex rounded-lg border border-neutral-300 overflow-hidden">
         <button
           onClick={() => onPage(1)}
-          className={`cursor-pointer px-3 py-1.5 text-sm ${page === 1 ? "bg-neutral-100 font-semibold" : ""}`}
+          className={`cursor-pointer px-3 py-1.5 text-sm ${
+            page === 1 ? "bg-neutral-100 font-semibold" : ""
+          }`}
         >
           Page 1
         </button>
         <button
           onClick={() => onPage(2)}
-          className={`cursor-pointer px-3 py-1.5 text-sm border-l border-neutral-300 ${page === 2 ? "bg-neutral-100 font-semibold" : ""}`}
+          className={`cursor-pointer px-3 py-1.5 text-sm border-l border-neutral-300 ${
+            page === 2 ? "bg-neutral-100 font-semibold" : ""
+          }`}
         >
           Page 2
         </button>
@@ -127,9 +133,17 @@ const Page1Table = ({ rows, loading }) => (
       </thead>
       <tbody>
         {loading ? (
-          <tr><td colSpan={7} className="py-8 text-center text-neutral-500">Loading…</td></tr>
+          <tr>
+            <td colSpan={7} className="py-8 text-center text-neutral-500">
+              Loading…
+            </td>
+          </tr>
         ) : rows.length === 0 ? (
-          <tr><td colSpan={7} className="py-8 text-center text-neutral-500">No completed tasks.</td></tr>
+          <tr>
+            <td colSpan={7} className="py-8 text-center text-neutral-500">
+              No completed tasks.
+            </td>
+          </tr>
         ) : (
           rows.map((r) => (
             <tr key={r._key} className="border-t border-neutral-200">
@@ -171,9 +185,17 @@ const Page2Table = ({ rows, loading }) => (
       </thead>
       <tbody>
         {loading ? (
-          <tr><td colSpan={8} className="py-8 text-center text-neutral-500">Loading…</td></tr>
+          <tr>
+            <td colSpan={8} className="py-8 text-center text-neutral-500">
+              Loading…
+            </td>
+          </tr>
         ) : rows.length === 0 ? (
-          <tr><td colSpan={8} className="py-8 text-center text-neutral-500">No completed tasks.</td></tr>
+          <tr>
+            <td colSpan={8} className="py-8 text-center text-neutral-500">
+              No completed tasks.
+            </td>
+          </tr>
         ) : (
           rows.map((r) => (
             <tr key={r._key} className="border-t border-neutral-200">
@@ -186,7 +208,9 @@ const Page2Table = ({ rows, loading }) => (
                   <ChevronRight className="w-4 h-4 text-neutral-500" />
                 </div>
               </td>
-              <td className="py-3 pr-3"><StatusBadge status="Completed" /></td>
+              <td className="py-3 pr-3">
+                <StatusBadge status="Completed" />
+              </td>
               <td className="py-3 pr-3">{r.methodology}</td>
               <td className="py-3 pr-3">{r.phase}</td>
               <td className="py-3 pr-6">
@@ -204,9 +228,9 @@ const Page2Table = ({ rows, loading }) => (
 
 /* ------------------------------ MAIN ------------------------------ */
 const TaskRecord = () => {
-  const [view, setView] = useState("grid");      // 'grid' | 'detail'
+  const [view, setView] = useState("grid"); // 'grid' | 'detail'
   const [category, setCategory] = useState(null); // 'title' | 'oral' | 'final' | 'finalRedefense'
-  const [page, setPage] = useState(1);           // 1 | 2
+  const [page, setPage] = useState(1); // 1 | 2
   const [search, setSearch] = useState("");
 
   const [meUid, setMeUid] = useState("");
@@ -275,7 +299,9 @@ const TaskRecord = () => {
     }
 
     const chunk = (arr, n = 10) =>
-      Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));
+      Array.from({ length: Math.ceil(arr.length / n) }, (_, i) =>
+        arr.slice(i * n, i * n + n)
+      );
 
     setLoadingTasks(true);
     const buffer = new Map(); // `${id}` -> normalized task
@@ -285,7 +311,8 @@ const TaskRecord = () => {
       const x = d.data();
       const t = x.team || {};
       const teamId = t.id || x.teamId || "no-team";
-      const teamName = t.name || teams.find((tt) => tt.id === teamId)?.name || "No Team";
+      const teamName =
+        t.name || teams.find((tt) => tt.id === teamId)?.name || "No Team";
 
       const created =
         typeof x.createdAt?.toDate === "function" ? x.createdAt.toDate() : null;
@@ -296,7 +323,9 @@ const TaskRecord = () => {
       const dueDisplay = dueDate || "—";
 
       const completed =
-        typeof x.completedAt?.toDate === "function" ? x.completedAt.toDate() : null;
+        typeof x.completedAt?.toDate === "function"
+          ? x.completedAt.toDate()
+          : null;
       const completedDisplay = completed ? completed.toLocaleDateString() : "—";
 
       return {
@@ -358,7 +387,17 @@ const TaskRecord = () => {
     const s = searchText.trim().toLowerCase();
     if (!s) return records;
     return records.filter((r) =>
-      [r.teamName, r.task, r.subtask, r.elements, r.methodology, r.phase, r.completed, r.due, r.created]
+      [
+        r.teamName,
+        r.task,
+        r.subtask,
+        r.elements,
+        r.methodology,
+        r.phase,
+        r.completed,
+        r.due,
+        r.created,
+      ]
         .join(" • ")
         .toLowerCase()
         .includes(s)
@@ -399,9 +438,15 @@ const TaskRecord = () => {
 
         <div className="mt-3">
           {page === 1 ? (
-            <Page1Table rows={page1Rows} loading={loadingTasks || loadingTeams} />
+            <Page1Table
+              rows={page1Rows}
+              loading={loadingTasks || loadingTeams}
+            />
           ) : (
-            <Page2Table rows={page2Rows} loading={loadingTasks || loadingTeams} />
+            <Page2Table
+              rows={page2Rows}
+              loading={loadingTasks || loadingTeams}
+            />
           )}
         </div>
       </div>
