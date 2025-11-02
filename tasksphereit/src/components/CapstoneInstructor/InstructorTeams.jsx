@@ -33,6 +33,10 @@ const InstructorTeams = () => {
   const [activeMenu, setActiveMenu] = useState(null);
   const [dropUp, setDropUp] = useState(false);
 
+  const [transferUser, setTransferUser] = useState(null);
+  const [transferFromTeam, setTransferFromTeam] = useState(null);
+  const [transferToTeamId, setTransferToTeamId] = useState("");
+
 
   const {
     allUsers,
@@ -67,6 +71,9 @@ const InstructorTeams = () => {
     setMenuOpenId,
     dissolveTeam,
     editTeam,
+
+      transferTeamMember,
+  
   } = useInstructorTeams();
 
   const uniqByUid = (arr) => {
@@ -101,7 +108,11 @@ const InstructorTeams = () => {
 
 const TeamCard = ({ team }) => (
   <div
-    className="relative flex flex-col bg-white border border-neutral-200 rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden cursor-pointer"
+    className="
+      relative flex flex-col bg-white border border-neutral-200 rounded-xl 
+      shadow-sm hover:shadow-md transition-shadow overflow-hidden cursor-pointer
+      h-48 sm:h-52 md:h-56 lg:h-60
+    "
     onClick={() => {
       setEtTeam(team);
       setEtManagerId(team.manager?.uid || "");
@@ -141,14 +152,41 @@ const TeamCard = ({ team }) => (
         </button>
       </div>
     )}
+<div className="flex flex-1 items-center justify-center">
+  <img src={TeamIcon} alt="" className="w-15 h-15 object-contain" />
+</div>
 
-    <div className="px-6 pt-8 pb-10 flex items-center justify-center">
-      <img src={TeamIcon} alt="" className="w-12 h-12 object-contain" />
-    </div>
 
     <LabelBar>{team.name}</LabelBar>
   </div>
 );
+
+
+const handleTransferMember = async () => {
+  if (!transferUser || !transferFromTeam || !transferToTeamId) return;
+  
+  try {
+    const success = await transferTeamMember(transferUser, transferFromTeam, transferToTeamId);
+    
+    if (success) {
+      setTransferUser(null);
+      setTransferFromTeam(null);
+      setTransferToTeamId("");
+      
+      // Refresh the current team data in the edit dialog
+      if (etTeam && etTeam.id === transferFromTeam) {
+        // Remove the transferred member from the local state immediately
+        setEtMemberIds(prev => prev.filter(id => id !== transferUser));
+      }
+      
+      // Optional: Show success message
+      console.log("Member transferred successfully!");
+    }
+  } catch (error) {
+    console.error("Failed to transfer member:", error);
+    alert("Failed to transfer member. Please try again.");
+  }
+};
 
 
 
@@ -659,7 +697,7 @@ const TeamCard = ({ team }) => (
                                         setActiveMenu(null);
                                       }}
                                     >
-                                      Delete
+                                      Remove
                                     </button>
                                   </div>
                                 )}
@@ -803,7 +841,7 @@ const TeamCard = ({ team }) => (
                                           setActiveMenu(null);
                                         }}
                                       >
-                                        Delete
+                                        Remove
                                       </button>
                                     </div>
                                   )}
@@ -820,11 +858,9 @@ const TeamCard = ({ team }) => (
                   <div className="px-4 sm:px-6 py-4 flex justify-end gap-2 border-t bg-neutral-50">
                     <button
                       onClick={() => setEtTeam(null)}
-                      className="px-4 py-2 border rounded-full text-sm hover:bg-neutral-100"
-                    >
+                      className="px-4 py-2 border rounded-full text-sm hover:bg-neutral-100">
                       Cancel
                     </button>
-
                     <button
                       onClick={async () => {
                         const ok = await editTeam(etTeam.id, {
@@ -844,7 +880,90 @@ const TeamCard = ({ team }) => (
               </div>
             </div>
           )}
-          
+           {/* Add the Transfer Member Modal RIGHT HERE - after Edit Team Dialog and before the final closing div */}
+      {transferUser && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => {
+            setTransferUser(null);
+            setTransferFromTeam(null);
+            setTransferToTeamId("");
+          }}
+        >
+          <div
+            className="bg-white rounded-xl w-full max-w-md shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-5 pt-5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-semibold text-neutral-900">Transfer Member</h3>
+                <button
+                  className="p-2 rounded-full hover:bg-neutral-100"
+                  onClick={() => {
+                    setTransferUser(null);
+                    setTransferFromTeam(null);
+                    setTransferToTeamId("");
+                  }}
+                  aria-label="Close"
+                >
+                  <X className="w-5 h-5 text-neutral-600" />
+                </button>
+              </div>
+              <div className="mt-3 h-[2px] bg-[#6A0F14]" />
+            </div>
+
+            {/* Content */}
+            <div className="px-5 py-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Select a new team
+                </label>
+                <select
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
+                  value={transferToTeamId}
+                  onChange={(e) => setTransferToTeamId(e.target.value)}
+                >
+                  <option value="">Select team</option>
+                  {teams
+                    .filter(team => team.id !== transferFromTeam) // Exclude current team
+                    .map(team => (
+                      <option key={team.id} value={team.id}>
+                        {team.name}
+                      </option>
+                    ))
+                  }
+                </select>
+              </div>
+              
+
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 pb-5 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setTransferUser(null);
+                  setTransferFromTeam(null);
+                  setTransferToTeamId("");
+                }}
+                className="px-4 py-2 rounded-full border border-neutral-300 text-sm hover:bg-neutral-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleTransferMember}
+                disabled={!transferToTeamId}
+                className="px-5 py-2 rounded-full bg-[#6A0F14] text-white text-sm hover:bg-[#5c0d12] disabled:bg-neutral-400 disabled:cursor-not-allowed"
+              >
+                Transfer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
