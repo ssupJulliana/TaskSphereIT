@@ -44,17 +44,546 @@ const MAROON = "#6A0F14";
 const ORAL_TASKS_COLLECTION = "oralDefenseTasks";
 const FINAL_TASKS_COLLECTION = "finalDefenseTasks";
 
-/* ---------- env-style switches & constants (aligned with OralDefense) ---------- */
 const ENABLE_SUPABASE =
   !!supabase && typeof supabase.storage?.from === "function";
 
-// You can override these via Vite envs to match your OralDefense setup
 const SUPABASE_ATTACH_BUCKET =
   import.meta.env.VITE_SUPABASE_ATTACH_BUCKET || "task-attachments";
 const FIREBASE_ATTACH_ROOT =
   import.meta.env.VITE_FIREBASE_ATTACH_ROOT || "attachments/finalDefense";
 
-/* ---------- small UI helpers (match OralDefense look) ---------- */
+/* === Methodology content (unchanged from previous version) === */
+const METHODOLOGY_CONTENT_FINAL = {
+  Agile: {
+    phases: [
+      "Develop",
+      "Design",
+      "Development",
+      "Test Plan",
+      "Verification and Testing",
+      "System Testing",
+      "Acceptance Testing",
+      "Implementation Plan",
+      "Installation Process",
+      "Deploy",
+      "Review",
+      "Discussion & Review",
+      "Final Defense",
+      "Final Re-Defense Planning",
+      "Finalize Supporting Sections",
+    ],
+    types: {
+      Documentation: {
+        tasks: {
+          "Polish: Chapter 1": [
+            "Introduction - Project Context",
+            "Introduction - Background of the Study",
+            "Introduction - Policies and Procedures",
+            "Introduction - Users Position",
+            "Objectives - General Objectives",
+            "Objectives - Specific Objectives",
+            "Scope and Limitation - Scope",
+            "Scope and Limitation - Limitation",
+          ],
+          "Polish: Chapter 2": ["Related Theories", "Related Literature"],
+          "Polish: Chapter 3": [
+            "Implementation - Hardware",
+            "Implementation - Software",
+            "Implementation - Peopleware",
+            "Development - Hardware",
+            "Development - Software",
+            "Development - Peopleware",
+          ],
+          "Polish: Chapter 4": [
+            "Methodology",
+            "Environment - Locale",
+            "Environment - Population of the Study",
+            "Environment - Organizational Chart/Profile",
+            "Requirement Specification - Operational Feasibility (Fishbone Diagram)",
+            "Requirement Specification - Operational Feasibility (Functional Decomposition)",
+            "Requirement Specification - Technical Feasibility",
+            "Requirement Specification - Schedule Feasibility",
+            "Requirement Specification - Economic Feasibility",
+            "Requirements Modeling - Context Diagram",
+            "Requirements Modeling - Data Flow Diagram",
+            "Requirements Modeling - System Flowchart",
+            "Requirements Modeling - Program Flowchart",
+            "Requirements Modeling - Use Case Diagram",
+            "Requirements Modeling - Use Class Diagram",
+            "Requirements Modeling - Sequence Diagram",
+            "Requirements Modeling - Activity Diagram",
+            "Risk Assessment/Analysis",
+            "Design - Output & UI Forms",
+            "Design - Data Design",
+            "System Architecture - Network Model",
+            "System Architecture - Network Topology",
+            "System Architecture - Network Security",
+            "Programming Environment - Front End",
+            "Programming Environment - Back End",
+            "Programming Considerations and Issues",
+            "Development Diagram",
+            "Test Plan - Test Data",
+          ],
+          "Complete: Chapter 5": ["Conclusion", "Recommendations"],
+          "Appendices (A–I)": [
+            "Appendix A",
+            "Appendix B",
+            "Appendix C",
+            "Appendix D",
+            "Appendix E",
+            "Appendix F",
+            "Appendix G",
+            "Appendix H",
+            "Appendix I",
+          ],
+          "Finalize Supporting Sections": ["References", "Resource Person"],
+          "Manuscript Submission": [
+            "Final Manuscript Revision (Post-Defense)",
+            "Submission",
+            "Submission for AI & Plagiarism Check",
+          ],
+        },
+      },
+      "System Development": {
+        tasks: {
+          "UI Development": [],
+          "Database Implementation": [],
+          "Functionality Implementation": [],
+          "Bug Fixing": [],
+          "Development Diagram": [],
+        },
+      },
+      Testing: {
+        tasks: {
+          "System QA": [
+            "Unit Testing",
+            "Compatibility Testing",
+            "Performance Testing",
+            "Stress Testing",
+            "Load Testing",
+            "Concurrent Testing",
+            "Pacing Time",
+            "Response Time",
+            "Network Testing",
+          ],
+          "Bug Fixing and Final Adjustments": [],
+        },
+      },
+      Deploy: { tasks: { "Deploy the System": [] } },
+      Review: {
+        tasks: {
+          "Gather Target Users/Client": [],
+          "Gather Users/Client Feedback": [],
+          "Review Users Feedback": [],
+          "Update System Functionalities": [],
+          "Final Defense Feedback Integration": [],
+        },
+      },
+      "Discussion & Review": {
+        tasks: {
+          "Capstone Meeting": [],
+          "Adviser Consultation": [],
+          "Meeting with the User/Client": [],
+          "Final Defense Preparation - System Testing Request Letter": [],
+          "Final Defense Preparation - PowerPoint Presentation": [],
+          "Final Defense Preparation - Mock Defense": [],
+          "Final Defense Preparation - Manuscript Printing": [],
+        },
+      },
+    },
+  },
+  "Extreme Programming (XP)": {
+    phases: [
+      "Coding",
+      "Testing",
+      "Listening",
+      "Discussion & Review",
+      "Final Defense",
+      "Final Re-Defense Planning",
+    ],
+    types: {
+      Documentation: {
+        tasks: {
+          "Polish: Chapter 1": [
+            "Introduction - Project Context",
+            "Introduction - Background of the Study",
+            "Introduction - Policies and Procedures",
+            "Introduction - Users Position",
+            "Objectives - General",
+            "Objectives - Specific",
+            "Scope and Limitation - Scope",
+            "Scope and Limitation - Limitation",
+          ],
+          "Polish: Chapter 2": ["Related Theories", "Related Literature"],
+          "Polish: Chapter 3": [
+            "Implementation - Hardware",
+            "Implementation - Software",
+            "Implementation - Peopleware",
+            "Development - Hardware",
+            "Development - Software",
+            "Development - Peopleware",
+          ],
+          "Polish: Chapter 4": [
+            "Methodology",
+            "Environment - Locale",
+            "Environment - Population of the Study",
+            "Environment - Organizational Chart/Profile",
+            "Requirement Spec - Feasibility (Fishbone/Decomposition/Tech/Schedule/Economic)",
+            "Requirements Modeling - Context/DFD/System Flowchart/Program Flowchart/Use Case/Class/Sequence/Activity",
+            "Risk Assessment/Analysis",
+            "Design - UI Forms / Data Design / Architecture (Network/Topology/Security)",
+            "Programming Environment - Front End / Back End",
+            "Programming Considerations & Issues",
+            "Development Diagram",
+            "Test Plan - Test Data",
+          ],
+          "Complete: Chapter 5": ["Conclusion", "Recommendations"],
+          "Appendices (A–I)": [
+            "Appendix A",
+            "Appendix B",
+            "Appendix C",
+            "Appendix D",
+            "Appendix E",
+            "Appendix F",
+            "Appendix G",
+            "Appendix H",
+            "Appendix I",
+          ],
+          "Finalize Supporting Sections": ["References", "Resource Person"],
+          "Manuscript Submission": [
+            "Final Manuscript Revision (Post-Defense)",
+            "Submission",
+            "Submission for AI & Plagiarism Check",
+          ],
+        },
+      },
+      "System Development": {
+        tasks: {
+          "Development Environment Setup & Pair Assignment": [],
+          "User Interface Coding with Customer Collaboration": [],
+          "Incremental Database Development": [],
+          "Test-Driven Feature Development": [],
+          "Continuous Integration": [],
+          "Bug Fixing": [],
+        },
+      },
+      Testing: {
+        tasks: {
+          "System QA": [
+            "Unit Testing",
+            "Compatibility Testing",
+            "Performance Testing",
+            "Stress Testing",
+            "Load Testing",
+            "Concurrent Testing",
+            "Pacing Time",
+            "Response Time",
+            "Network Testing",
+          ],
+          "Bug Fixing and Final Adjustments": [],
+        },
+      },
+      Deploy: { tasks: { "Deploy the System": [] } },
+      Listening: {
+        tasks: {
+          "Engage Customer & Stakeholders": [],
+          "Collaborate on Feedback Review": [],
+          "Iterative Requirement Gathering": [],
+          "Refine Features Based on Input": [],
+        },
+      },
+      "Discussion & Review": {
+        tasks: {
+          "Capstone Meeting": [],
+          "Adviser Consultation": [],
+          "Meeting with the User/Client": [],
+          "Final Defense Preparation - System Testing Request Letter": [],
+          "Final Defense Preparation - PowerPoint Presentation": [],
+          "Final Defense Preparation - Mock Defense": [],
+          "Final Defense Preparation - Manuscript Printing": [],
+        },
+      },
+    },
+  },
+  "Rapid Application Development (RAD)": {
+    phases: [
+      "Construction",
+      "Testing",
+      "Cutover",
+      "Discussion & Review",
+      "Final Defense",
+      "Final Re-Defense Planning",
+    ],
+    types: {
+      Documentation: {
+        tasks: {
+          "Polish: Chapter 1": [
+            "Introduction - Project Context",
+            "Introduction - Background of the Study",
+            "Introduction - Policies and Procedures",
+            "Introduction - Users Position",
+            "Objectives - General / Specific",
+            "Scope and Limitation - Scope / Limitation",
+          ],
+          "Polish: Chapter 2": ["Related Theories", "Related Literature"],
+          "Polish: Chapter 3": [
+            "Implementation - Hardware/Software/Peopleware",
+            "Development - Hardware/Software/Peopleware",
+          ],
+          "Polish: Chapter 4": [
+            "Methodology",
+            "Environment - Locale / Population / Org Chart",
+            "Requirement Specification - Feasibility (Fishbone/Decomp/Tech/Schedule/Economic)",
+            "Requirements Modeling (Context/DFD/System/Program/Use Case/Class/Sequence/Activity)",
+            "Risk Assessment/Analysis",
+            "Design (UI Forms / Data / Architecture & Security)",
+            "Programming Environment (Front End / Back End)",
+            "Programming Considerations and Issues",
+            "Development Diagram",
+            "Test Plan - Test Data",
+          ],
+          "Complete: Chapter 5": ["Conclusion", "Recommendations"],
+          "Appendices (A–I)": [
+            "Appendix A",
+            "Appendix B",
+            "Appendix C",
+            "Appendix D",
+            "Appendix E",
+            "Appendix F",
+            "Appendix G",
+            "Appendix H",
+            "Appendix I",
+          ],
+          "Finalize Supporting Sections": ["References", "Resource Person"],
+          "Manuscript Submission": [
+            "Final Manuscript Revision (Post-Defense)",
+            "Submission",
+            "Submission for AI & Plagiarism Check",
+          ],
+        },
+      },
+      "System Development": {
+        tasks: {
+          "UI Development": [],
+          "Database Implementation": [],
+          "Functionality Implementation": [],
+          "Iterative Internal Testing": [],
+          "Bug Fixing": [],
+          "System QA": [
+            "Unit / Compatibility / Performance / Stress / Load / Concurrent / Pacing / Response / Network Testing",
+          ],
+          "Rapid Fixes Based on Test Results": [],
+          "Bug Fixing and Final Adjustments": [],
+        },
+      },
+      Cutover: {
+        tasks: {
+          "Deploy the System": [],
+          "Train End Users": [],
+          "Evaluate Final User Feedback": [],
+          "Gather Users/Client Feedback": [],
+          "Update System Functionalities": [],
+        },
+      },
+      "Discussion & Review": {
+        tasks: {
+          "Capstone Meeting": [],
+          "Adviser Consultation": [],
+          "Meeting with the User/Client": [],
+          "Final Defense Preparation - System Testing Request Letter": [],
+          "Final Defense Preparation - PowerPoint Presentation": [],
+          "Final Defense Preparation - Mock Defense": [],
+          "Final Defense Preparation - Manuscript Printing": [],
+        },
+      },
+    },
+  },
+  Prototyping: {
+    phases: [
+      "Refining Prototype",
+      "Implement Product & Maintain",
+      "Discussion & Review",
+      "Final Defense",
+      "Final Re-Defense Planning",
+    ],
+    types: {
+      Documentation: {
+        tasks: {
+          "Refine UI & Functionalities based on Panel Feedback": [],
+          "Polish: Chapter 1": [
+            "Introduction - Project Context / Background / Policies / Users Position",
+            "Objectives - General / Specific",
+            "Scope and Limitation - Scope / Limitation",
+          ],
+          "Polish: Chapter 2": ["Related Theories", "Related Literature"],
+          "Polish: Chapter 3": [
+            "Implementation - Hardware/Software/Peopleware",
+            "Development - Hardware/Software/Peopleware",
+          ],
+          "Polish: Chapter 4": [
+            "Methodology",
+            "Environment - Locale / Population / Org Chart",
+            "Requirement Specification - Feasibility (Fishbone/Decomp/Tech/Schedule/Economic)",
+            "Requirements Modeling (Context/DFD/System/Program/Use Case/Class/Sequence/Activity)",
+            "Risk Assessment/Analysis",
+            "Design (UI / Data / Architecture & Security)",
+            "Development Diagram / Test Plan",
+          ],
+          "Complete: Chapter 5": ["Conclusion", "Recommendations"],
+          "Appendices (A–I)": [
+            "Appendix A",
+            "Appendix B",
+            "Appendix C",
+            "Appendix D",
+            "Appendix E",
+            "Appendix F",
+            "Appendix G",
+            "Appendix H",
+            "Appendix I",
+          ],
+          "Finalize Supporting Sections": ["References", "Resource Person"],
+          "Manuscript Submission": [
+            "Final Manuscript Revision (Post-Defense)",
+            "Submission",
+            "Submission for AI & Plagiarism Check",
+          ],
+        },
+      },
+      "System Development": {
+        tasks: {
+          "UI Development": [],
+          "Database Implementation": [],
+          "Implement Core Functional Modules": [],
+          "System Maintenance and Issue Resolution": [],
+          "System QA": [
+            "Unit / Compatibility / Performance / Stress / Load / Concurrent / Pacing / Response / Network Testing",
+          ],
+          "Bug Fixing and Final Adjustments": [],
+          "Deploy the System": [],
+          "Post-Deployment User Feedback Review": [],
+          "Review Users Feedback": [],
+          "Update System Functionalities": [],
+        },
+      },
+      "Discussion & Review": {
+        tasks: {
+          "Capstone Meeting": [],
+          "Adviser Consultation": [],
+          "Meeting with the User/Client": [],
+          "Final Defense Preparation - System Testing Request Letter": [],
+          "Final Defense Preparation - PowerPoint Presentation": [],
+          "Final Defense Preparation - Mock Defense": [],
+          "Final Defense Preparation - Manuscript Printing": [],
+        },
+      },
+    },
+  },
+  Spiral: {
+    phases: [
+      "Engineering",
+      "Evaluate",
+      "Discussion & Review",
+      "Final Defense",
+      "Final Re-Defense Planning",
+    ],
+    types: {
+      Documentation: {
+        tasks: {
+          "Polish: Chapter 1": [
+            "Introduction - Project Context / Background / Policies / Users Position",
+            "Objectives - General / Specific",
+            "Scope and Limitation - Scope / Limitation",
+          ],
+          "Polish: Chapter 2": ["Related Theories", "Related Literature"],
+          "Polish: Chapter 3": [
+            "Implementation - Hardware/Software/Peopleware",
+            "Development - Hardware/Software/Peopleware",
+          ],
+          "Polish: Chapter 4": [
+            "Methodology",
+            "Environment - Locale / Population / Org Chart",
+            "Requirement Specification - Feasibility (Fishbone/Decomp/Tech/Schedule/Economic)",
+            "Requirements Modeling (Context/DFD/System/Program/Use Case/Class/Sequence/Activity)",
+            "Risk Assessment/Analysis",
+            "Design (UI / Data / Architecture & Security)",
+            "Programming Environment - Front End / Back End",
+            "Programming Considerations & Issues",
+            "Development Diagram",
+            "Test Plan - Test Data",
+          ],
+          "Complete: Chapter 5": ["Conclusion", "Recommendations"],
+          "Appendices (A–I)": [
+            "Appendix A",
+            "Appendix B",
+            "Appendix C",
+            "Appendix D",
+            "Appendix E",
+            "Appendix F",
+            "Appendix G",
+            "Appendix H",
+            "Appendix I",
+          ],
+          "Finalize Supporting Sections": ["References", "Resource Person"],
+          "Manuscript Submission": [
+            "Final Manuscript Revision (Post-Defense)",
+            "Submission",
+            "Submission for AI & Plagiarism Check",
+          ],
+        },
+      },
+      "System Development": {
+        tasks: {
+          "User Interface Construction": [],
+          "Database Design & Integration": [],
+          "Feature Development & Integration": [],
+          "System Debugging & Correction": [],
+          "System QA": [
+            "Unit / Compatibility / Performance / Stress / Load / Concurrent / Pacing / Response / Network Testing",
+          ],
+          "Bug Fixing and Final Adjustments": [],
+          "Deploy the System": [],
+        },
+      },
+      Evaluate: {
+        tasks: {
+          "Gather Target Users/Client": [],
+          "Analyze User and Stakeholder Feedback": [],
+          "Collect Feedback through Evaluation Methods": [],
+          "Implement Revisions Based on Evaluation Results": [],
+          "Final Defense Feedback Integration": [],
+          "Manuscript Submission for AI & Plagiarism Check": [],
+        },
+      },
+      "Discussion & Review": {
+        tasks: {
+          "Capstone Meeting": [],
+          "Adviser Consultation": [],
+          "Meeting with the User/Client": [],
+          "Final Defense Preparation - System Testing Request Letter": [],
+          "Final Defense Preparation - PowerPoint Presentation": [],
+          "Final Defense Preparation - Mock Defense": [],
+          "Final Defense Preparation - Manuscript Printing": [],
+        },
+      },
+    },
+  },
+};
+
+const methodologyList = Object.keys(METHODOLOGY_CONTENT_FINAL);
+const getTypesFor = (m) =>
+  m && METHODOLOGY_CONTENT_FINAL[m]
+    ? Object.keys(METHODOLOGY_CONTENT_FINAL[m].types || {})
+    : [];
+const getTasksFor = (m, t) =>
+  m && t && METHODOLOGY_CONTENT_FINAL[m]?.types?.[t]
+    ? Object.keys(METHODOLOGY_CONTENT_FINAL[m].types[t].tasks)
+    : [];
+const getSubtasksFor = (m, t, task) =>
+  m && t && task && METHODOLOGY_CONTENT_FINAL[m]?.types?.[t]?.tasks?.[task]
+    ? METHODOLOGY_CONTENT_FINAL[m].types[t].tasks[task]
+    : [];
+
+/* ---------- small UI helpers ---------- */
 const ModeSwitch = ({ mode, setMode }) => (
   <div className="inline-flex rounded-md border border-neutral-300 overflow-hidden">
     <button
@@ -113,7 +642,7 @@ const RevisionSelect = ({ value, onChange, disabled }) => (
   </select>
 );
 
-/* ---------- Attachment Helpers (aligned with OralDefense; no supabaseUrl) ---------- */
+/* ---------- Attachment Helpers ---------- */
 const slugifyName = (name = "") =>
   name
     .trim()
@@ -168,28 +697,18 @@ async function uploadToFirebase(file, { teamId = "no-team" } = {}) {
   };
 }
 
-/**
- * Upload with the same behavior as OralDefense:
- * - Prefer Supabase if configured, else Firebase
- * - If first provider fails, attempt the other
- */
 async function uploadAttachmentSmart(file, { teamId }) {
   if (ENABLE_SUPABASE) {
     try {
       return await uploadToSupabase(file, { teamId });
     } catch (_) {
-      try {
-        return await uploadToFirebase(file, { teamId });
-      } catch (e2) {
-        throw e2;
-      }
+      return await uploadToFirebase(file, { teamId });
     }
-  } else {
-    return await uploadToFirebase(file, { teamId });
   }
+  return await uploadToFirebase(file, { teamId });
 }
 
-/* ======= Edit/Create Task Dialog for Final Defense (scrollable + attachments) ======= */
+/* ======= Edit/Create Task Dialog (PM sets Due Date/Time; prefill from Oral) ======= */
 function EditTaskDialog({
   open,
   onClose,
@@ -200,6 +719,7 @@ function EditTaskDialog({
   seedMember,
   existingTask,
   mode,
+  oralDefaults = {}, // { [teamId]: { dueDate, dueTime } }
 }) {
   const [saving, setSaving] = useState(false);
 
@@ -215,14 +735,38 @@ function EditTaskDialog({
   const [assignees, setAssignees] = useState([]);
   const [comment, setComment] = useState("");
 
-  // attachments (supabase/firebase)
-  const [attachments, setAttachments] = useState([]); // [{name,size,type,url,provider,bucket?,path}]
+  // attachments
+  const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState("");
+
+  // methodology
+  const [methodology, setMethodology] = useState("Agile");
+
+  const typesForM = React.useMemo(() => {
+    const list = getTypesFor(methodology);
+    return Array.isArray(list) ? list : [];
+  }, [methodology]);
+  const tasksForMT = useMemo(
+    () => getTasksFor(methodology, type),
+    [methodology, type]
+  );
+  const subtasksFor = useMemo(
+    () => getSubtasksFor(methodology, type, task),
+    [methodology, type, task]
+  );
 
   useEffect(() => {
     if (!open) return;
     setTeamId(existingTask?.team?.id || teams[0]?.id || "");
+
+    setMethodology(
+      existingTask?.methodology &&
+        existingTask.methodology !== "Inherited from Oral Defense"
+        ? existingTask.methodology
+        : "Agile"
+    );
+
     if (existingTask) {
       setPhase(existingTask.phase || "Implementation");
       setType(existingTask.type || "");
@@ -247,8 +791,10 @@ function EditTaskDialog({
       setTask("");
       setSubtask("");
       setElement("");
-      setDue("");
-      setTime("");
+      const initTeamId = teams[0]?.id || "";
+      const defaults = oralDefaults[existingTask?.team?.id || initTeamId] || {};
+      setDue(defaults.dueDate || "");
+      setTime(defaults.dueTime || "");
       setAssignees(
         seedMember ? [{ uid: seedMember.uid, name: seedMember.name }] : []
       );
@@ -256,7 +802,15 @@ function EditTaskDialog({
       setAttachments([]);
     }
     setUploadErr("");
-  }, [open, existingTask, seedMember, teams]);
+  }, [open, existingTask, seedMember, teams, oralDefaults]);
+
+  // If creating and team changes, refresh the due/time from oral defaults
+  useEffect(() => {
+    if (!open || existingTask) return;
+    const defaults = oralDefaults[teamId] || {};
+    setDue(defaults.dueDate || "");
+    setTime(defaults.dueTime || "");
+  }, [teamId, open, existingTask, oralDefaults]);
 
   const canSave = teamId && phase && type && task && assignees.length > 0;
 
@@ -283,7 +837,6 @@ function EditTaskDialog({
       try {
         const uploaded = [];
         for (const f of files) {
-          // eslint-disable-next-line no-await-in-loop
           const meta = await uploadAttachmentSmart(f, {
             teamId: teamId || "no-team",
           });
@@ -308,9 +861,13 @@ function EditTaskDialog({
     setSaving(true);
     try {
       const team = teams.find((t) => t.id === teamId) || null;
-
-      // Determine taskManager based on the current mode
       const taskManager = mode === "adviser" ? "Adviser" : "Project Manager";
+
+      // compute dueAtMs from form
+      const dueAtMs =
+        due && (time || time === "")
+          ? new Date(`${due}T${time || "00:00"}:00`).getTime()
+          : null;
 
       const payload = {
         phase,
@@ -318,10 +875,10 @@ function EditTaskDialog({
         task,
         subtask: subtask || "--",
         element: element || "--",
-        // PM cannot edit due/time in dialog
-        dueDate: existingTask ? existingTask.dueDate ?? null : null,
-        dueTime: existingTask ? existingTask.dueTime ?? null : null,
-        dueAtMs: existingTask ? existingTask.dueAtMs ?? null : null,
+        // PM sets due/time now:
+        dueDate: due || null,
+        dueTime: time || null,
+        dueAtMs,
         status: existingTask?.status || "To Do",
         revision: existingTask?.revision || "No Revision",
         assignees: assignees.map((a) => ({ uid: a.uid, name: a.name })),
@@ -331,9 +888,9 @@ function EditTaskDialog({
           ? { uid: pm.uid, name: pm.name, role: "Project Manager" }
           : null,
         taskManager,
-        // Methodology is inherited from Oral Defense and cannot be changed
-        methodology: existingTask?.methodology || "Inherited from Oral Defense",
-        // Attachments saved verbatim; optional server timestamps per item
+        methodology: existingTask?.methodology
+          ? existingTask.methodology
+          : methodology || "Agile",
         attachments: (attachments || []).map((a) => ({
           ...a,
           uploadedAt: serverTimestamp(),
@@ -361,18 +918,18 @@ function EditTaskDialog({
 
   if (!open) return null;
 
+  const phaseOptions =
+    methodology && METHODOLOGY_CONTENT_FINAL[methodology]?.phases?.length
+      ? METHODOLOGY_CONTENT_FINAL[methodology].phases
+      : ["Implementation", "Testing", "Deployment", "Review"];
+
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 md:p-6 overscroll-contain">
-      {/* backdrop */}
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-
-      {/* panel */}
       <div className="relative z-10 w-full max-w-[980px]">
         <div className="bg-white rounded-2xl shadow-2xl border border-neutral-200 flex flex-col max-h-[85vh]">
-          {/* top accent */}
           <div className="h-[2px] w-full" style={{ backgroundColor: MAROON }} />
 
-          {/* header (fixed inside panel) */}
           <div className="flex items-center justify-between px-5 pt-3 pb-2">
             <div
               className="flex items-center gap-2 text-[16px] font-semibold"
@@ -390,12 +947,11 @@ function EditTaskDialog({
             </button>
           </div>
 
-          {/* CONTENT — scrollable */}
           <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-5 space-y-5">
+            {/* Note: PM sets Due Date & Time; prefilled from Oral Defense */}
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
-              <b>Reminder:</b> Due Date and Time are{" "}
-              <b>managed by the Adviser</b>. Methodology is inherited from Oral
-              Defense.
+              <b>Tip:</b> Due Date & Time are prefilled from the team’s{" "}
+              <b>Oral Defense</b>. You can adjust them here if needed.
             </div>
 
             <div className="grid grid-cols-12 gap-4">
@@ -418,6 +974,37 @@ function EditTaskDialog({
 
               <div className="col-span-6">
                 <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Methodology (Final Defense)
+                </label>
+                <select
+                  className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
+                  value={methodology}
+                  onChange={(e) => {
+                    const m = e.target.value;
+                    setMethodology(m);
+                    setType("");
+                    setTask("");
+                    setSubtask("");
+                  }}
+                  disabled={!!existingTask}
+                  title={
+                    existingTask
+                      ? "Preserved for existing tasks"
+                      : "Select methodology template"
+                  }
+                >
+                  {methodologyList.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-12 gap-4">
+              <div className="col-span-6">
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
                   Project Phase
                 </label>
                 <select
@@ -425,56 +1012,81 @@ function EditTaskDialog({
                   value={phase}
                   onChange={(e) => setPhase(e.target.value)}
                 >
-                  <option value="Implementation">Implementation</option>
-                  <option value="Testing">Testing</option>
-                  <option value="Deployment">Deployment</option>
-                  <option value="Review">Review</option>
+                  {phaseOptions.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
                 </select>
               </div>
-            </div>
 
-            <div className="grid grid-cols-12 gap-4">
-              <div className="col-span-4">
+              <div className="col-span-6">
                 <label className="block text-sm font-medium text-neutral-700 mb-1">
                   Task Type
                 </label>
                 <select
                   className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
-                  value={type}
-                  onChange={(e) => setType(e.target.value)}
+                  value={type || ""} // guard controlled value
+                  onChange={(e) => {
+                    setType(e.target.value);
+                    setTask("");
+                    setSubtask("");
+                  }}
                 >
                   <option value="">Select</option>
-                  <option value="Documentation">Documentation</option>
-                  <option value="Discussion & Review">
-                    Discussion & Review
-                  </option>
+                  {(typesForM || []).map(
+                    (
+                      t // guard against undefined
+                    ) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    )
+                  )}
                 </select>
               </div>
+            </div>
 
-              <div className="col-span-4">
+            <div className="grid grid-cols-12 gap-4">
+              <div className="col-span-6">
                 <label className="block text-sm font-medium text-neutral-700 mb-1">
                   Task
                 </label>
                 <input
                   type="text"
+                  list="fd-task-list"
                   className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                   value={task}
-                  onChange={(e) => setTask(e.target.value)}
-                  placeholder="e.g., Chapter 4"
+                  onChange={(e) => {
+                    setTask(e.target.value);
+                    setSubtask("");
+                  }}
+                  placeholder="e.g., Polish: Chapter 4"
                 />
+                <datalist id="fd-task-list">
+                  {tasksForMT.map((t) => (
+                    <option key={t} value={t} />
+                  ))}
+                </datalist>
               </div>
 
-              <div className="col-span-4">
+              <div className="col-span-6">
                 <label className="block text-sm font-medium text-neutral-700 mb-1">
                   Subtask
                 </label>
                 <input
                   type="text"
+                  list="fd-subtask-list"
                   className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                   value={subtask}
                   onChange={(e) => setSubtask(e.target.value)}
-                  placeholder="e.g., Testing"
+                  placeholder="e.g., Requirements Modeling - Context Diagram"
                 />
+                <datalist id="fd-subtask-list">
+                  {subtasksFor.map((s, i) => (
+                    <option key={`${s}-${i}`} value={s} />
+                  ))}
+                </datalist>
               </div>
             </div>
 
@@ -495,33 +1107,32 @@ function EditTaskDialog({
                 </select>
               </div>
 
+              {/* PM controls Due Date/Time (prefilled from Oral) */}
               <div className="col-span-4">
                 <label className="block text-sm font-medium text-neutral-700 mb-1">
-                  Due Date (Adviser-managed)
+                  Due Date
                 </label>
                 <input
                   type="date"
-                  className="w-full rounded-lg border border-neutral-300 px-3 py-2 bg-neutral-50 text-neutral-600"
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2"
                   value={due}
-                  disabled
-                  readOnly
+                  onChange={(e) => setDue(e.target.value)}
                 />
               </div>
               <div className="col-span-4">
                 <label className="block text sm font-medium text-neutral-700 mb-1">
-                  Time (Adviser-managed)
+                  Time
                 </label>
                 <input
                   type="time"
-                  className="w-full rounded-lg border border-neutral-300 px-3 py-2 bg-neutral-50 text-neutral-600"
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2"
                   value={time}
-                  disabled
-                  readOnly
+                  onChange={(e) => setTime(e.target.value)}
                 />
               </div>
             </div>
 
-            {/* Assign + Comment + Attachments */}
+            {/* Assign + Comment + Attachments (unchanged) */}
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-1">
                 Assign Members
@@ -663,7 +1274,6 @@ function EditTaskDialog({
             </div>
           </div>
 
-          {/* footer (outside the scrollable area) */}
           <div className="flex justify-end gap-2 px-5 py-4 border-t border-neutral-200">
             <button
               type="button"
@@ -716,7 +1326,6 @@ const FinalDefense = ({ onBack }) => {
 
   const pageSize = 10;
 
-  // current PM
   const pmUid = auth.currentUser?.uid || localStorage.getItem("uid") || "";
   const [pmProfile, setPmProfile] = useState(null);
 
@@ -791,7 +1400,7 @@ const FinalDefense = ({ onBack }) => {
     return () => unsubTeams && unsubTeams();
   }, [pmUid]);
 
-  /* Oral Defense Tasks for checking completion */
+  /* Oral Defense Tasks */
   useEffect(() => {
     if (!pmUid) return;
     const qRef = query(
@@ -828,7 +1437,7 @@ const FinalDefense = ({ onBack }) => {
     return () => unsub && unsub();
   }, [pmUid]);
 
-  /* Check Oral Defense completion status for each team */
+  /* Oral Defense completion status per team (unchanged) */
   useEffect(() => {
     const status = {};
     teams.forEach((team) => {
@@ -851,12 +1460,12 @@ const FinalDefense = ({ onBack }) => {
       );
       const allCompleted = completedTasks.length === teamOralTasks.length;
 
-      // Check if all due dates are past
       const now = new Date();
       const allPastDue = teamOralTasks.every((task) => {
         if (!task.dueDate) return false;
         const dueDate = new Date(task.dueDate);
         return dueDate < now;
+        // NOTE: gating logic retained; your guard comment stays below.
       });
 
       status[team.id] = {
@@ -874,7 +1483,35 @@ const FinalDefense = ({ onBack }) => {
     setTeamOralStatus(status);
   }, [teams, oralTasks]);
 
-  /* Check if any team is ready for Final Defense */
+  /* Precompute Oral defaults (latest due per team) */
+  const oralDefaultsByTeam = useMemo(() => {
+    const map = {};
+    teams.forEach((team) => {
+      const teamOral = oralTasks.filter((t) => t.team?.id === team.id);
+      let best = null;
+      teamOral.forEach((t) => {
+        const ms =
+          typeof t.dueAtMs === "number"
+            ? t.dueAtMs
+            : t.dueDate
+            ? new Date(`${t.dueDate}T${t.dueTime || "00:00"}:00`).getTime()
+            : null;
+        if (ms && (!best || ms > best.ms)) {
+          best = {
+            ms,
+            dueDate: t.dueDate || new Date(ms).toISOString().slice(0, 10),
+            dueTime:
+              typeof t.dueTime === "string" && t.dueTime.length
+                ? t.dueTime
+                : "",
+          };
+        }
+      });
+      if (best) map[team.id] = { dueDate: best.dueDate, dueTime: best.dueTime };
+    });
+    return map;
+  }, [teams, oralTasks]);
+
   const canCreateFinalDefense = useMemo(() => {
     return Object.values(teamOralStatus).some((status) => status.canCreate);
   }, [teamOralStatus]);
@@ -884,7 +1521,6 @@ const FinalDefense = ({ onBack }) => {
     const out = [];
     const seenMemberUids = new Set();
 
-    // Filter tasks for Team tab (only Project Manager tasks)
     const teamTasks = finalTasks.filter(
       (t) => t.taskManager === "Project Manager"
     );
@@ -947,7 +1583,7 @@ const FinalDefense = ({ onBack }) => {
     return out;
   }, [finalTasks, members, teams]);
 
-  /* ---------- Rows for Adviser tab (group by team, one row per task) ---------- */
+  /* ---------- Rows for Adviser tab ---------- */
   const adviserRows = useMemo(() => {
     const adviserTasks = finalTasks.filter((t) => t.taskManager === "Adviser");
     return adviserTasks.map((t, idx) => ({
@@ -1075,6 +1711,8 @@ const FinalDefense = ({ onBack }) => {
     const dueAtMs =
       newDate && hasTime
         ? new Date(`${newDate}T${row.time}:00`).getTime()
+        : newDate
+        ? new Date(`${newDate}T00:00:00`).getTime()
         : null;
     await updateTaskRow(row, {
       dueDate: newDate || null,
@@ -1085,8 +1723,8 @@ const FinalDefense = ({ onBack }) => {
   };
   const saveTime = async (row, newTime) => {
     const dueAtMs =
-      row.due && row.due !== "--" && newTime
-        ? new Date(`${row.due}T${newTime}:00`).getTime()
+      row.due && row.due !== "--" && (newTime || newTime === "")
+        ? new Date(`${row.due}T${newTime || "00:00"}:00`).getTime()
         : null;
     await updateTaskRow(row, { dueTime: newTime || null, dueAtMs });
     stopEdit();
@@ -1107,13 +1745,11 @@ const FinalDefense = ({ onBack }) => {
       .filter((r) => selected.has(r.key) && r.taskId)
       .map((r) => r.taskId);
     for (const id of toDelete) {
-      // eslint-disable-next-line no-await-in-loop
       await deleteTask(id);
     }
     setSelected(new Set());
   };
 
-  // Modal helpers
   const openModalEditor = (row) => {
     setEditingModal({
       seedMember: row.memberUid
@@ -1131,15 +1767,14 @@ const FinalDefense = ({ onBack }) => {
     });
   };
 
-  // Choose member for Create when in Team tab:
   const handleCreateClick = () => {
     const anyReady = Object.values(teamOralStatus).some((s) => s.canCreate);
-    if (!anyReady) {
+    /*if (!anyReady) {
       alert(
         "Cannot create Final Defense tasks until Oral Defense is completed and due dates have passed for at least one team."
       );
       return;
-    }
+    }*/
 
     if (isTeam) {
       const selectedKey = Array.from(selected)[0] || null;
@@ -1156,7 +1791,6 @@ const FinalDefense = ({ onBack }) => {
     }
   };
 
-  // For Adviser tab grouping (computed from pageRows)
   const adviserGroups = useMemo(() => {
     if (isTeam) return null;
     const groups = new Map();
@@ -1175,7 +1809,6 @@ const FinalDefense = ({ onBack }) => {
 
   return (
     <div className="space-y-4">
-      {/* Oral Defense Status Check */}
       {!Object.values(teamOralStatus).some((s) => s.canCreate) && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3">
           <div className="flex items-center gap-2">
@@ -1338,7 +1971,7 @@ const FinalDefense = ({ onBack }) => {
             </thead>
 
             <tbody>
-              {/* Adviser tab: grouped by team */}
+              {/* Adviser tab grouping (unchanged UI behavior) */}
               {!isTeam &&
                 (function renderAdviser() {
                   const groups = (() => {
@@ -1394,7 +2027,6 @@ const FinalDefense = ({ onBack }) => {
                             </td>
                             <td className="py-2 pr-3">{g.teamName}</td>
 
-                            {/* Task Type */}
                             <td className="py-2 pr-3">
                               {isEditing("type") ? (
                                 <select
@@ -1414,12 +2046,15 @@ const FinalDefense = ({ onBack }) => {
                                   }}
                                 >
                                   <option value="">--</option>
-                                  <option value="Documentation">
-                                    Documentation
-                                  </option>
-                                  <option value="Discussion & Review">
-                                    Discussion & Review
-                                  </option>
+                                  {Object.keys(
+                                    METHODOLOGY_CONTENT_FINAL
+                                  ).flatMap((m) =>
+                                    getTypesFor(m).map((t) => (
+                                      <option key={`${m}-${t}`} value={t}>
+                                        {t}
+                                      </option>
+                                    ))
+                                  )}
                                 </select>
                               ) : (
                                 <span
@@ -1437,7 +2072,6 @@ const FinalDefense = ({ onBack }) => {
                               )}
                             </td>
 
-                            {/* Task */}
                             <td className="py-2 pr-3">
                               {isEditing("task") ? (
                                 <input
@@ -1455,6 +2089,7 @@ const FinalDefense = ({ onBack }) => {
                                       e.currentTarget.blur();
                                     if (e.key === "Escape") stopEdit();
                                   }}
+                                  list="table-task-suggest"
                                 />
                               ) : (
                                 <span
@@ -1472,7 +2107,6 @@ const FinalDefense = ({ onBack }) => {
                               )}
                             </td>
 
-                            {/* Subtask */}
                             <td className="py-2 pr-3">
                               {isEditing("subtask") ? (
                                 <input
@@ -1492,6 +2126,7 @@ const FinalDefense = ({ onBack }) => {
                                       e.currentTarget.blur();
                                     if (e.key === "Escape") stopEdit();
                                   }}
+                                  list="table-subtask-suggest"
                                 />
                               ) : (
                                 <span
@@ -1509,7 +2144,6 @@ const FinalDefense = ({ onBack }) => {
                               )}
                             </td>
 
-                            {/* Element */}
                             <td className="py-2 pr-3">
                               {isEditing("element") ? (
                                 <select
@@ -1550,26 +2184,16 @@ const FinalDefense = ({ onBack }) => {
                               )}
                             </td>
 
-                            {/* Date Created (read-only) */}
                             <td className="py-2 pr-3">{r.created}</td>
 
-                            {/* Due Date (locked in Adviser tab) */}
-                            <td
-                              className="py-2 pr-3"
-                              title="Managed by Adviser"
-                            >
+                            {/* Show due/time but keep read-only in Adviser tab */}
+                            <td className="py-2 pr-3">
                               <span className="text-neutral-700">{r.due}</span>
                             </td>
-
-                            {/* Time (locked in Adviser tab) */}
-                            <td
-                              className="py-2 pr-3"
-                              title="Managed by Adviser"
-                            >
+                            <td className="py-2 pr-3">
                               <span className="text-neutral-700">{r.time}</span>
                             </td>
 
-                            {/* Revision — LOCKED for PM */}
                             <td className="py-2 pr-3">
                               <RevisionSelect
                                 value={r.revision}
@@ -1578,15 +2202,12 @@ const FinalDefense = ({ onBack }) => {
                               />
                             </td>
 
-                            {/* Status */}
                             <td className="py-2 pr-3">
                               <StatusBadge value={r.status} />
                             </td>
 
-                            {/* Methodology (read-only, inherited) */}
                             <td className="py-2 pr-3">{r.methodology}</td>
 
-                            {/* Project Phase */}
                             <td className="py-2 pr-6">
                               {isEditing("phase") ? (
                                 <select
@@ -1605,12 +2226,17 @@ const FinalDefense = ({ onBack }) => {
                                   }}
                                 >
                                   <option value="">--</option>
-                                  <option value="Implementation">
-                                    Implementation
-                                  </option>
-                                  <option value="Testing">Testing</option>
-                                  <option value="Deployment">Deployment</option>
-                                  <option value="Review">Review</option>
+                                  {Object.keys(
+                                    METHODOLOGY_CONTENT_FINAL
+                                  ).flatMap((m) =>
+                                    (
+                                      METHODOLOGY_CONTENT_FINAL[m].phases || []
+                                    ).map((p) => (
+                                      <option key={`${m}-${p}`} value={p}>
+                                        {p}
+                                      </option>
+                                    ))
+                                  )}
                                 </select>
                               ) : (
                                 <span
@@ -1634,7 +2260,7 @@ const FinalDefense = ({ onBack }) => {
                   ));
                 })()}
 
-              {/* Team tab: per-member rows */}
+              {/* Team tab (inline due/time editable) */}
               {isTeam &&
                 pageRows.map((r, idx) => {
                   const isEditing = (field) =>
@@ -1660,7 +2286,6 @@ const FinalDefense = ({ onBack }) => {
                       </td>
                       <td className="py-2 pr-3">{r.memberName}</td>
 
-                      {/* Task Type */}
                       <td className="py-2 pr-3">
                         {isEditing("type") ? (
                           <select
@@ -1679,10 +2304,14 @@ const FinalDefense = ({ onBack }) => {
                             }}
                           >
                             <option value="">--</option>
-                            <option value="Documentation">Documentation</option>
-                            <option value="Discussion & Review">
-                              Discussion & Review
-                            </option>
+                            {Object.keys(METHODOLOGY_CONTENT_FINAL).flatMap(
+                              (m) =>
+                                getTypesFor(m).map((t) => (
+                                  <option key={`${m}-${t}`} value={t}>
+                                    {t}
+                                  </option>
+                                ))
+                            )}
                           </select>
                         ) : (
                           <span
@@ -1697,7 +2326,6 @@ const FinalDefense = ({ onBack }) => {
                         )}
                       </td>
 
-                      {/* Task */}
                       <td className="py-2 pr-3">
                         {isEditing("task") ? (
                           <input
@@ -1714,6 +2342,7 @@ const FinalDefense = ({ onBack }) => {
                               if (e.key === "Enter") e.currentTarget.blur();
                               if (e.key === "Escape") stopEdit();
                             }}
+                            list="table-task-suggest"
                           />
                         ) : (
                           <span
@@ -1728,7 +2357,6 @@ const FinalDefense = ({ onBack }) => {
                         )}
                       </td>
 
-                      {/* Subtask */}
                       <td className="py-2 pr-3">
                         {isEditing("subtask") ? (
                           <input
@@ -1745,6 +2373,7 @@ const FinalDefense = ({ onBack }) => {
                               if (e.key === "Enter") e.currentTarget.blur();
                               if (e.key === "Escape") stopEdit();
                             }}
+                            list="table-subtask-suggest"
                           />
                         ) : (
                           <span
@@ -1759,18 +2388,13 @@ const FinalDefense = ({ onBack }) => {
                         )}
                       </td>
 
-                      {/* Element */}
                       <td className="py-2 pr-3">
                         {isEditing("element") ? (
                           <select
                             autoFocus
                             className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
                             defaultValue={r.element === "--" ? "" : r.element}
-                            onBlur={(e) =>
-                              updateTaskRow(r, {
-                                element: e.target.value || null,
-                              }).then(stopEdit)
-                            }
+                            onBlur={(e) => saveElement(r, e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") e.currentTarget.blur();
                               if (e.key === "Escape") stopEdit();
@@ -1794,10 +2418,8 @@ const FinalDefense = ({ onBack }) => {
                         )}
                       </td>
 
-                      {/* Date Created (read-only) */}
                       <td className="py-2 pr-3">{r.created}</td>
 
-                      {/* Due Date (editable in Team tab) */}
                       <td className="py-2 pr-3">
                         {isEditing("due") ? (
                           <input
@@ -1824,7 +2446,6 @@ const FinalDefense = ({ onBack }) => {
                         )}
                       </td>
 
-                      {/* Time (editable in Team tab) */}
                       <td className="py-2 pr-3">
                         {isEditing("time") ? (
                           <input
@@ -1851,7 +2472,6 @@ const FinalDefense = ({ onBack }) => {
                         )}
                       </td>
 
-                      {/* Revision — LOCKED for PM */}
                       <td className="py-2 pr-3">
                         <RevisionSelect
                           value={r.revision}
@@ -1860,7 +2480,6 @@ const FinalDefense = ({ onBack }) => {
                         />
                       </td>
 
-                      {/* Status (editable select on Team tab) */}
                       <td className="py-2 pr-3">
                         {isTeam ? (
                           <select
@@ -1884,10 +2503,8 @@ const FinalDefense = ({ onBack }) => {
                         )}
                       </td>
 
-                      {/* Methodology (read-only, inherited) */}
                       <td className="py-2 pr-3">{r.methodology}</td>
 
-                      {/* Project Phase */}
                       <td className="py-2 pr-6">
                         {isEditing("phase") ? (
                           <select
@@ -1901,12 +2518,16 @@ const FinalDefense = ({ onBack }) => {
                             }}
                           >
                             <option value="">--</option>
-                            <option value="Implementation">
-                              Implementation
-                            </option>
-                            <option value="Testing">Testing</option>
-                            <option value="Deployment">Deployment</option>
-                            <option value="Review">Review</option>
+                            {Object.keys(METHODOLOGY_CONTENT_FINAL).flatMap(
+                              (m) =>
+                                (METHODOLOGY_CONTENT_FINAL[m].phases || []).map(
+                                  (p) => (
+                                    <option key={`${m}-${p}`} value={p}>
+                                      {p}
+                                    </option>
+                                  )
+                                )
+                            )}
                           </select>
                         ) : (
                           <span
@@ -1936,6 +2557,29 @@ const FinalDefense = ({ onBack }) => {
               )}
             </tbody>
           </table>
+
+          {/* suggestions lists for inline edit */}
+          <datalist id="table-task-suggest">
+            {Object.keys(METHODOLOGY_CONTENT_FINAL).flatMap((m) =>
+              getTypesFor(m).flatMap((t) =>
+                getTasksFor(m, t).map((task) => (
+                  <option key={`${m}-${t}-${task}`} value={task} />
+                ))
+              )
+            )}
+          </datalist>
+
+          <datalist id="table-subtask-suggest">
+            {Object.keys(METHODOLOGY_CONTENT_FINAL).flatMap((m) =>
+              getTypesFor(m).flatMap((t) =>
+                getTasksFor(m, t).flatMap((task) =>
+                  getSubtasksFor(m, t, task).map((s, i) => (
+                    <option key={`${m}-${t}-${task}-${i}`} value={s} />
+                  ))
+                )
+              )
+            )}
+          </datalist>
         </div>
 
         {/* pagination */}
@@ -1959,7 +2603,6 @@ const FinalDefense = ({ onBack }) => {
         </div>
       </div>
 
-      {/* modal editor */}
       <EditTaskDialog
         open={!!editingModal}
         onClose={() => setEditingModal(null)}
@@ -1970,6 +2613,7 @@ const FinalDefense = ({ onBack }) => {
         seedMember={editingModal?.seedMember || null}
         existingTask={editingModal?.existingTask || null}
         mode={mode}
+        oralDefaults={oralDefaultsByTeam} // << prefill from Oral Defense
       />
     </div>
   );
