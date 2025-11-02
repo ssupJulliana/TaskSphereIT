@@ -1,4 +1,3 @@
-// src/services/events.js
 import { db } from "../config/firebase";
 import {
   collection,
@@ -10,7 +9,6 @@ import {
   updateDoc,
 } from "firebase/firestore";
 
-// Collections used across the app
 const COL = {
   title: "titleDefenseSchedules",
   manuscript: "manuscriptSubmissions",
@@ -40,14 +38,18 @@ async function getTeamTitlesMap(teamIds = []) {
   return map;
 }
 
-async function fetchCollectionRows(colName, { teamIds = null, singleTimeField = null, statusField = "verdict" } = {}) {
+async function fetchCollectionRows(
+  colName,
+  { teamIds = null, singleTimeField = null, statusField = "verdict" } = {}
+) {
   let baseRef = collection(db, colName);
   let snaps = [];
 
   if (Array.isArray(teamIds) && teamIds.length > 0) {
     // "in" supports up to 10 values; chunk if needed
     const chunks = [];
-    for (let i = 0; i < teamIds.length; i += 10) chunks.push(teamIds.slice(i, i + 10));
+    for (let i = 0; i < teamIds.length; i += 10)
+      chunks.push(teamIds.slice(i, i + 10));
     for (const chunk of chunks) {
       const qy = query(baseRef, where("teamId", "in", chunk));
       const s = await getDocs(qy);
@@ -62,7 +64,9 @@ async function fetchCollectionRows(colName, { teamIds = null, singleTimeField = 
     const d = docX.data() || {};
     const timeStart = (d?.timeStart || d?.time || "").toString();
     const timeEnd = (d?.timeEnd || "").toString();
-    const tStart = singleTimeField ? (d?.[singleTimeField] || "").toString() : timeStart;
+    const tStart = singleTimeField
+      ? (d?.[singleTimeField] || "").toString()
+      : timeStart;
     return {
       id: docX.id,
       teamId: (d?.teamId || "").toString(),
@@ -94,67 +98,84 @@ async function fetchCollectionRows(colName, { teamIds = null, singleTimeField = 
 export async function getUserTeams(uid) {
   if (!uid) return [];
   const res = [];
-  // member of team
   try {
-    const qMembers = query(collection(db, COL.teams), where("memberUids", "array-contains", uid));
+    const qMembers = query(
+      collection(db, COL.teams),
+      where("memberUids", "array-contains", uid)
+    );
     const s1 = await getDocs(qMembers);
     s1.forEach((d) => res.push({ id: d.id, name: d.data()?.name || "" }));
   } catch (_) {}
-  // manager of team
+
   try {
-    const qMgr = query(collection(db, COL.teams), where("manager.uid", "==", uid));
+    const qMgr = query(
+      collection(db, COL.teams),
+      where("manager.uid", "==", uid)
+    );
     const s2 = await getDocs(qMgr);
     s2.forEach((d) => {
-      if (!res.find((x) => x.id === d.id)) res.push({ id: d.id, name: d.data()?.name || "" });
+      if (!res.find((x) => x.id === d.id))
+        res.push({ id: d.id, name: d.data()?.name || "" });
     });
   } catch (_) {}
+
+  // NEW: teams where this user is the adviser
+  try {
+    const qAdv = query(
+      collection(db, COL.teams),
+      where("adviser.uid", "==", uid)
+    );
+    const s3 = await getDocs(qAdv);
+    s3.forEach((d) => {
+      if (!res.find((x) => x.id === d.id))
+        res.push({ id: d.id, name: d.data()?.name || "" });
+    });
+  } catch (_) {}
+
   return res;
 }
 
-export async function getAdviserEvents() {
-  const [titleRows, manusRows, oralRows, finalRows, reFinalRows] = await Promise.all([
-    fetchCollectionRows(COL.title),
-    fetchCollectionRows(COL.manuscript, { singleTimeField: "time", statusField: "verdict" }),
-    fetchCollectionRows(COL.oral),
-    fetchCollectionRows(COL.final),
-    fetchCollectionRows(COL.reFinal).catch(() => []),
-  ]);
-
-  // Map titles for oral/final if missing
-  const teamIds = Array.from(
-    new Set([
-      ...titleRows,
-      ...manusRows,
-      ...oralRows,
-      ...finalRows,
-      ...reFinalRows,
-    ]
-      .map((r) => r.teamId)
-      .filter(Boolean))
-  );
-  const titlesMap = await getTeamTitlesMap(teamIds);
-
-  const withTitle = (rows) => rows.map((r) => ({ ...r, title: r.title || titlesMap.get(r.teamId) || "" }));
-
-  return {
-    titleDefense: titleRows,
-    manuscript: manusRows,
-    oralDefense: withTitle(oralRows),
-    finalDefense: withTitle(finalRows),
-    finalRedefense: withTitle(reFinalRows),
+export async function getAdviserEvents(adviserUid) {
+  const EMPTY = {
+    titleDefense: [],
+    manuscript: [],
+    oralDefense: [],
+    finalDefense: [],
+    finalRedefense: [],
   };
+  if (!adviserUid) return EMPTY;
+
+  // Find teams handled by this adviser
+  const s = await getDocs(
+    query(collection(db, COL.teams), where("adviser.uid", "==", adviserUid))
+  );
+  const teamIds = s.docs.map((d) => d.id);
+
+  if (!teamIds.length) return EMPTY;
+
+  // Reuse existing filtered fetcher
+  return getEventsForTeams(teamIds);
 }
 
 export async function getEventsForTeams(teamIds = []) {
-  const [titleRows, manusRows, oralRows, finalRows, reFinalRows] = await Promise.all([
-    fetchCollectionRows(COL.title, { teamIds }),
-    fetchCollectionRows(COL.manuscript, { teamIds, singleTimeField: "time", statusField: "verdict" }),
-    fetchCollectionRows(COL.oral, { teamIds }),
-    fetchCollectionRows(COL.final, { teamIds }),
-    fetchCollectionRows(COL.reFinal, { teamIds }).catch(() => []),
-  ]);
+  const [titleRows, manusRows, oralRows, finalRows, reFinalRows] =
+    await Promise.all([
+      fetchCollectionRows(COL.title, { teamIds }),
+      fetchCollectionRows(COL.manuscript, {
+        teamIds,
+        singleTimeField: "time",
+        statusField: "verdict",
+      }),
+      fetchCollectionRows(COL.oral, { teamIds }),
+      fetchCollectionRows(COL.final, { teamIds }),
+      fetchCollectionRows(COL.reFinal, { teamIds }).catch(() => []),
+    ]);
   const titlesMap = await getTeamTitlesMap(teamIds);
-  const withTitle = (rows) => rows.map((r) => ({ ...r, title: r.title || titlesMap.get(r.teamId) || "" }));
+  const withTitle = (rows) =>
+    rows.map((r) => ({
+      ...r,
+      title: r.title || titlesMap.get(r.teamId) || "",
+    }));
   return {
     titleDefense: titleRows,
     manuscript: manusRows,
@@ -172,7 +193,10 @@ export async function getEventsForUser(uid) {
 }
 
 // --- Updates (for Adviser management) ---
-export async function updateManuscriptVerdict(docId, { verdict, plag, ai, file }) {
+export async function updateManuscriptVerdict(
+  docId,
+  { verdict, plag, ai, file }
+) {
   const payload = {};
   if (typeof verdict === "string") payload.verdict = verdict;
   if (typeof plag === "number") payload.plag = plag;
@@ -182,7 +206,12 @@ export async function updateManuscriptVerdict(docId, { verdict, plag, ai, file }
 }
 
 export async function updateScheduleVerdict(collectionKey, docId, verdict) {
-  const cmap = { title: COL.title, oral: COL.oral, final: COL.final, reFinal: COL.reFinal };
+  const cmap = {
+    title: COL.title,
+    oral: COL.oral,
+    final: COL.final,
+    reFinal: COL.reFinal,
+  };
   const col = cmap[collectionKey];
   if (!col) throw new Error("Invalid schedule collection key");
   await updateDoc(doc(db, col, docId), { verdict });
