@@ -11,14 +11,13 @@ import {
   UserCircle2,
   Paperclip,
   X,
-  MoreVertical,
   Loader2,
   Trash2,
   CheckCircle,
   AlertCircle,
 } from "lucide-react";
 
-/* ===== Firebase ===== */
+/* ===== Firebase (Firestore + Storage) ===== */
 import { auth, db } from "../../../config/firebase";
 import {
   addDoc,
@@ -31,24 +30,47 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
+import {
+  getStorage,
+  ref as storageRef,
+  uploadBytes,
+  getDownloadURL,
+} from "firebase/storage";
+
+/* ===== Supabase (Storage) ===== */
+import { supabase } from "../../../config/supabase";
 
 const MAROON = "#6A0F14";
 const ORAL_TASKS_COLLECTION = "oralDefenseTasks";
 const FINAL_TASKS_COLLECTION = "finalDefenseTasks";
+
+/* ---------- env-style switches & constants (aligned with OralDefense) ---------- */
+const ENABLE_SUPABASE =
+  !!supabase && typeof supabase.storage?.from === "function";
+
+// You can override these via Vite envs to match your OralDefense setup
+const SUPABASE_ATTACH_BUCKET =
+  import.meta.env.VITE_SUPABASE_ATTACH_BUCKET || "task-attachments";
+const FIREBASE_ATTACH_ROOT =
+  import.meta.env.VITE_FIREBASE_ATTACH_ROOT || "attachments/finalDefense";
 
 /* ---------- small UI helpers (match OralDefense look) ---------- */
 const ModeSwitch = ({ mode, setMode }) => (
   <div className="inline-flex rounded-md border border-neutral-300 overflow-hidden">
     <button
       onClick={() => setMode("team")}
-      className={`px-3 py-1.5 text-sm font-medium ${mode === "team" ? "text-white" : "text-neutral-700"}`}
+      className={`px-3 py-1.5 text-sm font-medium ${
+        mode === "team" ? "text-white" : "text-neutral-700"
+      }`}
       style={{ background: mode === "team" ? MAROON : "white" }}
     >
       Team
     </button>
     <button
       onClick={() => setMode("adviser")}
-      className={`px-3 py-1.5 text-sm font-medium border-l border-neutral-300 ${mode === "adviser" ? "text-white" : "text-neutral-700"}`}
+      className={`px-3 py-1.5 text-sm font-medium border-l border-neutral-300 ${
+        mode === "adviser" ? "text-white" : "text-neutral-700"
+      }`}
       style={{ background: mode === "adviser" ? MAROON : "white" }}
     >
       Adviser Tasks
@@ -56,30 +78,20 @@ const ModeSwitch = ({ mode, setMode }) => (
   </div>
 );
 
-const StatusBadge = ({ value, isEditable, onChange }) => {
+const StatusBadge = ({ value }) => {
   const statusColors = {
     "To Do": "bg-[#D9A81E] text-white",
     "To Review": "bg-[#6FA8DC] text-white",
     "In Progress": "bg-[#7C9C3B] text-white",
     Completed: "bg-[#6A0F14] text-white",
   };
-
   if (!value || value === "--") return <span>--</span>;
-
-  return isEditable ? (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-medium border-none bg-white shadow-md cursor-pointer"
+  return (
+    <span
+      className={`inline-flex items-center px-3 py-1 rounded-full text-[12px] font-medium ${
+        statusColors[value] || "bg-neutral-200"
+      }`}
     >
-      {Object.keys(statusColors).map((status) => (
-        <option key={status} value={status} className={`${statusColors[status]}`}>
-          {status}
-        </option>
-      ))}
-    </select>
-  ) : (
-    <span className={`inline-flex items-center px-3 py-1 rounded-full text-[12px] font-medium ${statusColors[value] || "bg-neutral-200"}`}>
       {value}
     </span>
   );
@@ -87,7 +99,9 @@ const StatusBadge = ({ value, isEditable, onChange }) => {
 
 const RevisionSelect = ({ value, onChange, disabled }) => (
   <select
-    className={`text-[12px] leading-tight font-medium border border-neutral-300 rounded-lg px-2.5 py-0.5 bg-white ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
+    className={`text-[12px] leading-tight font-medium border border-neutral-300 rounded-lg px-2.5 py-0.5 bg-white ${
+      disabled ? "opacity-60 cursor-not-allowed" : ""
+    }`}
     value={value}
     onChange={(e) => onChange(e.target.value)}
     disabled={disabled}
@@ -99,7 +113,83 @@ const RevisionSelect = ({ value, onChange, disabled }) => (
   </select>
 );
 
-/* ======= Edit/Create Task Dialog for Final Defense ======= */
+/* ---------- Attachment Helpers (aligned with OralDefense; no supabaseUrl) ---------- */
+const slugifyName = (name = "") =>
+  name
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^A-Za-z0-9._-]/g, "_");
+
+async function uploadToSupabase(file, { teamId = "no-team" } = {}) {
+  const stamp = Date.now();
+  const path = `finalDefense/${teamId}/${stamp}_${slugifyName(file.name)}`;
+
+  const { error } = await supabase.storage
+    .from(SUPABASE_ATTACH_BUCKET)
+    .upload(path, file, {
+      cacheControl: "3600",
+      upsert: false,
+      contentType: file.type || undefined,
+    });
+
+  if (error) throw error;
+
+  const { data } = supabase.storage
+    .from(SUPABASE_ATTACH_BUCKET)
+    .getPublicUrl(path);
+
+  return {
+    provider: "supabase",
+    bucket: SUPABASE_ATTACH_BUCKET,
+    path,
+    url: data?.publicUrl || "",
+    name: file.name,
+    size: file.size,
+    type: file.type || "application/octet-stream",
+  };
+}
+
+async function uploadToFirebase(file, { teamId = "no-team" } = {}) {
+  const storage = getStorage();
+  const stamp = Date.now();
+  const path = `${FIREBASE_ATTACH_ROOT}/${teamId}/${stamp}_${slugifyName(
+    file.name
+  )}`;
+  const ref = storageRef(storage, path);
+  await uploadBytes(ref, file);
+  const url = await getDownloadURL(ref);
+  return {
+    provider: "firebase",
+    path,
+    url,
+    name: file.name,
+    size: file.size,
+    type: file.type || "application/octet-stream",
+  };
+}
+
+/**
+ * Upload with the same behavior as OralDefense:
+ * - Prefer Supabase if configured, else Firebase
+ * - If first provider fails, attempt the other
+ */
+async function uploadAttachmentSmart(file, { teamId }) {
+  if (ENABLE_SUPABASE) {
+    try {
+      return await uploadToSupabase(file, { teamId });
+    } catch (_) {
+      try {
+        return await uploadToFirebase(file, { teamId });
+      } catch (e2) {
+        throw e2;
+      }
+    }
+  } else {
+    return await uploadToFirebase(file, { teamId });
+  }
+}
+
+/* ======= Edit/Create Task Dialog for Final Defense (scrollable + attachments) ======= */
 function EditTaskDialog({
   open,
   onClose,
@@ -125,6 +215,11 @@ function EditTaskDialog({
   const [assignees, setAssignees] = useState([]);
   const [comment, setComment] = useState("");
 
+  // attachments (supabase/firebase)
+  const [attachments, setAttachments] = useState([]); // [{name,size,type,url,provider,bucket?,path}]
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState("");
+
   useEffect(() => {
     if (!open) return;
     setTeamId(existingTask?.team?.id || teams[0]?.id || "");
@@ -136,8 +231,16 @@ function EditTaskDialog({
       setElement(existingTask.element || "");
       setDue(existingTask.dueDate || "");
       setTime(existingTask.dueTime || "");
-      setAssignees((existingTask.assignees || []).map((a) => ({ uid: a.uid, name: a.name })));
+      setAssignees(
+        (existingTask.assignees || []).map((a) => ({
+          uid: a.uid,
+          name: a.name,
+        }))
+      );
       setComment(existingTask.comment || "");
+      setAttachments(
+        Array.isArray(existingTask.attachments) ? existingTask.attachments : []
+      );
     } else {
       setPhase("Implementation");
       setType("");
@@ -146,9 +249,13 @@ function EditTaskDialog({
       setElement("");
       setDue("");
       setTime("");
-      setAssignees(seedMember ? [{ uid: seedMember.uid, name: seedMember.name }] : []);
+      setAssignees(
+        seedMember ? [{ uid: seedMember.uid, name: seedMember.name }] : []
+      );
       setComment("");
+      setAttachments([]);
     }
+    setUploadErr("");
   }, [open, existingTask, seedMember, teams]);
 
   const canSave = teamId && phase && type && task && assignees.length > 0;
@@ -157,10 +264,44 @@ function EditTaskDialog({
     if (!pickedUid) return;
     const found = members.find((m) => m.uid === pickedUid);
     if (!found) return;
-    if (!assignees.some((a) => a.uid === pickedUid)) setAssignees((arr) => [...arr, found]);
+    if (!assignees.some((a) => a.uid === pickedUid))
+      setAssignees((arr) => [...arr, found]);
     setPickedUid("");
   };
-  const removeAssignee = (uid) => setAssignees((arr) => arr.filter((a) => a.uid !== uid));
+  const removeAssignee = (uid) =>
+    setAssignees((arr) => arr.filter((a) => a.uid !== uid));
+
+  const handleAttachClick = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.onchange = async (e) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+      setUploading(true);
+      setUploadErr("");
+      try {
+        const uploaded = [];
+        for (const f of files) {
+          // eslint-disable-next-line no-await-in-loop
+          const meta = await uploadAttachmentSmart(f, {
+            teamId: teamId || "no-team",
+          });
+          uploaded.push(meta);
+        }
+        setAttachments((prev) => [...prev, ...uploaded]);
+      } catch (err) {
+        setUploadErr(String(err?.message || err || "Upload failed"));
+      } finally {
+        setUploading(false);
+      }
+    };
+    input.click();
+  };
+
+  const removeAttachment = (idx) => {
+    setAttachments((list) => list.filter((_, i) => i !== idx));
+  };
 
   const save = async () => {
     if (!canSave) return;
@@ -178,18 +319,25 @@ function EditTaskDialog({
         subtask: subtask || "--",
         element: element || "--",
         // PM cannot edit due/time in dialog
-        dueDate: existingTask ? (existingTask.dueDate ?? null) : null,
-        dueTime: existingTask ? (existingTask.dueTime ?? null) : null,
-        dueAtMs: existingTask ? (existingTask.dueAtMs ?? null) : null,
+        dueDate: existingTask ? existingTask.dueDate ?? null : null,
+        dueTime: existingTask ? existingTask.dueTime ?? null : null,
+        dueAtMs: existingTask ? existingTask.dueAtMs ?? null : null,
         status: existingTask?.status || "To Do",
         revision: existingTask?.revision || "No Revision",
         assignees: assignees.map((a) => ({ uid: a.uid, name: a.name })),
         team: team ? { id: team.id, name: team.name } : null,
         comment: comment || "",
-        createdBy: pm ? { uid: pm.uid, name: pm.name, role: "Project Manager" } : null,
+        createdBy: pm
+          ? { uid: pm.uid, name: pm.name, role: "Project Manager" }
+          : null,
         taskManager,
         // Methodology is inherited from Oral Defense and cannot be changed
         methodology: existingTask?.methodology || "Inherited from Oral Defense",
+        // Attachments saved verbatim; optional server timestamps per item
+        attachments: (attachments || []).map((a) => ({
+          ...a,
+          uploadedAt: serverTimestamp(),
+        })),
       };
 
       if (existingTask?.id) {
@@ -214,29 +362,47 @@ function EditTaskDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50">
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 md:p-6 overscroll-contain">
+      {/* backdrop */}
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative z-10 mx-auto mt-10 w-[980px] max-w-[95vw]">
-        <div className="bg-white rounded-2xl shadow-2xl border border-neutral-200 overflow-hidden">
+
+      {/* panel */}
+      <div className="relative z-10 w-full max-w-[980px]">
+        <div className="bg-white rounded-2xl shadow-2xl border border-neutral-200 flex flex-col max-h-[85vh]">
+          {/* top accent */}
           <div className="h-[2px] w-full" style={{ backgroundColor: MAROON }} />
+
+          {/* header (fixed inside panel) */}
           <div className="flex items-center justify-between px-5 pt-3 pb-2">
-            <div className="flex items-center gap-2 text-[16px] font-semibold" style={{ color: MAROON }}>
+            <div
+              className="flex items-center gap-2 text-[16px] font-semibold"
+              style={{ color: MAROON }}
+            >
               <span>●</span>
               <span>{existingTask ? "Edit Task" : "Create Task"}</span>
             </div>
-            <button onClick={onClose} className="p-1 rounded-md hover:bg-neutral-100 text-neutral-500" aria-label="Close">
+            <button
+              onClick={onClose}
+              className="p-1 rounded-md hover:bg-neutral-100 text-neutral-500"
+              aria-label="Close"
+            >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          <div className="px-5 pb-5 space-y-5">
+          {/* CONTENT — scrollable */}
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-5 space-y-5">
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
-              <b>Reminder:</b> Due Date and Time are <b>managed by the Adviser</b>. Methodology is inherited from Oral Defense.
+              <b>Reminder:</b> Due Date and Time are{" "}
+              <b>managed by the Adviser</b>. Methodology is inherited from Oral
+              Defense.
             </div>
 
             <div className="grid grid-cols-12 gap-4">
               <div className="col-span-6">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Team</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Team
+                </label>
                 <select
                   className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                   value={teamId}
@@ -251,7 +417,9 @@ function EditTaskDialog({
               </div>
 
               <div className="col-span-6">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Project Phase</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Project Phase
+                </label>
                 <select
                   className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                   value={phase}
@@ -267,7 +435,9 @@ function EditTaskDialog({
 
             <div className="grid grid-cols-12 gap-4">
               <div className="col-span-4">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Task Type</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Task Type
+                </label>
                 <select
                   className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                   value={type}
@@ -275,12 +445,16 @@ function EditTaskDialog({
                 >
                   <option value="">Select</option>
                   <option value="Documentation">Documentation</option>
-                  <option value="Discussion & Review">Discussion & Review</option>
+                  <option value="Discussion & Review">
+                    Discussion & Review
+                  </option>
                 </select>
               </div>
 
               <div className="col-span-4">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Task</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Task
+                </label>
                 <input
                   type="text"
                   className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
@@ -291,7 +465,9 @@ function EditTaskDialog({
               </div>
 
               <div className="col-span-4">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Subtask</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Subtask
+                </label>
                 <input
                   type="text"
                   className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
@@ -304,7 +480,9 @@ function EditTaskDialog({
 
             <div className="grid grid-cols-12 gap-4">
               <div className="col-span-4">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Element</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Element
+                </label>
                 <select
                   className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                   value={element}
@@ -330,7 +508,7 @@ function EditTaskDialog({
                 />
               </div>
               <div className="col-span-4">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                <label className="block text sm font-medium text-neutral-700 mb-1">
                   Time (Adviser-managed)
                 </label>
                 <input
@@ -343,6 +521,7 @@ function EditTaskDialog({
               </div>
             </div>
 
+            {/* Assign + Comment + Attachments */}
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-1">
                 Assign Members
@@ -389,15 +568,27 @@ function EditTaskDialog({
 
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-2">
-                Leave Comment:
+                Leave Comment & Attachments:
               </label>
               <div className="rounded-xl border border-neutral-300 bg-white shadow-sm">
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-200">
-                  <UserCircle2 className="w-5 h-5 text-neutral-600" />
-                  <span className="text-sm font-semibold text-neutral-800">
-                    {pm?.name || "Project Manager"}
-                  </span>
+                <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-neutral-200">
+                  <div className="flex items-center gap-2">
+                    <UserCircle2 className="w-5 h-5 text-neutral-600" />
+                    <span className="text-sm font-semibold text-neutral-800">
+                      {pm?.name || "Project Manager"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAttachClick}
+                    className="inline-flex items-center gap-2 px-2 py-1 rounded hover:bg-neutral-100 text-sm"
+                    title="Attach files (Supabase/Firebase)"
+                  >
+                    <Paperclip className="w-4 h-4" />
+                    Attach
+                  </button>
                 </div>
+
                 <div className="relative">
                   <textarea
                     rows={3}
@@ -405,41 +596,101 @@ function EditTaskDialog({
                     value={comment}
                     onChange={(e) => setComment(e.target.value)}
                   />
-                  <button type="button" className="absolute right-2 bottom-2 p-1 rounded hover:bg-neutral-100" title="Attach">
-                    <Paperclip className="w-4 h-4" />
-                  </button>
                 </div>
+
+                {(attachments?.length > 0 || uploading || uploadErr) && (
+                  <div className="px-3 pb-3 space-y-2">
+                    {uploading && (
+                      <div className="text-sm text-neutral-600 inline-flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Uploading…
+                      </div>
+                    )}
+                    {uploadErr && (
+                      <div className="text-sm text-red-600">{uploadErr}</div>
+                    )}
+                    {attachments?.length > 0 && (
+                      <div className="rounded-md border border-neutral-200 overflow-hidden">
+                        <table className="w-full text-[12px]">
+                          <thead className="bg-neutral-50 text-neutral-600">
+                            <tr>
+                              <th className="text-left px-2 py-1.5">File</th>
+                              <th className="text-left px-2 py-1.5">
+                                Provider
+                              </th>
+                              <th className="text-left px-2 py-1.5">Size</th>
+                              <th className="px-2 py-1.5 w-16 text-right">
+                                Action
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {attachments.map((a, i) => (
+                              <tr key={`${a.url}-${i}`} className="border-t">
+                                <td className="px-2 py-1.5">
+                                  <a
+                                    href={a.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-[12px] underline text-blue-600 break-all"
+                                  >
+                                    {a.name}
+                                  </a>
+                                </td>
+                                <td className="px-2 py-1.5">{a.provider}</td>
+                                <td className="px-2 py-1.5">
+                                  {typeof a.size === "number"
+                                    ? `${(a.size / 1024).toFixed(1)} KB`
+                                    : "--"}
+                                </td>
+                                <td className="px-2 py-1.5 text-right">
+                                  <button
+                                    onClick={() => removeAttachment(i)}
+                                    className="text-xs px-2 py-0.5 rounded border border-neutral-300 hover:bg-neutral-50"
+                                  >
+                                    Remove
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
+          </div>
 
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 rounded-md border border-neutral-300 text-sm hover:bg-neutral-100"
-                disabled={saving}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={save}
-                disabled={!canSave || saving}
-                className="px-4 py-2 rounded-md text-sm text-white shadow disabled:opacity-50"
-                style={{ backgroundColor: MAROON }}
-              >
-                {saving ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Saving…
-                  </span>
-                ) : existingTask ? (
-                  "Save"
-                ) : (
-                  "Create"
-                )}
-              </button>
-            </div>
+          {/* footer (outside the scrollable area) */}
+          <div className="flex justify-end gap-2 px-5 py-4 border-t border-neutral-200">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-md border border-neutral-300 text-sm hover:bg-neutral-100"
+              disabled={saving}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={!canSave || saving}
+              className="px-4 py-2 rounded-md text-sm text-white shadow disabled:opacity-50"
+              style={{ backgroundColor: MAROON }}
+            >
+              {saving ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Saving…
+                </span>
+              ) : existingTask ? (
+                "Save"
+              ) : (
+                "Create"
+              )}
+            </button>
           </div>
         </div>
       </div>
@@ -459,11 +710,9 @@ const FinalDefense = ({ onBack }) => {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState(new Set());
-  const [menuOpenId, setMenuOpenId] = useState(null);
   const [editingModal, setEditingModal] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [editingCell, setEditingCell] = useState(null);
-  const [optimistic, setOptimistic] = useState({});
 
   const pageSize = 10;
 
@@ -505,11 +754,14 @@ const FinalDefense = ({ onBack }) => {
         const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         setTeams(rows);
 
-        const memberUids = Array.from(new Set(rows.flatMap((t) => t.memberUids || [])));
+        const memberUids = Array.from(
+          new Set(rows.flatMap((t) => t.memberUids || []))
+        );
         if (memberUids.length === 0) return setMembers([]);
 
         const chunks = [];
-        for (let i = 0; i < memberUids.length; i += 10) chunks.push(memberUids.slice(i, i + 10));
+        for (let i = 0; i < memberUids.length; i += 10)
+          chunks.push(memberUids.slice(i, i + 10));
         const unsubs = chunks.map((uids) =>
           onSnapshot(
             query(collection(db, "users"), where("uid", "in", uids)),
@@ -526,7 +778,9 @@ const FinalDefense = ({ onBack }) => {
               setMembers((prev) => {
                 const map = new Map(prev.map((m) => [m.uid, m]));
                 list.forEach((m) => map.set(m.uid, m));
-                return Array.from(map.values()).filter((m) => memberUids.includes(m.uid));
+                return Array.from(map.values()).filter((m) =>
+                  memberUids.includes(m.uid)
+                );
               });
             }
           )
@@ -540,7 +794,10 @@ const FinalDefense = ({ onBack }) => {
   /* Oral Defense Tasks for checking completion */
   useEffect(() => {
     if (!pmUid) return;
-    const qRef = query(collection(db, ORAL_TASKS_COLLECTION), where("createdBy.uid", "==", pmUid));
+    const qRef = query(
+      collection(db, ORAL_TASKS_COLLECTION),
+      where("createdBy.uid", "==", pmUid)
+    );
     const unsub = onSnapshot(qRef, (snap) => {
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setOralTasks(list);
@@ -551,7 +808,10 @@ const FinalDefense = ({ onBack }) => {
   /* Final Defense Tasks */
   useEffect(() => {
     if (!pmUid) return;
-    const qRef = query(collection(db, FINAL_TASKS_COLLECTION), where("createdBy.uid", "==", pmUid));
+    const qRef = query(
+      collection(db, FINAL_TASKS_COLLECTION),
+      where("createdBy.uid", "==", pmUid)
+    );
     const unsub = onSnapshot(qRef, (snap) => {
       const list = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
@@ -571,26 +831,29 @@ const FinalDefense = ({ onBack }) => {
   /* Check Oral Defense completion status for each team */
   useEffect(() => {
     const status = {};
-    
-    teams.forEach(team => {
-      const teamOralTasks = oralTasks.filter(task => task.team?.id === team.id);
-      
+    teams.forEach((team) => {
+      const teamOralTasks = oralTasks.filter(
+        (task) => task.team?.id === team.id
+      );
+
       if (teamOralTasks.length === 0) {
         status[team.id] = {
           canCreate: false,
           reason: "No Oral Defense tasks found",
           completed: 0,
-          total: 0
+          total: 0,
         };
         return;
       }
 
-      const completedTasks = teamOralTasks.filter(task => task.status === "Completed");
+      const completedTasks = teamOralTasks.filter(
+        (task) => task.status === "Completed"
+      );
       const allCompleted = completedTasks.length === teamOralTasks.length;
-      
+
       // Check if all due dates are past
       const now = new Date();
-      const allPastDue = teamOralTasks.every(task => {
+      const allPastDue = teamOralTasks.every((task) => {
         if (!task.dueDate) return false;
         const dueDate = new Date(task.dueDate);
         return dueDate < now;
@@ -598,11 +861,13 @@ const FinalDefense = ({ onBack }) => {
 
       status[team.id] = {
         canCreate: allCompleted && allPastDue,
-        reason: allCompleted ? 
-          (allPastDue ? "Ready for Final Defense" : "Waiting for due dates to pass") :
-          "Oral Defense tasks not completed",
+        reason: allCompleted
+          ? allPastDue
+            ? "Ready for Final Defense"
+            : "Waiting for due dates to pass"
+          : "Oral Defense tasks not completed",
         completed: completedTasks.length,
-        total: teamOralTasks.length
+        total: teamOralTasks.length,
       };
     });
 
@@ -611,7 +876,7 @@ const FinalDefense = ({ onBack }) => {
 
   /* Check if any team is ready for Final Defense */
   const canCreateFinalDefense = useMemo(() => {
-    return Object.values(teamOralStatus).some(status => status.canCreate);
+    return Object.values(teamOralStatus).some((status) => status.canCreate);
   }, [teamOralStatus]);
 
   /* ---------- Rows for Team tab (per-member) ---------- */
@@ -620,10 +885,15 @@ const FinalDefense = ({ onBack }) => {
     const seenMemberUids = new Set();
 
     // Filter tasks for Team tab (only Project Manager tasks)
-    const teamTasks = finalTasks.filter(t => t.taskManager === "Project Manager");
+    const teamTasks = finalTasks.filter(
+      (t) => t.taskManager === "Project Manager"
+    );
 
     for (const t of teamTasks) {
-      const assignees = t.assignees && t.assignees.length ? t.assignees : [{ uid: "", name: "Team" }];
+      const assignees =
+        t.assignees && t.assignees.length
+          ? t.assignees
+          : [{ uid: "", name: "Team" }];
       assignees.forEach((a, idx) => {
         if (a.uid) seenMemberUids.add(a.uid);
         out.push({
@@ -679,9 +949,7 @@ const FinalDefense = ({ onBack }) => {
 
   /* ---------- Rows for Adviser tab (group by team, one row per task) ---------- */
   const adviserRows = useMemo(() => {
-    // Filter tasks for Adviser tab (only Adviser tasks)
-    const adviserTasks = finalTasks.filter(t => t.taskManager === "Adviser");
-    
+    const adviserTasks = finalTasks.filter((t) => t.taskManager === "Adviser");
     return adviserTasks.map((t, idx) => ({
       key: t.id,
       taskId: t.id,
@@ -725,8 +993,12 @@ const FinalDefense = ({ onBack }) => {
         (r.created || "").toLowerCase().includes(qLocal) ||
         (r.due || "").toLowerCase().includes(qLocal) ||
         (r.time || "").toLowerCase().includes(qLocal) ||
-        String(r.revision || "").toLowerCase().includes(qLocal) ||
-        String(r.status || "").toLowerCase().includes(qLocal)
+        String(r.revision || "")
+          .toLowerCase()
+          .includes(qLocal) ||
+        String(r.status || "")
+          .toLowerCase()
+          .includes(qLocal)
     );
   }, [qLocal, baseRows]);
 
@@ -746,9 +1018,18 @@ const FinalDefense = ({ onBack }) => {
       status: "To Do",
       revision: "No Revision",
       methodology: "Inherited from Oral Defense",
-      createdBy: pmProfile ? { uid: pmProfile.uid, name: pmProfile.name, role: "Project Manager" } : null,
-      assignees: row.memberUid ? [{ uid: row.memberUid, name: row.memberName }] : [],
-      team: row.teamId && row.teamName ? { id: row.teamId, name: row.teamName } : (teams[0] ? { id: teams[0].id, name: teams[0].name } : null),
+      createdBy: pmProfile
+        ? { uid: pmProfile.uid, name: pmProfile.name, role: "Project Manager" }
+        : null,
+      assignees: row.memberUid
+        ? [{ uid: row.memberUid, name: row.memberName }]
+        : [],
+      team:
+        row.teamId && row.teamName
+          ? { id: row.teamId, name: row.teamName }
+          : teams[0]
+          ? { id: teams[0].id, name: teams[0].name }
+          : null,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
@@ -759,7 +1040,6 @@ const FinalDefense = ({ onBack }) => {
     if (!canEdit) return;
     const editingDueOrTime = field === "due" || field === "time";
     if (!isTeam && editingDueOrTime) return;
-
     setEditingCell({ key: row.key, field });
   };
   const stopEdit = () => setEditingCell(null);
@@ -792,7 +1072,10 @@ const FinalDefense = ({ onBack }) => {
   };
   const saveDue = async (row, newDate) => {
     const hasTime = row.time && row.time !== "--";
-    const dueAtMs = newDate && hasTime ? new Date(`${newDate}T${row.time}:00`).getTime() : null;
+    const dueAtMs =
+      newDate && hasTime
+        ? new Date(`${newDate}T${row.time}:00`).getTime()
+        : null;
     await updateTaskRow(row, {
       dueDate: newDate || null,
       dueAtMs,
@@ -801,9 +1084,10 @@ const FinalDefense = ({ onBack }) => {
     stopEdit();
   };
   const saveTime = async (row, newTime) => {
-    const dueAtMs = row.due && row.due !== "--" && newTime
-      ? new Date(`${row.due}T${newTime}:00`).getTime()
-      : null;
+    const dueAtMs =
+      row.due && row.due !== "--" && newTime
+        ? new Date(`${row.due}T${newTime}:00`).getTime()
+        : null;
     await updateTaskRow(row, { dueTime: newTime || null, dueAtMs });
     stopEdit();
   };
@@ -819,8 +1103,11 @@ const FinalDefense = ({ onBack }) => {
 
   const deleteSelectedRows = async () => {
     if (!canEdit || selected.size === 0) return;
-    const toDelete = pageRows.filter((r) => selected.has(r.key) && r.taskId).map((r) => r.taskId);
+    const toDelete = pageRows
+      .filter((r) => selected.has(r.key) && r.taskId)
+      .map((r) => r.taskId);
     for (const id of toDelete) {
+      // eslint-disable-next-line no-await-in-loop
       await deleteTask(id);
     }
     setSelected(new Set());
@@ -829,21 +1116,28 @@ const FinalDefense = ({ onBack }) => {
   // Modal helpers
   const openModalEditor = (row) => {
     setEditingModal({
-      seedMember: row.memberUid ? { uid: row.memberUid, name: row.memberName } : null,
+      seedMember: row.memberUid
+        ? { uid: row.memberUid, name: row.memberName }
+        : null,
       existingTask: row.taskId ? { ...row.existingTask, id: row.taskId } : null,
     });
   };
   const openModalCreate = (row) => {
     setEditingModal({
-      seedMember: row?.memberUid ? { uid: row.memberUid, name: row.memberName } : null,
+      seedMember: row?.memberUid
+        ? { uid: row.memberUid, name: row.memberName }
+        : null,
       existingTask: null,
     });
   };
 
   // Choose member for Create when in Team tab:
   const handleCreateClick = () => {
-    if (!canCreateFinalDefense) {
-      alert("Cannot create Final Defense tasks until Oral Defense is completed and due dates have passed for at least one team.");
+    const anyReady = Object.values(teamOralStatus).some((s) => s.canCreate);
+    if (!anyReady) {
+      alert(
+        "Cannot create Final Defense tasks until Oral Defense is completed and due dates have passed for at least one team."
+      );
       return;
     }
 
@@ -862,13 +1156,18 @@ const FinalDefense = ({ onBack }) => {
     }
   };
 
-  // For Adviser tab grouping
+  // For Adviser tab grouping (computed from pageRows)
   const adviserGroups = useMemo(() => {
     if (isTeam) return null;
     const groups = new Map();
     for (const r of pageRows) {
       const key = r.teamId || "no-team";
-      if (!groups.has(key)) groups.set(key, { teamId: key, teamName: r.teamName || "No Team", rows: [] });
+      if (!groups.has(key))
+        groups.set(key, {
+          teamId: key,
+          teamName: r.teamName || "No Team",
+          rows: [],
+        });
       groups.get(key).rows.push(r);
     }
     return Array.from(groups.values());
@@ -877,11 +1176,13 @@ const FinalDefense = ({ onBack }) => {
   return (
     <div className="space-y-4">
       {/* Oral Defense Status Check */}
-      {!canCreateFinalDefense && (
+      {!Object.values(teamOralStatus).some((s) => s.canCreate) && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-5 h-5 text-amber-600" />
-            <span className="font-medium text-amber-800">Oral Defense Completion Required</span>
+            <span className="font-medium text-amber-800">
+              Oral Defense Completion Required
+            </span>
           </div>
           <div className="mt-2 text-sm text-amber-700">
             Final Defense tasks can only be created when:
@@ -890,10 +1191,17 @@ const FinalDefense = ({ onBack }) => {
               <li>All Oral Defense due dates have passed</li>
             </ul>
             <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {teams.map(team => {
-                const status = teamOralStatus[team.id] || { completed: 0, total: 0, reason: "No tasks" };
+              {teams.map((team) => {
+                const status = teamOralStatus[team.id] || {
+                  completed: 0,
+                  total: 0,
+                  reason: "No tasks",
+                };
                 return (
-                  <div key={team.id} className="flex items-center justify-between p-2 bg-white rounded border">
+                  <div
+                    key={team.id}
+                    className="flex items-center justify-between p-2 bg-white rounded border"
+                  >
                     <span className="text-sm font-medium">{team.name}</span>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-neutral-600">
@@ -928,10 +1236,14 @@ const FinalDefense = ({ onBack }) => {
           <ModeSwitch mode={mode} setMode={setMode} />
 
           <button
-            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow ${!canCreateFinalDefense ? "opacity-60 cursor-not-allowed" : ""}`}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow ${
+              !Object.values(teamOralStatus).some((s) => s.canCreate)
+                ? "opacity-60 cursor-not-allowed"
+                : ""
+            }`}
             style={{ background: MAROON }}
             onClick={handleCreateClick}
-            disabled={!canCreateFinalDefense}
+            disabled={!Object.values(teamOralStatus).some((s) => s.canCreate)}
           >
             + Create Task
           </button>
@@ -956,7 +1268,9 @@ const FinalDefense = ({ onBack }) => {
           <button
             onClick={deleteSelectedRows}
             disabled={!canEdit}
-            className={`inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50 ${!canEdit ? "opacity-60 cursor-not-allowed" : ""}`}
+            className={`inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50 ${
+              !canEdit ? "opacity-60 cursor-not-allowed" : ""
+            }`}
             title="Delete"
           >
             <Trash2 className="w-4 h-4" />
@@ -984,10 +1298,14 @@ const FinalDefense = ({ onBack }) => {
                     type="checkbox"
                     onChange={(e) => {
                       if (!canEdit) return;
-                      if (e.target.checked) setSelected(new Set(pageRows.map((r) => r.key)));
+                      if (e.target.checked)
+                        setSelected(new Set(pageRows.map((r) => r.key)));
                       else setSelected(new Set());
                     }}
-                    checked={pageRows.length > 0 && pageRows.every((r) => selected.has(r.key))}
+                    checked={
+                      pageRows.length > 0 &&
+                      pageRows.every((r) => selected.has(r.key))
+                    }
                     disabled={!canEdit}
                   />
                 </th>
@@ -1022,203 +1340,305 @@ const FinalDefense = ({ onBack }) => {
             <tbody>
               {/* Adviser tab: grouped by team */}
               {!isTeam &&
-                adviserGroups?.map((g, gIdx) => (
-                  <React.Fragment key={g.teamId || `group-${gIdx}`}>
-                    <tr className="bg-neutral-50/60">
-                      <td colSpan={14} className="py-2 pl-6 pr-3 text-[13px] font-semibold text-neutral-800">
-                        Team: {g.teamName}
-                      </td>
-                    </tr>
-                    {g.rows.map((r, idx) => {
-                      const isEditing = (field) => editingCell?.key === r.key && editingCell?.field === field;
+                (function renderAdviser() {
+                  const groups = (() => {
+                    const m = new Map();
+                    for (const r of pageRows) {
+                      const key = r.teamId || "no-team";
+                      if (!m.has(key))
+                        m.set(key, {
+                          teamId: key,
+                          teamName: r.teamName || "No Team",
+                          rows: [],
+                        });
+                      m.get(key).rows.push(r);
+                    }
+                    return Array.from(m.values());
+                  })();
 
-                      return (
-                        <tr key={r.key} className="border-t border-neutral-200">
-                          <td className="py-2 pl-6 pr-3">
-                            <input
-                              type="checkbox"
-                              checked={selected.has(r.key)}
-                              onChange={() => {
-                                if (!canEdit) return;
-                                const s = new Set(selected);
-                                s.has(r.key) ? s.delete(r.key) : s.add(r.key);
-                                setSelected(s);
-                              }}
-                              disabled={!canEdit}
-                            />
-                          </td>
-                          <td className="py-2 pr-3">{(page - 1) * pageSize + idx + 1}.</td>
-                          <td className="py-2 pr-3">{g.teamName}</td>
+                  return groups.map((g, gIdx) => (
+                    <React.Fragment key={g.teamId || `group-${gIdx}`}>
+                      <tr className="bg-neutral-50/60">
+                        <td
+                          colSpan={14}
+                          className="py-2 pl-6 pr-3 text-[13px] font-semibold text-neutral-800"
+                        >
+                          Team: {g.teamName}
+                        </td>
+                      </tr>
+                      {g.rows.map((r, idx) => {
+                        const isEditing = (field) =>
+                          editingCell?.key === r.key &&
+                          editingCell?.field === field;
 
-                          {/* Task Type */}
-                          <td className="py-2 pr-3">
-                            {isEditing("type") ? (
-                              <select
-                                autoFocus
-                                className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
-                                defaultValue={r.type === "--" ? "" : r.type}
-                                onBlur={(e) => {
-                                  saveType(r, e.target.value);
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") e.currentTarget.blur();
-                                  if (e.key === "Escape") stopEdit();
-                                }}
-                              >
-                                <option value="">--</option>
-                                <option value="Documentation">Documentation</option>
-                                <option value="Discussion & Review">Discussion & Review</option>
-                              </select>
-                            ) : (
-                              <span 
-                                className="cursor-text"
-                                onDoubleClick={() => canEdit && setEditingCell({ key: r.key, field: "type" })}
-                              >
-                                {r.type}
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Task */}
-                          <td className="py-2 pr-3">
-                            {isEditing("task") ? (
+                        return (
+                          <tr
+                            key={r.key}
+                            className="border-t border-neutral-200"
+                          >
+                            <td className="py-2 pl-6 pr-3">
                               <input
-                                autoFocus
-                                type="text"
-                                className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
-                                defaultValue={r.task === "--" ? "" : r.task}
-                                onBlur={(e) => saveTask(r, e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") e.currentTarget.blur();
-                                  if (e.key === "Escape") stopEdit();
+                                type="checkbox"
+                                checked={selected.has(r.key)}
+                                onChange={() => {
+                                  if (!canEdit) return;
+                                  const s = new Set(selected);
+                                  s.has(r.key) ? s.delete(r.key) : s.add(r.key);
+                                  setSelected(s);
                                 }}
+                                disabled={!canEdit}
                               />
-                            ) : (
-                              <span 
-                                className="cursor-text"
-                                onDoubleClick={() => canEdit && setEditingCell({ key: r.key, field: "task" })}
-                              >
-                                {r.task}
-                              </span>
-                            )}
-                          </td>
+                            </td>
+                            <td className="py-2 pr-3">
+                              {(page - 1) * pageSize + idx + 1}.
+                            </td>
+                            <td className="py-2 pr-3">{g.teamName}</td>
 
-                          {/* Subtask */}
-                          <td className="py-2 pr-3">
-                            {isEditing("subtask") ? (
-                              <input
-                                autoFocus
-                                type="text"
-                                className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
-                                defaultValue={r.subtask === "--" ? "" : r.subtask}
-                                onBlur={(e) => saveSubtask(r, e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") e.currentTarget.blur();
-                                  if (e.key === "Escape") stopEdit();
-                                }}
+                            {/* Task Type */}
+                            <td className="py-2 pr-3">
+                              {isEditing("type") ? (
+                                <select
+                                  autoFocus
+                                  className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+                                  defaultValue={r.type === "--" ? "" : r.type}
+                                  onBlur={(e) => {
+                                    updateTaskRow(r, {
+                                      type: e.target.value || null,
+                                    });
+                                    stopEdit();
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter")
+                                      e.currentTarget.blur();
+                                    if (e.key === "Escape") stopEdit();
+                                  }}
+                                >
+                                  <option value="">--</option>
+                                  <option value="Documentation">
+                                    Documentation
+                                  </option>
+                                  <option value="Discussion & Review">
+                                    Discussion & Review
+                                  </option>
+                                </select>
+                              ) : (
+                                <span
+                                  className="cursor-text"
+                                  onDoubleClick={() =>
+                                    canEdit &&
+                                    setEditingCell({
+                                      key: r.key,
+                                      field: "type",
+                                    })
+                                  }
+                                >
+                                  {r.type}
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Task */}
+                            <td className="py-2 pr-3">
+                              {isEditing("task") ? (
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+                                  defaultValue={r.task === "--" ? "" : r.task}
+                                  onBlur={(e) =>
+                                    updateTaskRow(r, {
+                                      task: e.target.value || null,
+                                    }).then(stopEdit)
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter")
+                                      e.currentTarget.blur();
+                                    if (e.key === "Escape") stopEdit();
+                                  }}
+                                />
+                              ) : (
+                                <span
+                                  className="cursor-text"
+                                  onDoubleClick={() =>
+                                    canEdit &&
+                                    setEditingCell({
+                                      key: r.key,
+                                      field: "task",
+                                    })
+                                  }
+                                >
+                                  {r.task}
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Subtask */}
+                            <td className="py-2 pr-3">
+                              {isEditing("subtask") ? (
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+                                  defaultValue={
+                                    r.subtask === "--" ? "" : r.subtask
+                                  }
+                                  onBlur={(e) =>
+                                    updateTaskRow(r, {
+                                      subtask: e.target.value || null,
+                                    }).then(stopEdit)
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter")
+                                      e.currentTarget.blur();
+                                    if (e.key === "Escape") stopEdit();
+                                  }}
+                                />
+                              ) : (
+                                <span
+                                  className="cursor-text"
+                                  onDoubleClick={() =>
+                                    canEdit &&
+                                    setEditingCell({
+                                      key: r.key,
+                                      field: "subtask",
+                                    })
+                                  }
+                                >
+                                  {r.subtask}
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Element */}
+                            <td className="py-2 pr-3">
+                              {isEditing("element") ? (
+                                <select
+                                  autoFocus
+                                  className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+                                  defaultValue={
+                                    r.element === "--" ? "" : r.element
+                                  }
+                                  onBlur={(e) =>
+                                    updateTaskRow(r, {
+                                      element: e.target.value || null,
+                                    }).then(stopEdit)
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter")
+                                      e.currentTarget.blur();
+                                    if (e.key === "Escape") stopEdit();
+                                  }}
+                                >
+                                  <option value="">--</option>
+                                  <option value="Hardware">Hardware</option>
+                                  <option value="Software">Software</option>
+                                  <option value="Peopleware">Peopleware</option>
+                                </select>
+                              ) : (
+                                <span
+                                  className="cursor-text"
+                                  onDoubleClick={() =>
+                                    canEdit &&
+                                    setEditingCell({
+                                      key: r.key,
+                                      field: "element",
+                                    })
+                                  }
+                                >
+                                  {r.element}
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Date Created (read-only) */}
+                            <td className="py-2 pr-3">{r.created}</td>
+
+                            {/* Due Date (locked in Adviser tab) */}
+                            <td
+                              className="py-2 pr-3"
+                              title="Managed by Adviser"
+                            >
+                              <span className="text-neutral-700">{r.due}</span>
+                            </td>
+
+                            {/* Time (locked in Adviser tab) */}
+                            <td
+                              className="py-2 pr-3"
+                              title="Managed by Adviser"
+                            >
+                              <span className="text-neutral-700">{r.time}</span>
+                            </td>
+
+                            {/* Revision — LOCKED for PM */}
+                            <td className="py-2 pr-3">
+                              <RevisionSelect
+                                value={r.revision}
+                                onChange={() => {}}
+                                disabled
                               />
-                            ) : (
-                              <span 
-                                className="cursor-text"
-                                onDoubleClick={() => canEdit && setEditingCell({ key: r.key, field: "subtask" })}
-                              >
-                                {r.subtask}
-                              </span>
-                            )}
-                          </td>
+                            </td>
 
-                          {/* Element */}
-                          <td className="py-2 pr-3">
-                            {isEditing("element") ? (
-                              <select
-                                autoFocus
-                                className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
-                                defaultValue={r.element === "--" ? "" : r.element}
-                                onBlur={(e) => saveElement(r, e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") e.currentTarget.blur();
-                                  if (e.key === "Escape") stopEdit();
-                                }}
-                              >
-                                <option value="">--</option>
-                                <option value="Hardware">Hardware</option>
-                                <option value="Software">Software</option>
-                                <option value="Peopleware">Peopleware</option>
-                              </select>
-                            ) : (
-                              <span 
-                                className="cursor-text"
-                                onDoubleClick={() => canEdit && setEditingCell({ key: r.key, field: "element" })}
-                              >
-                                {r.element}
-                              </span>
-                            )}
-                          </td>
+                            {/* Status */}
+                            <td className="py-2 pr-3">
+                              <StatusBadge value={r.status} />
+                            </td>
 
-                          {/* Date Created (read-only) */}
-                          <td className="py-2 pr-3">{r.created}</td>
+                            {/* Methodology (read-only, inherited) */}
+                            <td className="py-2 pr-3">{r.methodology}</td>
 
-                          {/* Due Date (locked in Adviser tab) */}
-                          <td className="py-2 pr-3" title="Managed by Adviser">
-                            <span className="text-neutral-700">{r.due}</span>
-                          </td>
-
-                          {/* Time (locked in Adviser tab) */}
-                          <td className="py-2 pr-3" title="Managed by Adviser">
-                            <span className="text-neutral-700">{r.time}</span>
-                          </td>
-
-                          {/* Revision — LOCKED for PM */}
-                          <td className="py-2 pr-3">
-                            <RevisionSelect value={r.revision} onChange={() => {}} disabled />
-                          </td>
-
-                          {/* Status */}
-                          <td className="py-2 pr-3">
-                            <StatusBadge value={r.status} />
-                          </td>
-
-                          {/* Methodology (read-only, inherited) */}
-                          <td className="py-2 pr-3">{r.methodology}</td>
-
-                          {/* Project Phase */}
-                          <td className="py-2 pr-6">
-                            {isEditing("phase") ? (
-                              <select
-                                autoFocus
-                                className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
-                                defaultValue={r.phase === "--" ? "" : r.phase}
-                                onBlur={(e) => savePhase(r, e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") e.currentTarget.blur();
-                                  if (e.key === "Escape") stopEdit();
-                                }}
-                              >
-                                <option value="">--</option>
-                                <option value="Implementation">Implementation</option>
-                                <option value="Testing">Testing</option>
-                                <option value="Deployment">Deployment</option>
-                                <option value="Review">Review</option>
-                              </select>
-                            ) : (
-                              <span 
-                                className="cursor-text"
-                                onDoubleClick={() => canEdit && setEditingCell({ key: r.key, field: "phase" })}
-                              >
-                                {r.phase}
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </React.Fragment>
-                ))}
+                            {/* Project Phase */}
+                            <td className="py-2 pr-6">
+                              {isEditing("phase") ? (
+                                <select
+                                  autoFocus
+                                  className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+                                  defaultValue={r.phase === "--" ? "" : r.phase}
+                                  onBlur={(e) =>
+                                    updateTaskRow(r, {
+                                      phase: e.target.value || null,
+                                    }).then(stopEdit)
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter")
+                                      e.currentTarget.blur();
+                                    if (e.key === "Escape") stopEdit();
+                                  }}
+                                >
+                                  <option value="">--</option>
+                                  <option value="Implementation">
+                                    Implementation
+                                  </option>
+                                  <option value="Testing">Testing</option>
+                                  <option value="Deployment">Deployment</option>
+                                  <option value="Review">Review</option>
+                                </select>
+                              ) : (
+                                <span
+                                  className="cursor-text"
+                                  onDoubleClick={() =>
+                                    canEdit &&
+                                    setEditingCell({
+                                      key: r.key,
+                                      field: "phase",
+                                    })
+                                  }
+                                >
+                                  {r.phase}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  ));
+                })()}
 
               {/* Team tab: per-member rows */}
               {isTeam &&
                 pageRows.map((r, idx) => {
-                  const isEditing = (field) => editingCell?.key === r.key && editingCell?.field === field;
+                  const isEditing = (field) =>
+                    editingCell?.key === r.key && editingCell?.field === field;
 
                   return (
                     <tr key={r.key} className="border-t border-neutral-200">
@@ -1235,7 +1655,9 @@ const FinalDefense = ({ onBack }) => {
                           disabled={!canEdit}
                         />
                       </td>
-                      <td className="py-2 pr-3">{(page - 1) * pageSize + idx + 1}.</td>
+                      <td className="py-2 pr-3">
+                        {(page - 1) * pageSize + idx + 1}.
+                      </td>
                       <td className="py-2 pr-3">{r.memberName}</td>
 
                       {/* Task Type */}
@@ -1246,7 +1668,10 @@ const FinalDefense = ({ onBack }) => {
                             className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
                             defaultValue={r.type === "--" ? "" : r.type}
                             onBlur={(e) => {
-                              saveType(r, e.target.value);
+                              updateTaskRow(r, {
+                                type: e.target.value || null,
+                              });
+                              stopEdit();
                             }}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") e.currentTarget.blur();
@@ -1255,12 +1680,17 @@ const FinalDefense = ({ onBack }) => {
                           >
                             <option value="">--</option>
                             <option value="Documentation">Documentation</option>
-                            <option value="Discussion & Review">Discussion & Review</option>
+                            <option value="Discussion & Review">
+                              Discussion & Review
+                            </option>
                           </select>
                         ) : (
-                          <span 
+                          <span
                             className="cursor-text"
-                            onDoubleClick={() => canEdit && setEditingCell({ key: r.key, field: "type" })}
+                            onDoubleClick={() =>
+                              canEdit &&
+                              setEditingCell({ key: r.key, field: "type" })
+                            }
                           >
                             {r.type}
                           </span>
@@ -1275,16 +1705,23 @@ const FinalDefense = ({ onBack }) => {
                             type="text"
                             className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
                             defaultValue={r.task === "--" ? "" : r.task}
-                            onBlur={(e) => saveTask(r, e.target.value)}
+                            onBlur={(e) =>
+                              updateTaskRow(r, {
+                                task: e.target.value || null,
+                              }).then(stopEdit)
+                            }
                             onKeyDown={(e) => {
                               if (e.key === "Enter") e.currentTarget.blur();
                               if (e.key === "Escape") stopEdit();
                             }}
                           />
                         ) : (
-                          <span 
+                          <span
                             className="cursor-text"
-                            onDoubleClick={() => canEdit && setEditingCell({ key: r.key, field: "task" })}
+                            onDoubleClick={() =>
+                              canEdit &&
+                              setEditingCell({ key: r.key, field: "task" })
+                            }
                           >
                             {r.task}
                           </span>
@@ -1299,16 +1736,23 @@ const FinalDefense = ({ onBack }) => {
                             type="text"
                             className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
                             defaultValue={r.subtask === "--" ? "" : r.subtask}
-                            onBlur={(e) => saveSubtask(r, e.target.value)}
+                            onBlur={(e) =>
+                              updateTaskRow(r, {
+                                subtask: e.target.value || null,
+                              }).then(stopEdit)
+                            }
                             onKeyDown={(e) => {
                               if (e.key === "Enter") e.currentTarget.blur();
                               if (e.key === "Escape") stopEdit();
                             }}
                           />
                         ) : (
-                          <span 
+                          <span
                             className="cursor-text"
-                            onDoubleClick={() => canEdit && setEditingCell({ key: r.key, field: "subtask" })}
+                            onDoubleClick={() =>
+                              canEdit &&
+                              setEditingCell({ key: r.key, field: "subtask" })
+                            }
                           >
                             {r.subtask}
                           </span>
@@ -1322,7 +1766,11 @@ const FinalDefense = ({ onBack }) => {
                             autoFocus
                             className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
                             defaultValue={r.element === "--" ? "" : r.element}
-                            onBlur={(e) => saveElement(r, e.target.value)}
+                            onBlur={(e) =>
+                              updateTaskRow(r, {
+                                element: e.target.value || null,
+                              }).then(stopEdit)
+                            }
                             onKeyDown={(e) => {
                               if (e.key === "Enter") e.currentTarget.blur();
                               if (e.key === "Escape") stopEdit();
@@ -1334,9 +1782,12 @@ const FinalDefense = ({ onBack }) => {
                             <option value="Peopleware">Peopleware</option>
                           </select>
                         ) : (
-                          <span 
+                          <span
                             className="cursor-text"
-                            onDoubleClick={() => canEdit && setEditingCell({ key: r.key, field: "element" })}
+                            onDoubleClick={() =>
+                              canEdit &&
+                              setEditingCell({ key: r.key, field: "element" })
+                            }
                           >
                             {r.element}
                           </span>
@@ -1361,9 +1812,12 @@ const FinalDefense = ({ onBack }) => {
                             }}
                           />
                         ) : (
-                          <span 
+                          <span
                             className="cursor-text"
-                            onDoubleClick={() => isTeam && setEditingCell({ key: r.key, field: "due" })}
+                            onDoubleClick={() =>
+                              isTeam &&
+                              setEditingCell({ key: r.key, field: "due" })
+                            }
                           >
                             {r.due}
                           </span>
@@ -1385,9 +1839,12 @@ const FinalDefense = ({ onBack }) => {
                             }}
                           />
                         ) : (
-                          <span 
+                          <span
                             className="cursor-text"
-                            onDoubleClick={() => isTeam && setEditingCell({ key: r.key, field: "time" })}
+                            onDoubleClick={() =>
+                              isTeam &&
+                              setEditingCell({ key: r.key, field: "time" })
+                            }
                           >
                             {r.time}
                           </span>
@@ -1396,7 +1853,11 @@ const FinalDefense = ({ onBack }) => {
 
                       {/* Revision — LOCKED for PM */}
                       <td className="py-2 pr-3">
-                        <RevisionSelect value={r.revision} onChange={() => {}} disabled />
+                        <RevisionSelect
+                          value={r.revision}
+                          onChange={() => {}}
+                          disabled
+                        />
                       </td>
 
                       {/* Status (editable select on Team tab) */}
@@ -1407,7 +1868,12 @@ const FinalDefense = ({ onBack }) => {
                             defaultValue={r.status}
                             onChange={(e) => saveStatus(r, e.target.value)}
                           >
-                            {["To Do", "In Progress", "To Review", "Completed"].map((s) => (
+                            {[
+                              "To Do",
+                              "In Progress",
+                              "To Review",
+                              "Completed",
+                            ].map((s) => (
                               <option key={s} value={s}>
                                 {s}
                               </option>
@@ -1435,15 +1901,20 @@ const FinalDefense = ({ onBack }) => {
                             }}
                           >
                             <option value="">--</option>
-                            <option value="Implementation">Implementation</option>
+                            <option value="Implementation">
+                              Implementation
+                            </option>
                             <option value="Testing">Testing</option>
                             <option value="Deployment">Deployment</option>
                             <option value="Review">Review</option>
                           </select>
                         ) : (
-                          <span 
+                          <span
                             className="cursor-text"
-                            onDoubleClick={() => canEdit && setEditingCell({ key: r.key, field: "phase" })}
+                            onDoubleClick={() =>
+                              canEdit &&
+                              setEditingCell({ key: r.key, field: "phase" })
+                            }
                           >
                             {r.phase}
                           </span>
@@ -1455,7 +1926,10 @@ const FinalDefense = ({ onBack }) => {
 
               {pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={14} className="py-10 text-center text-neutral-500">
+                  <td
+                    colSpan={14}
+                    className="py-10 text-center text-neutral-500"
+                  >
                     No {isTeam ? "members" : "tasks"} found.
                   </td>
                 </tr>

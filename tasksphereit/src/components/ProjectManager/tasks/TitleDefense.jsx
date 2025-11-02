@@ -1,5 +1,5 @@
 // src/components/ProjectManager/tasks/TitleDefense.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   SlidersHorizontal,
@@ -29,6 +29,9 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
+
+/* ===== Supabase ===== */
+import { supabase } from "../../../config/supabase";
 
 const MAROON = "#6A0F14";
 const TASKS_COLLECTION = "titleDefenseTasks";
@@ -88,7 +91,37 @@ const RevisionPill = ({ value }) =>
     <span>null</span>
   );
 
-/* ======= Edit/Create Task Dialog (for Actions→Edit) ======= */
+/* ===== Supabase helpers for task files (any type) ===== */
+const uploadTaskFileToSupabase = async (file, userId) => {
+  const ext = (file.name.split(".").pop() || "bin").toLowerCase();
+  const fileName = `${userId}/${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}.${ext}`;
+  const { error: upErr } = await supabase.storage
+    .from("user-tasks-files")
+    .upload(fileName, file);
+  if (upErr) throw new Error(upErr.message || "Upload failed");
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from("user-tasks-files").getPublicUrl(fileName);
+  return {
+    url: publicUrl,
+    fileName,
+    originalName: file.name,
+    size: file.size,
+    type: file.type,
+  };
+};
+
+const deleteTaskFileFromSupabase = async (fileName) => {
+  if (!fileName) return;
+  const { error } = await supabase.storage
+    .from("user-tasks-files")
+    .remove([fileName]);
+  if (error) throw new Error(error.message || "Delete failed");
+};
+
+/* ======= Edit/Create Task Dialog (with attachments) ======= */
 function EditTaskDialog({
   open,
   onClose,
@@ -109,6 +142,12 @@ function EditTaskDialog({
   const [comment, setComment] = useState("");
   const [teamId, setTeamId] = useState("");
 
+  // attachments state (unchanged)
+  const [attachedFiles, setAttachedFiles] = useState([]);
+  const [newFiles, setNewFiles] = useState([]);
+  const [filesToDelete, setFilesToDelete] = useState([]);
+  const fileInputRef = useRef(null);
+
   useEffect(() => {
     if (!open) return;
     setTeamId(existingTask?.team?.id || teams[0]?.id || "");
@@ -118,9 +157,27 @@ function EditTaskDialog({
       setDue(existingTask.dueDate || "");
       setTime(existingTask.dueTime || "");
       setAssignees(
-        (existingTask.assignees || []).map((a) => ({ uid: a.uid, name: a.name }))
+        (existingTask.assignees || []).map((a) => ({
+          uid: a.uid,
+          name: a.name,
+        }))
       );
       setComment(existingTask.comment || "");
+
+      const files = Array.isArray(existingTask.fileUrl)
+        ? existingTask.fileUrl.map((f, idx) => ({
+            id: f.id || f.fileName || f.url || `old-${idx}`,
+            name: f.name || f.originalName || `file-${idx}`,
+            fileName: f.fileName || null,
+            url: f.url || null,
+            uploadedAt: f.uploadedAt || null,
+            size: f.size || null,
+            type: f.type || null,
+          }))
+        : [];
+      setAttachedFiles(files);
+      setNewFiles([]);
+      setFilesToDelete([]);
     } else {
       setType("");
       setTask("");
@@ -130,6 +187,9 @@ function EditTaskDialog({
         seedMember ? [{ uid: seedMember.uid, name: seedMember.name }] : []
       );
       setComment("");
+      setAttachedFiles([]);
+      setNewFiles([]);
+      setFilesToDelete([]);
     }
   }, [open, existingTask, seedMember, teams]);
 
@@ -141,15 +201,67 @@ function EditTaskDialog({
 
   const canSave = teamId && type && task && assignees.length > 0;
 
+  const handleAttachClick = () => fileInputRef.current?.click();
+  const onFilePicked = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const objs = files.map((f) => ({
+      id: Date.now() + Math.random(),
+      file: f,
+      name: f.name,
+      isNew: true,
+    }));
+    setNewFiles((prev) => [...prev, ...objs]);
+    e.target.value = "";
+  };
+  const removeNewFile = (id) =>
+    setNewFiles((prev) => prev.filter((f) => f.id !== id));
+  const removeExistingFile = (id) => {
+    const f = attachedFiles.find((x) => x.id === id);
+    if (!f) return;
+    setFilesToDelete((prev) => (f.fileName ? [...prev, f] : prev));
+    setAttachedFiles((prev) => prev.filter((x) => x.id !== id));
+  };
+
   const save = async () => {
     if (!canSave) return;
     setSaving(true);
     try {
       const team = teams.find((t) => t.id === teamId) || null;
-      const payload = {
+      const userId =
+        auth.currentUser?.uid || localStorage.getItem("uid") || "anon";
+
+      if (filesToDelete.length > 0) {
+        await Promise.allSettled(
+          filesToDelete.map((f) => deleteTaskFileFromSupabase(f.fileName))
+        );
+      }
+
+      let uploaded = [];
+      if (newFiles.length > 0) {
+        uploaded = await Promise.all(
+          newFiles.map(async (nf) => {
+            const up = await uploadTaskFileToSupabase(nf.file, userId);
+            return {
+              id: nf.id,
+              name: up.originalName,
+              fileName: up.fileName,
+              url: up.url,
+              uploadedAt: new Date().toISOString(),
+              size: nf.file.size,
+              type: nf.file.type,
+            };
+          })
+        );
+      }
+
+      const finalFileUrl = [...attachedFiles, ...uploaded];
+
+      const basePayload = {
         phase: "Planning",
         type,
         task,
+        fileUrl: finalFileUrl,
         dueDate: due || null,
         dueTime: time || null,
         dueAtMs: due && time ? new Date(`${due}T${time}:00`).getTime() : null,
@@ -158,16 +270,26 @@ function EditTaskDialog({
         assignees: assignees.map((a) => ({ uid: a.uid, name: a.name })),
         team: team ? { id: team.id, name: team.name } : null,
         comment: comment || "",
-        ...(existingTask ? {} : { createdAt: serverTimestamp() }),
-        createdBy: pm
-          ? { uid: pm.uid, name: pm.name, role: "Project Manager" }
-          : null,
+        updatedAt: serverTimestamp(),
+        ...(existingTask
+          ? {}
+          : {
+              createdAt: serverTimestamp(),
+              createdBy: pm
+                ? { uid: pm.uid, name: pm.name, role: "Project Manager" }
+                : null,
+            }),
       };
+
       if (existingTask?.id) {
-        await updateDoc(doc(db, TASKS_COLLECTION, existingTask.id), payload);
+        await updateDoc(
+          doc(db, TASKS_COLLECTION, existingTask.id),
+          basePayload
+        );
       } else {
-        await addDoc(collection(db, TASKS_COLLECTION), payload);
+        await addDoc(collection(db, TASKS_COLLECTION), basePayload);
       }
+
       onSaved?.();
       onClose();
     } finally {
@@ -178,11 +300,18 @@ function EditTaskDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50">
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 md:p-6 overscroll-contain">
+      {/* backdrop */}
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative z-10 mx-auto mt-10 w-[900px] max-w-[95vw]">
-        <div className="bg-white rounded-2xl shadow-2xl border border-neutral-200">
-          <div className="flex items-center justify-between px-5 pt-4">
+
+      {/* panel */}
+      <div className="relative z-10 w-full max-w-[980px]">
+        <div className="bg-white rounded-2xl shadow-2xl border border-neutral-200 flex flex-col max-h-[85vh]">
+          {/* top accent */}
+          <div className="h-[2px] w-full" style={{ backgroundColor: MAROON }} />
+
+          {/* header (fixed within panel) */}
+          <div className="flex items-center justify-between px-5 pt-3 pb-2">
             <div
               className="flex items-center gap-2 text-[16px] font-semibold"
               style={{ color: MAROON }}
@@ -193,16 +322,14 @@ function EditTaskDialog({
             <button
               onClick={onClose}
               className="p-1 rounded-md hover:bg-neutral-100 text-neutral-500"
+              aria-label="Close"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
-          <div
-            className="mt-3 h-[2px] w-full"
-            style={{ backgroundColor: MAROON }}
-          />
 
-          <div className="p-5 space-y-5">
+          {/* CONTENT — scrollable */}
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-5 space-y-5">
             <div className="grid grid-cols-12 gap-4">
               <div className="col-span-6">
                 <label className="block text-sm font-medium text-neutral-700 mb-1">
@@ -228,6 +355,7 @@ function EditTaskDialog({
                   className="w-full rounded-lg border border-neutral-300 px-3 py-2 bg-neutral-100"
                   value="Planning"
                   disabled
+                  readOnly
                 />
               </div>
             </div>
@@ -306,90 +434,114 @@ function EditTaskDialog({
               <label className="block text-sm font-medium text-neutral-700 mb-1">
                 Assign Members
               </label>
-              <div className="flex gap-2">
-                <select
-                  className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-                  value={pickedUid}
-                  onChange={(e) => setPickedUid(e.target.value)}
-                >
-                  <option value="">Select member</option>
-                  {members.map((m) => (
-                    <option key={m.uid} value={m.uid}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!pickedUid) return;
-                    const found = members.find((m) => m.uid === pickedUid);
-                    if (
-                      found &&
-                      !assignees.some((a) => a.uid === found.uid)
-                    )
-                      setAssignees((a) => [...a, found]);
-                    setPickedUid("");
-                  }}
-                  disabled={!pickedUid}
-                  className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50 disabled:opacity-50"
-                >
-                  <PlusCircle className="w-4 h-4" /> Add
-                </button>
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {assignees.map((a) => (
-                  <span
-                    key={a.uid}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-neutral-100 border border-neutral-200"
-                  >
-                    {a.name}
-                    <button
-                      className="p-0.5 hover:bg-neutral-200 rounded-full"
-                      onClick={() =>
-                        setAssignees((arr) =>
-                          arr.filter((x) => x.uid !== a.uid)
-                        )
-                      }
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
+              <AssigneesPicker
+                members={members}
+                pickedUid={pickedUid}
+                setPickedUid={setPickedUid}
+                assignees={assignees}
+                setAssignees={setAssignees}
+              />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-2">
                 Leave Comment:
               </label>
-              <div className="rounded-xl border border-neutral-300 bg-white p-3 shadow-sm">
-                <div className="flex items-center gap-2 mb-2">
+              <div className="rounded-xl border border-neutral-300 bg-white shadow-sm">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-200">
                   <UserCircle2 className="w-5 h-5 text-neutral-600" />
                   <span className="text-sm font-semibold text-neutral-800">
                     {pm?.name || "Project Manager"}
                   </span>
                 </div>
-                <textarea
-                  rows={3}
-                  className="w-full resize-none rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:outline-none"
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                />
-                <div className="mt-2 flex items-center justify-end">
+                <div className="relative">
+                  <textarea
+                    rows={3}
+                    className="w-full resize-none px-3 py-2 text-sm outline-none"
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                  />
                   <button
                     type="button"
-                    className="inline-flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-800"
+                    className="absolute right-2 bottom-2 p-1 rounded hover:bg-neutral-100"
                     title="Attach"
+                    onClick={handleAttachClick}
                   >
-                    <Paperclip className="w-4 h-4" /> Attach
+                    <Paperclip className="w-4 h-4" />
                   </button>
+                  <input
+                    ref={fileInputRef}
+                    className="hidden"
+                    type="file"
+                    multiple
+                    onChange={onFilePicked}
+                  />
                 </div>
               </div>
             </div>
+
+            {(attachedFiles.length > 0 || newFiles.length > 0) && (
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Attachments ({attachedFiles.length + newFiles.length})
+                </label>
+                <div className="space-y-2">
+                  {attachedFiles.map((f) => (
+                    <div
+                      key={f.id}
+                      className="flex items-center justify-between p-2 rounded-lg border border-neutral-200"
+                    >
+                      <div className="truncate text-sm">
+                        <span className="font-medium">{f.name}</span>
+                        {f.url ? (
+                          <a
+                            className="ml-2 text-xs text-[#6A0F14] underline"
+                            href={f.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            open
+                          </a>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        className="p-1 rounded-md hover:bg-neutral-200"
+                        aria-label={`Remove ${f.name}`}
+                        onClick={() => removeExistingFile(f.id)}
+                      >
+                        <X className="w-4 h-4 text-neutral-600" />
+                      </button>
+                    </div>
+                  ))}
+                  {newFiles.map((nf) => (
+                    <div
+                      key={nf.id}
+                      className="flex items-center justify-between p-2 rounded-lg border border-neutral-200"
+                    >
+                      <div className="truncate text-sm">
+                        <span className="font-medium">{nf.name}</span>
+                        <span className="ml-2 text-xs text-blue-600">
+                          (new)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="p-1 rounded-md hover:bg-neutral-200"
+                        aria-label={`Remove ${nf.name}`}
+                        onClick={() => removeNewFile(nf.id)}
+                      >
+                        <X className="w-4 h-4 text-neutral-600" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="flex items-center justify-end gap-2 px-5 pb-4">
+          {/* footer (outside the scrollable area) */}
+          <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-neutral-200">
             <button
               type="button"
               onClick={onClose}
@@ -415,6 +567,66 @@ function EditTaskDialog({
   );
 }
 
+/* Small subcomponent to keep the dialog tidy */
+function AssigneesPicker({
+  members,
+  pickedUid,
+  setPickedUid,
+  assignees,
+  setAssignees,
+}) {
+  return (
+    <>
+      <div className="flex gap-2">
+        <select
+          className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          value={pickedUid}
+          onChange={(e) => setPickedUid(e.target.value)}
+        >
+          <option value="">Select member</option>
+          {members.map((m) => (
+            <option key={m.uid} value={m.uid}>
+              {m.name}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => {
+            if (!pickedUid) return;
+            const found = members.find((m) => m.uid === pickedUid);
+            if (found && !assignees.some((a) => a.uid === found.uid))
+              setAssignees((a) => [...a, found]);
+            setPickedUid("");
+          }}
+          disabled={!pickedUid}
+          className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50 disabled:opacity-50"
+        >
+          <PlusCircle className="w-4 h-4" /> Add
+        </button>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {assignees.map((a) => (
+          <span
+            key={a.uid}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-neutral-100 border border-neutral-200"
+          >
+            {a.name}
+            <button
+              className="p-0.5 hover:bg-neutral-200 rounded-full"
+              onClick={() =>
+                setAssignees((arr) => arr.filter((x) => x.uid !== a.uid))
+              }
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </span>
+        ))}
+      </div>
+    </>
+  );
+}
+
 /* ================= Main ================= */
 const TitleDefense = ({ onBack }) => {
   const handleBack = () =>
@@ -432,7 +644,7 @@ const TitleDefense = ({ onBack }) => {
   // which cell is being inline-edited
   const [editingCell, setEditingCell] = useState(null); // {key, field:'type'|'task'|'due'|'time'}
 
-  // Optimistic overlay (for realtime feel even before snapshot returns)
+  // Optimistic overlay
   const [optimistic, setOptimistic] = useState({}); // {[memberUid]: {type?, task?, due?, time?}}
 
   // current PM
@@ -567,8 +779,7 @@ const TitleDefense = ({ onBack }) => {
         taskId: t?.id || null,
         type: t?.type || "null",
         task: t?.task || "null",
-        created:
-          t?.createdAt?.toDate?.()?.toLocaleDateString?.() || "null",
+        created: t?.createdAt?.toDate?.()?.toLocaleDateString?.() || "null",
         due: t?.dueDate || "null",
         time: t?.dueTime || "null",
         revision: t ? t.revision || "No Revision" : "null",
@@ -635,12 +846,16 @@ const TitleDefense = ({ onBack }) => {
     };
 
     if (row.taskId) {
-      await updateDoc(doc(db, TASKS_COLLECTION, row.taskId), { ...patch });
+      await updateDoc(doc(db, TASKS_COLLECTION, row.taskId), {
+        ...patch,
+        updatedAt: serverTimestamp(),
+      });
     } else {
       await addDoc(collection(db, TASKS_COLLECTION), {
         ...base,
         ...patch,
         createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
     }
   };
@@ -675,18 +890,20 @@ const TitleDefense = ({ onBack }) => {
 
   const saveDue = async (row, newDate) => {
     const time = currentVal(row, "time"); // HH:mm or ""
-    const dueAtMs = newDate && time ? new Date(`${newDate}T${time}:00`).getTime() : null;
+    const dueAtMs =
+      newDate && time ? new Date(`${newDate}T${time}:00`).getTime() : null;
     await upsertForMember(
       row,
       { dueDate: newDate || null, dueAtMs },
-      { due: newDate || "null", ...(newDate ? {} : { time: "null" }) } // if due cleared, clear time visually
+      { due: newDate || "null", ...(newDate ? {} : { time: "null" }) }
     );
     stopEdit();
   };
 
   const saveTime = async (row, newTime) => {
     const due = currentVal(row, "due"); // YYYY-MM-DD or ""
-    const dueAtMs = due && newTime ? new Date(`${due}T${newTime}:00`).getTime() : null;
+    const dueAtMs =
+      due && newTime ? new Date(`${due}T${newTime}:00`).getTime() : null;
     await upsertForMember(
       row,
       { dueTime: newTime || null, dueAtMs },
@@ -924,7 +1141,9 @@ const TitleDefense = ({ onBack }) => {
                     {/* Time */}
                     <td
                       className={`py-2 pr-3 ${
-                        !canEditTime ? "text-neutral-400 cursor-not-allowed" : ""
+                        !canEditTime
+                          ? "text-neutral-400 cursor-not-allowed"
+                          : ""
                       }`}
                       onDoubleClick={() => canEditTime && startEdit(r, "time")}
                       title={!canEditTime ? "Set Due Date first" : ""}
@@ -991,6 +1210,8 @@ const TitleDefense = ({ onBack }) => {
                               >
                                 View
                               </button>
+                              {/* Delete here doesn't remove Supabase files.
+                                  If you also want to purge files, we can add a fetch of fileUrl and call deleteTaskFileFromSupabase. */}
                               <button
                                 className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50 disabled:opacity-50"
                                 disabled={!r.taskId || deletingId === r.taskId}
@@ -1020,7 +1241,10 @@ const TitleDefense = ({ onBack }) => {
 
               {pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={12} className="py-10 text-center text-neutral-500">
+                  <td
+                    colSpan={12}
+                    className="py-10 text-center text-neutral-500"
+                  >
                     No members found.
                   </td>
                 </tr>
