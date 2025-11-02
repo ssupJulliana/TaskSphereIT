@@ -10,7 +10,11 @@ const MAROON = "#6A0F14";
 
 /* ----------------------------- UI Pieces (match sample) ----------------------------- */
 const Card = ({ className = "", children }) => (
-  <div className={"bg-white border border-neutral-200 rounded-xl shadow-sm " + className}>
+  <div
+    className={
+      "bg-white border border-neutral-200 rounded-xl shadow-sm " + className
+    }
+  >
     {children}
   </div>
 );
@@ -43,7 +47,14 @@ function Donut({ percent }) {
 
   return (
     <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size}>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#EEE" strokeWidth={stroke} />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke="#EEE"
+        strokeWidth={stroke}
+      />
       <circle
         cx={size / 2}
         cy={size / 2}
@@ -96,14 +107,29 @@ function StatusBadge({ status }) {
     }
   }, [status]);
   return (
-    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs ${styles}`}>
+    <span
+      className={`inline-flex items-center px-3 py-1 rounded-full text-xs ${styles}`}
+    >
       {status || "Pending"}
     </span>
   );
 }
 
 /* ----------------------------- Helpers ----------------------------- */
-const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
 function toDateObj(yyyy_mm_dd, hhmm = "00:00") {
   if (!yyyy_mm_dd) return null;
@@ -183,13 +209,14 @@ export default function InstructorDashboard() {
       setLoadingRecent(true);
       setLoadingProgress(true);
       try {
-        const [titleSnap, oralSnap, finalSnap, manusSnap, teamsSnap] = await Promise.all([
-          getDocs(collection(db, "titleDefenseSchedules")),
-          getDocs(collection(db, "oralDefenseSchedules")),
-          getDocs(collection(db, "finalDefenseSchedules")),
-          getDocs(collection(db, "manuscriptSubmissions")),
-          getDocs(collection(db, "teams")),
-        ]);
+        const [titleSnap, oralSnap, finalSnap, manusSnap, teamsSnap] =
+          await Promise.all([
+            getDocs(collection(db, "titleDefenseSchedules")),
+            getDocs(collection(db, "oralDefenseSchedules")),
+            getDocs(collection(db, "finalDefenseSchedules")),
+            getDocs(collection(db, "manuscriptSubmissions")),
+            getDocs(collection(db, "teams")),
+          ]);
 
         const normalizeSched = (snap, tagLabel, opts = {}) => {
           const {
@@ -208,13 +235,17 @@ export default function InstructorDashboard() {
             let timeStart = (data.timeStart || "00:00").toString().trim();
             let timeEnd = (data.timeEnd || "").toString().trim();
             if (useSingleTimeField) {
-              const t = (data[singleTimeFieldName] || "00:00").toString().trim();
+              const t = (data[singleTimeFieldName] || "00:00")
+                .toString()
+                .trim();
               timeStart = t;
               timeEnd = "";
             }
 
             const when = toDateObj(date, timeStart);
-            const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : null;
+            const createdAt = data.createdAt?.toDate
+              ? data.createdAt.toDate()
+              : null;
             const status = (data[statusField] || "Pending").toString();
 
             arr.push({
@@ -234,7 +265,7 @@ export default function InstructorDashboard() {
         };
 
         const titleRows = normalizeSched(titleSnap, "Title Defense");
-        const oralRows  = normalizeSched(oralSnap,  "Oral Defense");
+        const oralRows = normalizeSched(oralSnap, "Oral Defense");
         const finalRows = normalizeSched(finalSnap, "Final Defense");
         const manusRows = normalizeSched(manusSnap, "Manuscript Submission", {
           useSingleTimeField: true,
@@ -243,24 +274,32 @@ export default function InstructorDashboard() {
 
         // ---------- UPCOMING (nearest per team) ----------
         const now = new Date();
-        const futureOnly = [...titleRows, ...oralRows, ...finalRows, ...manusRows].filter(
-          (r) => r.when && r.when >= now
-        );
+        const futureOnly = [
+          ...titleRows,
+          ...oralRows,
+          ...finalRows,
+          ...manusRows,
+        ].filter((r) => r.when && r.when >= now);
         const byTeamUpcoming = new Map();
         for (const item of futureOnly) {
           const key = item.teamKey || item.team;
           const prev = byTeamUpcoming.get(key);
           if (!prev || item.when < prev.when) byTeamUpcoming.set(key, item);
         }
-        const resultUpcoming = Array.from(byTeamUpcoming.values()).sort((a, b) => a.when - b.when);
+        const resultUpcoming = Array.from(byTeamUpcoming.values()).sort(
+          (a, b) => a.when - b.when
+        );
         if (alive) setUpcomingPerTeam(resultUpcoming);
 
         // ---------- RECENT (last 10) ----------
         const allRows = [...titleRows, ...oralRows, ...finalRows, ...manusRows];
         const recentList = allRows
           .map((r) => {
-            const timeText = r.timeEnd ? fmtTimeRange(r.timeStart, r.timeEnd) : to12h(r.timeStart);
-            const createdKey = r.createdAt?.getTime?.() || (r.when ? r.when.getTime() : 0);
+            const timeText = r.timeEnd
+              ? fmtTimeRange(r.timeStart, r.timeEnd)
+              : to12h(r.timeStart);
+            const createdKey =
+              r.createdAt?.getTime?.() || (r.when ? r.when.getTime() : 0);
             return { ...r, timeText, _createdKey: createdKey };
           })
           .filter((r) => r._createdKey > 0)
@@ -287,7 +326,7 @@ export default function InstructorDashboard() {
           const pts =
             (hasPassed(titleRows, teamKey) ? 1 : 0) +
             (hasPassed(manusRows, teamKey) ? 1 : 0) +
-            (hasPassed(oralRows,  teamKey) ? 1 : 0) +
+            (hasPassed(oralRows, teamKey) ? 1 : 0) +
             (hasPassed(finalRows, teamKey) ? 1 : 0);
 
           progressList.push({ team: teamName, percent: pts * 25 });
@@ -328,12 +367,17 @@ export default function InstructorDashboard() {
     <div className="space-y-8">
       {/* UPCOMING TASKS (uniform header & card style) */}
       <section className="space-y-3">
-        <h3 className="text-xl font-extrabold tracking-wide" style={{ color: MAROON }}>
+        <h3
+          className="text-xl font-extrabold tracking-wide"
+          style={{ color: MAROON }}
+        >
           UPCOMING TASKS
         </h3>
 
         {loadingUpcoming ? (
-          <div className="text-sm text-neutral-500">Loading upcoming tasks…</div>
+          <div className="text-sm text-neutral-500">
+            Loading upcoming tasks…
+          </div>
         ) : upcomingPerTeam.length === 0 ? (
           <div className="text-sm text-neutral-500">No upcoming tasks.</div>
         ) : (
@@ -356,7 +400,10 @@ export default function InstructorDashboard() {
 
       {/* TEAMS’ PROGRESS (uniform donut + card) */}
       <section className="space-y-3">
-        <h3 className="text-xl font-extrabold tracking-wide" style={{ color: MAROON }}>
+        <h3
+          className="text-xl font-extrabold tracking-wide"
+          style={{ color: MAROON }}
+        >
           TEAMS’ PROGRESS
         </h3>
 
@@ -375,7 +422,10 @@ export default function InstructorDashboard() {
 
       {/* RECENT TASKS CREATED (uniform table look) */}
       <section className="space-y-3">
-        <h3 className="text-xl font-extrabold tracking-wide" style={{ color: MAROON }}>
+        <h3
+          className="text-xl font-extrabold tracking-wide"
+          style={{ color: MAROON }}
+        >
           RECENT TASKS CREATED
         </h3>
 
@@ -403,12 +453,17 @@ export default function InstructorDashboard() {
                 ) : recentCreated.length === 0 ? (
                   <tr>
                     <td className="py-3 pl-6 pr-3" colSpan={7}>
-                      <span className="text-neutral-600">No recent activity.</span>
+                      <span className="text-neutral-600">
+                        No recent activity.
+                      </span>
                     </td>
                   </tr>
                 ) : (
                   recentCreated.map((r, idx) => (
-                    <tr key={`${r.tag}-${r.id}`} className="border-t border-neutral-200">
+                    <tr
+                      key={`${r.tag}-${r.id}`}
+                      className="border-t border-neutral-200"
+                    >
                       <td className="py-3 pl-6 pr-3">{idx + 1}.</td>
                       <td className="py-3 pr-3">{r.tag}</td>
                       <td className="py-3 pr-3">{r.team || "—"}</td>
@@ -431,7 +486,10 @@ export default function InstructorDashboard() {
 
       {/* CALENDAR (kept, but header style unified) */}
       <section className="space-y-3">
-        <h3 className="text-xl font-extrabold tracking-wide" style={{ color: MAROON }}>
+        <h3
+          className="text-xl font-extrabold tracking-wide"
+          style={{ color: MAROON }}
+        >
           CALENDAR
         </h3>
         <Card className="p-4">

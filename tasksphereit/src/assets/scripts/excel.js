@@ -1,5 +1,6 @@
 // src/utils/excel.js
 import ExcelJS from "exceljs";
+import * as XLSX from "xlsx";
 
 /**
  * Parse Excel file and extract user data with images
@@ -7,129 +8,62 @@ import ExcelJS from "exceljs";
  * @param {string} selectedRole - The default role to assign
  * @returns {Promise<Array>} Array of user objects with data
  */
-export const parseExcelFile = async (file, selectedRole) => {
-  try {
-    const buf = await file.arrayBuffer();
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buf);
-    const ws = wb.worksheets[0];
+export const parseExcelFile = async (file) => {
+  const ab = await file.arrayBuffer();
+  const wb = XLSX.read(ab, { type: "array", dense: true }); // dense = faster/lower mem
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const aoa = XLSX.utils.sheet_to_json(ws, {
+    header: 1, // array-of-arrays (fast)
+    raw: true, // skip expensive formatting
+    blankrows: false,
+    defval: "", // keep empty strings
+  });
 
-    if (!ws) {
-      throw new Error("No worksheet found in file.");
-    }
-
-    // Map images to approximate row (top-left of image)
-    const imageByRow = {};
-    const imgs = ws.getImages();
-    imgs.forEach(({ imageId, range }) => {
-      const meta = wb.getImage(imageId);
-      if (!meta?.base64) return;
-      const tlRow = Math.ceil(range.tl.row || 1);
-      const ext = meta.extension || "png";
-      const dataUrl = `data:image/${ext};base64,${meta.base64}`;
-      if (!imageByRow[tlRow]) imageByRow[tlRow] = dataUrl;
-    });
-
-    // Find header row (first non-empty row)
-    let headerRowIdx = 1;
-    for (let r = 1; r <= ws.actualRowCount; r++) {
-      const row = ws.getRow(r);
-      const hasAny = row.values.some((v) =>
-        typeof v === "string" ? v.trim() : v
-      );
-      if (hasAny) {
-        headerRowIdx = r;
-        break;
-      }
-    }
-
-    const headerRow = ws.getRow(headerRowIdx);
-    const headers = {};
-    headerRow.eachCell((cell, colNumber) => {
-      const key = String(cell.value || "")
-        .toLowerCase()
-        .trim();
-      headers[colNumber] = key;
-    });
-
-    // Helper to get column index by header name
-    const colIndexOf = (names) => {
-      const want = names.map((n) => n.toLowerCase());
-      const pair = Object.entries(headers).find(([, v]) => want.includes(v));
-      return pair ? Number(pair[0]) : null;
-    };
-
-    const colId = colIndexOf(["id number", "student id", "id"]);
-    const colLast = colIndexOf(["last name", "lastname", "surname"]);
-    const colFirst = colIndexOf(["first name", "firstname", "given name"]);
-    const colMid = colIndexOf([
-      "middle initial",
+  // find header row within first 10 rows
+  const norm = (s) =>
+    String(s || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  let H = -1,
+    cols = { id: -1, first: -1, middle: -1, last: -1 };
+  for (let r = 0; r < Math.min(10, aoa.length); r++) {
+    const row = aoa[r];
+    if (!row) continue;
+    const idx = (labels) => row.findIndex((v) => labels.includes(norm(v)));
+    const id = idx(["id number", "id", "student number"]);
+    const first = idx(["first name", "firstname", "given name", "given"]);
+    const middle = idx([
       "middle name",
       "middlename",
+      "middle initial",
       "mi",
+      "middle",
     ]);
-    const colEmail = colIndexOf(["email", "email address"]);
-    const colRole = colIndexOf(["role"]);
-
-    if (!colId || !colLast || !colFirst) {
-      throw new Error(
-        "Missing required headers. Need at least: ID Number, Last Name, First Name."
-      );
+    const last = idx(["last name", "lastname", "surname", "last"]);
+    if (id !== -1 || (first !== -1 && last !== -1)) {
+      H = r;
+      cols = { id, first, middle, last };
+      break;
     }
-
-    const out = [];
-    for (let r = headerRowIdx + 1; r <= ws.actualRowCount; r++) {
-      const row = ws.getRow(r);
-      const idNumber = String(row.getCell(colId).value || "").trim();
-      const lastName = String(row.getCell(colLast).value || "").trim();
-      const firstName = String(row.getCell(colFirst).value || "").trim();
-      const middleName = colMid
-        ? String(row.getCell(colMid).value || "").trim()
-        : "";
-      const email = colEmail
-        ? String(row.getCell(colEmail).value || "").trim()
-        : "";
-      const role = colRole
-        ? String(row.getCell(colRole).value || "").trim()
-        : selectedRole;
-
-      if (!idNumber && !lastName && !firstName && !email) continue;
-
-      const imageDataUrl = imageByRow[r] || null;
-
-      out.push({
-        idNumber,
-        lastName,
-        firstName,
-        middleName,
-        email,
-        role: role || selectedRole,
-        imageDataUrl,
-        _select: true,
-        _row: r,
-      });
-    }
-
-    if (out.length === 0) {
-      throw new Error("No data rows found.");
-    }
-
-    // De-duplicate within file by (idNumber + email)
-    const seen = new Set();
-    const deduped = out.filter((x) => {
-      const key = `${x.idNumber}::${x.email}`.toLowerCase();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-
-    return deduped;
-  } catch (error) {
-    throw new Error(
-      error?.message ||
-        "Failed to read the Excel file. Ensure it's .xlsx and has headers."
-    );
   }
+
+  const out = [];
+  for (let r = H + 1; r < aoa.length; r++) {
+    const row = aoa[r] || [];
+    const idNumber = (cols.id >= 0 ? row[cols.id] : "").toString().trim();
+    const firstName = (cols.first >= 0 ? row[cols.first] : "")
+      .toString()
+      .trim();
+    const middleName = (cols.middle >= 0 ? row[cols.middle] : "")
+      .toString()
+      .replace(/\./g, "")
+      .trim();
+    const lastName = (cols.last >= 0 ? row[cols.last] : "").toString().trim();
+    if (!(idNumber || firstName || middleName || lastName)) continue;
+    out.push({ _select: true, idNumber, firstName, middleName, lastName });
+  }
+  return out;
 };
 
 /**
@@ -138,9 +72,21 @@ export const parseExcelFile = async (file, selectedRole) => {
  * @returns {boolean} True if valid Excel file
  */
 export const validateExcelFile = (file) => {
-  return (
-    file.type ===
+  if (!file) return false;
+  const name = (file.name || "").toLowerCase().trim();
+  const type = (file.type || "").toLowerCase();
+
+  const isXlsx =
+    type ===
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-    file.name.toLowerCase().endsWith(".xlsx")
-  );
+    name.endsWith(".xlsx");
+
+  const isXlsb =
+    type === "application/vnd.ms-excel.sheet.binary.macroenabled.12" || // some UAs
+    type ===
+      "application/vnd.ms-excel.sheet.binary.macroenabled.12".toLowerCase() ||
+    type === "application/vnd.ms-excel.sheet.binary.macroEnabled.12" || // canonical
+    name.endsWith(".xlsb");
+
+  return isXlsx || isXlsb;
 };
