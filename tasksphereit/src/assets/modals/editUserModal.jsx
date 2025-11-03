@@ -161,9 +161,20 @@ const EditUserModal = ({
                   type="text"
                   placeholder="ID Number"
                   value={form.idNumber}
-                  onChange={onChange("idNumber")}
+                  onChange={(e) => {
+                    // Only allow digits and limit to 9 characters
+                    const value = e.target.value.replace(/\D/g, ""); // remove non-numeric chars
+                    if (value.length <= 9) {
+                      onChange("idNumber")({ target: { value } });
+                    }
+                  }}
                   className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
+                  inputMode="numeric"
+                  maxLength={9}
                 />
+                <p className="text-xs text-neutral-500 mt-1">
+                  Must be 9 Number Only.
+                </p>
               </div>
 
               {/* Password */}

@@ -4,426 +4,423 @@
       "methodology": "Agile",
       "projectPhases": [
         {
-          "phase": "1.Design",
+          "phase": "Design",
           "taskTypes": [
             {
-              "type": "1.Documentation",
+              "type": "Documentation",
               "tasks": [
                 {
-                  "task": "1. UI Design & Functionalities",
+                  "task": "UI Design & Functionalities",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "2. Prepare: Chapter 1",
+                  "task": "Prepare: Chapter 1",
                   "subtasks": [
                     {
                       "subtask": "1.Introduction",
                       "elements": [
-                        "- Project Context",
-                        "- Background of the Study",
-                        "- Policies and Procedures",
-                        "- Users Position"
+                        "Project Context",
+                        "Background of the Study",
+                        "Policies and Procedures",
+                        "Users Position"
                       ]
                     },
                     {
-                      "subtask": "2.Objectives",
+                      "subtask": "Objectives",
                       "elements": [
                         "- General Objectives",
                         "- Specific Objectives"
                       ]
                     },
                     {
-                      "subtask": "3.Scope and Limitation",
-                      "elements": ["- Scope", "- Limitation"]
+                      "subtask": "Scope and Limitation",
+                      "elements": ["Scope", "Limitation"]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "3.Prepare: Chapter 2",
+                  "task": "Prepare: Chapter 2",
                   "subtasks": [
                     {
-                      "subtask": "1.Related Theories",
+                      "subtask": "Related Theories",
                       "elements": []
                     },
                     {
-                      "subtask": "2.Related Literature",
+                      "subtask": "Related Literature",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "4.Prepare: Chapter 3",
+                  "task": "Prepare: Chapter 3",
                   "subtasks": [
                     {
-                      "subtask": "1.Implementation",
-                      "elements": ["- Hardware", "- Software", "- Peopleware"]
+                      "subtask": "Implementation",
+                      "elements": ["Hardware", "Software", "Peopleware"]
                     },
                     {
-                      "subtask": "2.Development",
-                      "elements": ["- Hardware", "- Software", "- Peopleware"]
+                      "subtask": "Development",
+                      "elements": ["Hardware", "Software", "Peopleware"]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "5.Prepare: Chapter 4",
+                  "task": "Prepare: Chapter 4",
                   "subtasks": [
                     {
-                      "subtask": "1.Methodology",
+                      "subtask": "Methodology",
                       "elements": []
                     },
                     {
-                      "subtask": "2.Environment",
+                      "subtask": "Environment",
                       "elements": [
-                        "- Locale",
-                        "- Population of the Study",
-                        "- Organizational Chart/Profile"
+                        "Locale",
+                        "Population of the Study",
+                        "Organizational Chart/Profile"
                       ]
                     },
                     {
-                      "subtask": "3.Requirement Specification",
+                      "subtask": "Requirement Specification",
                       "elements": [
-                        "- Operational Feasibility [Fishbone Diagram]",
-                        "- Operational Feasibility [Functional Decomposition Diagram]",
-                        "- Technical Feasibility",
-                        "- Schedule Feasibility",
-                        "- Economic Feasibility",
-                        "- Requirements Modeling [Context Diagram]",
-                        "- Requirements Modeling [Data Flow Diagram]",
-                        "- Requirements Modeling [System Flowchart]",
-                        "- Requirements Modeling [Program Flowchart]",
-                        "- Requirements Modeling [Use Case Diagram]",
-                        "- Requirements Modeling [Use Class Diagram]",
-                        "- Requirements Modeling [Sequence Diagram]",
-                        "- Requirements Modeling [Activity Diagram]",
-                        "- Risk Assessment/Analysis"
+                        "Operational Feasibility [Fishbone Diagram]",
+                        "Operational Feasibility [Functional Decomposition Diagram]",
+                        "Technical Feasibility",
+                        "Schedule Feasibility",
+                        "Economic Feasibility",
+                        "Requirements Modeling [Context Diagram]",
+                        "Requirements Modeling [Data Flow Diagram]",
+                        "Requirements Modeling [System Flowchart]",
+                        "Requirements Modeling [Program Flowchart]",
+                        "Requirements Modeling [Use Case Diagram]",
+                        "Requirements Modeling [Use Class Diagram]",
+                        "Requirements Modeling [Sequence Diagram]",
+                        "Requirements Modeling [Activity Diagram]",
+                        "Risk Assessment/Analysis"
                       ]
                     },
                     {
-                      "subtask": "4.Design",
+                      "subtask": "Design",
                       "elements": [
-                        "- Output and User-interface Design Forms",
-                        "- Data Design",
-                        "- System Architecture [Network Model]",
-                        "- System Architecture [Network Topology]",
-                        "- System Architecture [Network Security]"
+                        "Output and User-interface Design Forms",
+                        "Data Design",
+                        "System Architecture [Network Model]",
+                        "System Architecture [Network Topology]",
+                        "System Architecture [Network Security]"
                       ]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "6.Prepare: Appendices",
+                  "task": "Prepare: Appendices",
                   "subtasks": [
                     {
-                      "subtask": "1.Appendix A",
+                      "subtask": "Appendix A",
                       "elements": []
                     },
                     {
-                      "subtask": "2.Appendix B",
+                      "subtask": "Appendix B",
                       "elements": []
                     },
                     {
-                      "subtask": "3.Appendix C",
+                      "subtask": "Appendix C",
                       "elements": []
                     },
                     {
-                      "subtask": "4.Appendix D",
+                      "subtask": "Appendix D",
                       "elements": []
                     },
                     {
-                      "subtask": "5.Appendix E",
+                      "subtask": "Appendix E",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "7.Manuscript Submission:",
+                  "task": "Manuscript Submission:",
                   "subtasks": [
                     {
-                      "subtask": "1. Chapter 1",
+                      "subtask": "Chapter 1",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Chapter 2",
+                      "subtask": "Chapter 2",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Chapter 3",
+                      "subtask": "Chapter 3",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Chapter 4",
+                      "subtask": "Chapter 4",
                       "elements": []
                     },
                     {
-                      "subtask": "5. Appendices",
+                      "subtask": "Appendices",
                       "elements": []
                     },
                     {
-                      "subtask": "6. AI and Plagiarism Check",
+                      "subtask": "AI and Plagiarism Check",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "8.Oral Defense Preparation",
+                  "task": "Oral Defense Preparation",
                   "subtasks": [
                     {
-                      "subtask": "1.Manusript Final Review",
+                      "subtask": "Manusript Final Review",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Prepare: PowerPoint Presentation",
+                      "subtask": "Prepare: PowerPoint Presentation",
                       "elements": []
                     },
                     {
-                      "subtask": "1. Mock Defense",
+                      "subtask": "Mock Defense",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Manuscript Printing",
+                      "subtask": "Manuscript Printing",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "9. Oral Defense",
+                  "task": "Oral Defense",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "10. Refinement for Oral Re-Defense",
+                  "task": "Refinement for Oral Re-Defense",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "11. Incorporate Panel Feedback Based on Oral Defense",
+                  "task": "Incorporate Panel Feedback Based on Oral Defense",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "12. Refine: Chapter 1",
+                  "task": "Refine: Chapter 1",
                   "subtasks": [
                     {
-                      "subtask": "1. Introduction",
+                      "subtask": "Introduction",
                       "elements": [
-                        "- Project Context",
-                        "- Background of the Study",
-                        "- Policies and Procedures",
-                        "- Users Position"
+                        "Project Context",
+                        "Background of the Study",
+                        "Policies and Procedures",
+                        "Users Position"
                       ]
                     },
                     {
-                      "subtask": "2. Objectives",
-                      "elements": [
-                        "- General Objectives",
-                        "- Specific Objectives"
-                      ]
+                      "subtask": "Objectives",
+                      "elements": ["General Objectives", "Specific Objectives"]
                     },
                     {
-                      "subtask": "3. Scope and Limitation",
-                      "elements": ["- Scope", "- Limitation"]
+                      "subtask": "Scope and Limitation",
+                      "elements": ["Scope", "- Limitation"]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "13. Refinement of UI Design & Functionalities",
+                  "task": "Refinement of UI Design & Functionalities",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "14. Refine: Chapter 2",
+                  "task": "Refine: Chapter 2",
                   "subtasks": [
                     {
-                      "subtask": "1. Related Theories",
+                      "subtask": "Related Theories",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Related Literature",
+                      "subtask": "Related Literature",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "15. Refine: Chapter 3",
+                  "task": "Refine: Chapter 3",
                   "subtasks": [
                     {
-                      "subtask": "1. Implementation",
-                      "elements": ["- Hardware", "- Software", "- Peopleware"]
+                      "subtask": "Implementation",
+                      "elements": ["Hardware", "Software", "Peopleware"]
                     },
                     {
-                      "subtask": "2. Development",
-                      "elements": ["- Hardware", "- Software", "- Peopleware"]
+                      "subtask": "Development",
+                      "elements": ["Hardware", "Software", "Peopleware"]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "16. Refine: Chapter 4",
+                  "task": "Refine: Chapter 4",
                   "subtasks": [
                     {
-                      "subtask": "1. Methodology",
+                      "subtask": "Methodology",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Environment",
+                      "subtask": "Environment",
                       "elements": [
-                        "- Locale",
-                        "- Population of the Study",
-                        "- Organizational Chart/Profile"
+                        "Locale",
+                        "Population of the Study",
+                        "Organizational Chart/Profile"
                       ]
                     },
                     {
-                      "subtask": "3. Requirement Specification",
+                      "subtask": "Requirement Specification",
                       "elements": [
-                        "- Operational Feasibility [Fishbone Diagram]",
-                        "- Operational Feasibility [Functional Decomposition Diagram]",
-                        "- Technical Feasibility",
-                        "- Schedule Feasibility",
-                        "- Economic Feasibility",
-                        "- Requirements Modeling [Context Diagram]",
-                        "- Requirements Modeling [Data Flow Diagram]",
-                        "- Requirements Modeling [System Flowchart]",
-                        "- Requirements Modeling [Program Flowchart]",
-                        "- Requirements Modeling [Use Case Diagram]",
-                        "- Requirements Modeling [Use Class Diagram]",
-                        "- Requirements Modeling [Sequence Diagram]",
-                        "- Requirements Modeling [Activity Diagram]",
-                        "- Risk Assessment/Analysis"
+                        "Operational Feasibility [Fishbone Diagram]",
+                        "Operational Feasibility [Functional Decomposition Diagram]",
+                        "Technical Feasibility",
+                        "Schedule Feasibility",
+                        "Economic Feasibility",
+                        "Requirements Modeling [Context Diagram]",
+                        "Requirements Modeling [Data Flow Diagram]",
+                        "Requirements Modeling [System Flowchart]",
+                        "Requirements Modeling [Program Flowchart]",
+                        "Requirements Modeling [Use Case Diagram]",
+                        "Requirements Modeling [Use Class Diagram]",
+                        "Requirements Modeling [Sequence Diagram]",
+                        "Requirements Modeling [Activity Diagram]",
+                        "Risk Assessment/Analysis"
                       ]
                     },
                     {
-                      "subtask": "4. Design",
+                      "subtask": "Design",
                       "elements": [
-                        "- Output and User-interface Design Forms",
-                        "- Data Design",
-                        "- System Architecture [Network Model]",
-                        "- System Architecture [Network Topology]",
-                        "- System Architecture [Network Security]"
+                        "Output and User-interface Design Forms",
+                        "Data Design",
+                        "System Architecture [Network Model]",
+                        "System Architecture [Network Topology]",
+                        "System Architecture [Network Security]"
                       ]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "17. Refine: Appendices",
+                  "task": "Refine: Appendices",
                   "subtasks": [
                     {
-                      "subtask": "1. Appendix A",
+                      "subtask": "Appendix A",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Appendix B",
+                      "subtask": "Appendix B",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Appendix C",
+                      "subtask": "Appendix C",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Appendix D",
+                      "subtask": "Appendix D",
                       "elements": []
                     },
                     {
-                      "subtask": "5. Appendix E",
+                      "subtask": "Appendix E",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "18. Manuscript Re-Submission:",
+                  "task": "Manuscript Re-Submission:",
                   "subtasks": [
                     {
-                      "subtask": "1. Chapter 1",
+                      "subtask": "Chapter 1",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Chapter 2",
+                      "subtask": "Chapter 2",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Chapter 3",
+                      "subtask": "Chapter 3",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Chapter 4",
+                      "subtask": "Chapter 4",
                       "elements": []
                     },
                     {
-                      "subtask": "5. Appendices",
+                      "subtask": "Appendices",
                       "elements": []
                     },
                     {
-                      "subtask": "6. AI and Plagiarism Check",
+                      "subtask": "AI and Plagiarism Check",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "19. Oral Re-Defense Preparation",
+                  "task": "Oral Re-Defense Preparation",
                   "subtasks": [
                     {
-                      "subtask": "1. Manuscript Final Review",
+                      "subtask": "Manuscript Final Review",
                       "elements": []
                     },
                     {
-                      "subtask": "2. PowerPoint Presentation",
+                      "subtask": "PowerPoint Presentation",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Mock Defense",
+                      "subtask": "Mock Defense",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Manuscript Printing",
+                      "subtask": "Manuscript Printing",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "20. Oral Re-Defense",
+                  "task": "Oral Re-Defense",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "21. Incorporate Panel Feedback Based on Oral Re-Defense",
+                  "task": "Incorporate Panel Feedback Based on Oral Re-Defense",
                   "subtasks": [],
                   "elements": []
                 }
               ]
             },
             {
-              "type": "2.Discussion & Review",
+              "type": "Discussion & Review",
               "tasks": [
                 {
-                  "task": "1. Capstone Meeting",
+                  "task": "Capstone Meeting",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "2. Adviser Consultation",
+                  "task": "Adviser Consultation",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "3. Interview User/ Client",
+                  "task": "Interview User/ Client",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "4. Gather Feedback from the User/Client",
+                  "task": "Gather Feedback from the User/Client",
                   "subtasks": [],
                   "elements": []
                 }
@@ -437,426 +434,420 @@
       "methodology": "Extreme Programming (XP)",
       "projectPhases": [
         {
-          "phase": "1.Design",
+          "phase": "Design",
           "taskTypes": [
             {
-              "type": "1.Documentation",
+              "type": "Documentation",
               "tasks": [
                 {
-                  "task": "1. UI Design & Functionalities",
+                  "task": "UI Design & Functionalities",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "2. Prepare: Chapter 1",
+                  "task": "Prepare: Chapter 1",
                   "subtasks": [
                     {
                       "subtask": "1. Introduction",
                       "elements": [
-                        "- Project Context",
-                        "- Background of the Study",
-                        "- Policies and Procedures",
-                        "- Users Position"
+                        "Project Context",
+                        "Background of the Study",
+                        "Policies and Procedures",
+                        "Users Position"
                       ]
                     },
                     {
-                      "subtask": "2. Objectives",
+                      "subtask": "Objectives",
+                      "elements": ["General Objectives", "Specific Objectives"]
+                    },
+                    {
+                      "subtask": "Scope and Limitation",
+                      "elements": ["Scope", "Limitation"]
+                    }
+                  ],
+                  "elements": []
+                },
+                {
+                  "task": "Prepare: Chapter 2",
+                  "subtasks": [
+                    {
+                      "subtask": "Related Theories",
+                      "elements": []
+                    },
+                    {
+                      "subtask": "Related Literature",
+                      "elements": []
+                    }
+                  ],
+                  "elements": []
+                },
+                {
+                  "task": "Prepare: Chapter 3",
+                  "subtasks": [
+                    {
+                      "subtask": "Implementation",
+                      "elements": ["Hardware", "Software", "Peopleware"]
+                    },
+                    {
+                      "subtask": "Development",
+                      "elements": ["Hardware", "Software", "Peopleware"]
+                    }
+                  ],
+                  "elements": []
+                },
+                {
+                  "task": "Prepare: Chapter 4",
+                  "subtasks": [
+                    {
+                      "subtask": "Methodology",
+                      "elements": []
+                    },
+                    {
+                      "subtask": "Environment",
                       "elements": [
-                        "- General Objectives",
-                        "- Specific Objectives"
+                        "Locale",
+                        "Population of the Study",
+                        "Organizational Chart/Profile"
                       ]
                     },
                     {
-                      "subtask": "3. Scope and Limitation",
-                      "elements": ["- Scope", "- Limitation"]
-                    }
-                  ],
-                  "elements": []
-                },
-                {
-                  "task": "3.Prepare: Chapter 2",
-                  "subtasks": [
-                    {
-                      "subtask": "1. Related Theories",
-                      "elements": []
-                    },
-                    {
-                      "subtask": "2. Related Literature",
-                      "elements": []
-                    }
-                  ],
-                  "elements": []
-                },
-                {
-                  "task": "4.Prepare: Chapter 3",
-                  "subtasks": [
-                    {
-                      "subtask": "1. Implementation",
-                      "elements": ["- Hardware", "- Software", "- Peopleware"]
-                    },
-                    {
-                      "subtask": "2. Development",
-                      "elements": ["- Hardware", "- Software", "- Peopleware"]
-                    }
-                  ],
-                  "elements": []
-                },
-                {
-                  "task": "5.Prepare: Chapter 4",
-                  "subtasks": [
-                    {
-                      "subtask": "1. Methodology",
-                      "elements": []
-                    },
-                    {
-                      "subtask": "2. Environment",
+                      "subtask": "Requirement Specification",
                       "elements": [
-                        "- Locale",
-                        "- Population of the Study",
-                        "- Organizational Chart/Profile"
+                        "Operational Feasibility [Fishbone Diagram]",
+                        "Operational Feasibility [Functional Decomposition Diagram]",
+                        "Technical Feasibility",
+                        "Schedule Feasibility",
+                        "Economic Feasibility",
+                        "Requirements Modeling [Context Diagram]",
+                        "Requirements Modeling [Data Flow Diagram]",
+                        "Requirements Modeling [System Flowchart]",
+                        "Requirements Modeling [Program Flowchart]",
+                        "Requirements Modeling [Use Case Diagram]",
+                        "Requirements Modeling [Use Class Diagram]",
+                        "Requirements Modeling [Sequence Diagram]",
+                        "Requirements Modeling [Activity Diagram]",
+                        "Risk Assessment/Analysis"
                       ]
                     },
                     {
-                      "subtask": "3. Requirement Specification",
+                      "subtask": "Design",
                       "elements": [
-                        "- Operational Feasibility [Fishbone Diagram]",
-                        "- Operational Feasibility [Functional Decomposition Diagram]",
-                        "- Technical Feasibility",
-                        "- Schedule Feasibility",
-                        "- Economic Feasibility",
-                        "- Requirements Modeling [Context Diagram]",
-                        "- Requirements Modeling [Data Flow Diagram]",
-                        "- Requirements Modeling [System Flowchart]",
-                        "- Requirements Modeling [Program Flowchart]",
-                        "- Requirements Modeling [Use Case Diagram]",
-                        "- Requirements Modeling [Use Class Diagram]",
-                        "- Requirements Modeling [Sequence Diagram]",
-                        "- Requirements Modeling [Activity Diagram]",
-                        "- Risk Assessment/Analysis"
-                      ]
-                    },
-                    {
-                      "subtask": "4. Design",
-                      "elements": [
-                        "- Output and User-interface Design Forms",
-                        "- Data Design",
-                        "- System Architecture [Network Model]",
-                        "- System Architecture [Network Topology]",
-                        "- System Architecture [Network Security]"
+                        "Output and User-interface Design Forms",
+                        "Data Design",
+                        "System Architecture [Network Model]",
+                        "System Architecture [Network Topology]",
+                        "System Architecture [Network Security]"
                       ]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "6.Prepare: Appendices",
+                  "task": "Prepare: Appendices",
                   "subtasks": [
                     {
-                      "subtask": "1. Appendix A",
+                      "subtask": "Appendix A",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Appendix B",
+                      "subtask": "Appendix B",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Appendix C",
+                      "subtask": "Appendix C",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Appendix D",
+                      "subtask": "Appendix D",
                       "elements": []
                     },
                     {
-                      "subtask": "5. Appendix E",
+                      "subtask": "Appendix E",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "7.Manuscript Submission:",
+                  "task": "Manuscript Submission:",
                   "subtasks": [
                     {
-                      "subtask": "1.Chapter 1",
+                      "subtask": "Chapter 1",
                       "elements": []
                     },
                     {
-                      "subtask": "2.Chapter 2",
+                      "subtask": "Chapter 2",
                       "elements": []
                     },
                     {
-                      "subtask": "3.Chapter 3",
+                      "subtask": "Chapter 3",
                       "elements": []
                     },
                     {
-                      "subtask": "4.Chapter 4",
+                      "subtask": "Chapter 4",
                       "elements": []
                     },
                     {
-                      "subtask": "5.Appendices",
+                      "subtask": "Appendices",
                       "elements": []
                     },
                     {
-                      "subtask": "6.AI and Plagiarism Check",
+                      "subtask": "AI and Plagiarism Check",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "8.Oral Defense Preparation",
+                  "task": "Oral Defense Preparation",
                   "subtasks": [
                     {
-                      "subtask": "1.Manusript Final Review",
+                      "subtask": "Manuscript Final Review",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Prepare: PowerPoint Presentation",
+                      "subtask": "Prepare: PowerPoint Presentation",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Mock Defense",
+                      "subtask": "Mock Defense",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Manuscript Printing",
+                      "subtask": "Manuscript Printing",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "5. Oral Defense",
+                  "task": "Oral Defense",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "6. Refinement for Oral Re-Defense",
+                  "task": "Refinement for Oral Re-Defense",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "7. Incorporate Panel Feedback Based on Oral Defense",
+                  "task": "Incorporate Panel Feedback Based on Oral Defense",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "8. Refine: Chapter 1",
+                  "task": "Refine: Chapter 1",
                   "subtasks": [
                     {
-                      "subtask": "1. Introduction",
+                      "subtask": "Introduction",
                       "elements": [
-                        "- Project Context",
-                        "- Background of the Study",
-                        "- Policies and Procedures",
-                        "- Users Position"
+                        "Project Context",
+                        "Background of the Study",
+                        "Policies and Procedures",
+                        "Users Position"
                       ]
                     },
                     {
-                      "subtask": "2. Objectives",
-                      "elements": [
-                        "- General Objectives",
-                        "- Specific Objectives"
-                      ]
+                      "subtask": "Objectives",
+                      "elements": ["General Objectives", "Specific Objectives"]
                     },
                     {
-                      "subtask": "3. Scope and Limitation",
-                      "elements": ["- Scope", "- Limitation"]
+                      "subtask": "Scope and Limitation",
+                      "elements": ["Scope", "Limitation"]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "9. Refinement of UI Design & Functionalities",
+                  "task": "Refinement of UI Design & Functionalities",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "10. Refine: Chapter 2",
+                  "task": "Refine: Chapter 2",
                   "subtasks": [
                     {
-                      "subtask": "1. Related Theories",
+                      "subtask": "Related Theories",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Related Literature",
+                      "subtask": "Related Literature",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "11. Refine: Chapter 3",
+                  "task": "Refine: Chapter 3",
                   "subtasks": [
                     {
-                      "subtask": "1. Implementation",
-                      "elements": ["- Hardware", "- Software", "- Peopleware"]
+                      "subtask": "Implementation",
+                      "elements": ["Hardware", "Software", "Peopleware"]
                     },
                     {
-                      "subtask": "2. Development",
-                      "elements": ["- Hardware", "- Software", "- Peopleware"]
+                      "subtask": "Development",
+                      "elements": ["Hardware", "Software", "Peopleware"]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "12. Refine: Chapter 4",
+                  "task": "Refine: Chapter 4",
                   "subtasks": [
                     {
-                      "subtask": "1. Methodology",
+                      "subtask": "Methodology",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Environment",
+                      "subtask": "Environment",
                       "elements": [
-                        "- Locale",
-                        "- Population of the Study",
-                        "- Organizational Chart/Profile"
+                        "Locale",
+                        "Population of the Study",
+                        "Organizational Chart/Profile"
                       ]
                     },
                     {
-                      "subtask": "3. Requirement Specification",
+                      "subtask": "Requirement Specification",
                       "elements": [
-                        "- Operational Feasibility [Fishbone Diagram]",
-                        "- Operational Feasibility [Functional Decomposition Diagram]",
-                        "- Technical Feasibility",
-                        "- Schedule Feasibility",
-                        "- Economic Feasibility",
-                        "- Requirements Modeling [Context Diagram]",
-                        "- Requirements Modeling [Data Flow Diagram]",
-                        "- Requirements Modeling [System Flowchart]",
-                        "- Requirements Modeling [Program Flowchart]",
-                        "- Requirements Modeling [Use Case Diagram]",
-                        "- Requirements Modeling [Use Class Diagram]",
-                        "- Requirements Modeling [Sequence Diagram]",
-                        "- Requirements Modeling [Activity Diagram]",
-                        "- Risk Assessment/Analysis"
+                        "Operational Feasibility [Fishbone Diagram]",
+                        "Operational Feasibility [Functional Decomposition Diagram]",
+                        "Technical Feasibility",
+                        "Schedule Feasibility",
+                        "Economic Feasibility",
+                        "Requirements Modeling [Context Diagram]",
+                        "Requirements Modeling [Data Flow Diagram]",
+                        "Requirements Modeling [System Flowchart]",
+                        "Requirements Modeling [Program Flowchart]",
+                        "Requirements Modeling [Use Case Diagram]",
+                        "Requirements Modeling [Use Class Diagram]",
+                        "Requirements Modeling [Sequence Diagram]",
+                        "Requirements Modeling [Activity Diagram]",
+                        "Risk Assessment/Analysis"
                       ]
                     },
                     {
-                      "subtask": "4. Design",
+                      "subtask": "Design",
                       "elements": [
-                        "- Output and User-interface Design Forms",
-                        "- Data Design",
-                        "- System Architecture [Network Model]",
-                        "- System Architecture [Network Topology]",
-                        "- System Architecture [Network Security]"
+                        "Output and User-interface Design Forms",
+                        "Data Design",
+                        "System Architecture [Network Model]",
+                        "System Architecture [Network Topology]",
+                        "System Architecture [Network Security]"
                       ]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "13. Refine: Appendices",
+                  "task": "Refine: Appendices",
                   "subtasks": [
                     {
-                      "subtask": "1.Appendix A",
+                      "subtask": "Appendix A",
                       "elements": []
                     },
                     {
-                      "subtask": "2.Appendix B",
+                      "subtask": "Appendix B",
                       "elements": []
                     },
                     {
-                      "subtask": "3.Appendix C",
+                      "subtask": "Appendix C",
                       "elements": []
                     },
                     {
-                      "subtask": "4.Appendix D",
+                      "subtask": "Appendix D",
                       "elements": []
                     },
                     {
-                      "subtask": "5.Appendix E",
+                      "subtask": "Appendix E",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "14. Manuscript Re-Submission:",
+                  "task": "Manuscript Re-Submission:",
                   "subtasks": [
                     {
-                      "subtask": "1.Chapter 1",
+                      "subtask": "Chapter 1",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Chapter 2",
+                      "subtask": "Chapter 2",
                       "elements": []
                     },
                     {
-                      "subtask": "3.Chapter 3",
+                      "subtask": "Chapter 3",
                       "elements": []
                     },
                     {
-                      "subtask": "4.Chapter 4",
+                      "subtask": "Chapter 4",
                       "elements": []
                     },
                     {
-                      "subtask": "5.Appendices",
+                      "subtask": "Appendices",
                       "elements": []
                     },
                     {
-                      "subtask": "6.AI and Plagiarism Check",
+                      "subtask": "AI and Plagiarism Check",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "15. Oral Re-Defense Preparation",
+                  "task": "Oral Re-Defense Preparation",
                   "subtasks": [
                     {
-                      "subtask": "1. Manuscript Final Review",
+                      "subtask": "Manuscript Final Review",
                       "elements": []
                     },
                     {
-                      "subtask": "2. PowerPoint Presentation",
+                      "subtask": "PowerPoint Presentation",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Mock Defense",
+                      "subtask": "Mock Defense",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Manuscript Printing",
+                      "subtask": "Manuscript Printing",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "16. Oral Re-Defense",
+                  "task": "Oral Re-Defense",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "17. Incorporate Panel Feedback Based on Oral Re-Defense",
+                  "task": "Incorporate Panel Feedback Based on Oral Re-Defense",
                   "subtasks": [],
                   "elements": []
                 }
               ]
             },
             {
-              "type": "2.Discussion & Review",
+              "type": "Discussion & Review",
               "tasks": [
                 {
-                  "task": "1. Capstone Meeting",
+                  "task": "Capstone Meeting",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "2. Adviser Consultation",
+                  "task": "Adviser Consultation",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "3. Interview User/ Client",
+                  "task": "Interview User/ Client",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "4. Client Feedback Session",
+                  "task": "Client Feedback Session",
                   "subtasks": [],
                   "elements": []
                 }
@@ -870,439 +861,433 @@
       "methodology": "Rapid Application Development (RAD)",
       "projectPhases": [
         {
-          "phase": "1.Design",
+          "phase": "Design",
           "taskTypes": [
             {
-              "type": "1.Documentation",
+              "type": "Documentation",
               "tasks": [
                 {
-                  "task": "1. UI Design",
+                  "task": "UI Design",
                   "subtasks": [
                     {
-                      "subtask": "1. Initial UI Prototype",
+                      "subtask": "Initial UI Prototype",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Conduct Rapid UI Feedback Session",
+                      "subtask": "Conduct Rapid UI Feedback Session",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Iterate UI Prototype Based on User/Client Feedback",
+                      "subtask": "Iterate UI Prototype Based on User/Client Feedback",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "2. Prepare: Chapter 1",
+                  "task": "Prepare: Chapter 1",
                   "subtasks": [
                     {
-                      "subtask": "1. Introduction",
+                      "subtask": "Introduction",
                       "elements": [
-                        "- Project Context",
-                        "- Background of the Study",
-                        "- Policies and Procedures",
-                        "- Users Position"
+                        "Project Context",
+                        "Background of the Study",
+                        "Policies and Procedures",
+                        "Users Position"
                       ]
                     },
                     {
-                      "subtask": "2. Objectives",
-                      "elements": [
-                        "- General Objectives",
-                        "- Specific Objectives"
-                      ]
+                      "subtask": "Objectives",
+                      "elements": ["General Objectives", "Specific Objectives"]
                     },
                     {
-                      "subtask": "3. Scope and Limitation",
-                      "elements": ["- Scope", "- Limitation"]
+                      "subtask": "Scope and Limitation",
+                      "elements": ["Scope", "Limitation"]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "3.Prepare: Chapter 2",
+                  "task": "Prepare: Chapter 2",
                   "subtasks": [
                     {
-                      "subtask": "1. Related Theories",
+                      "subtask": "Related Theories",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Related Literature",
+                      "subtask": "Related Literature",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "4.Prepare: Chapter 3",
+                  "task": "Prepare: Chapter 3",
                   "subtasks": [
                     {
-                      "subtask": "1. Implementation",
-                      "elements": ["- Hardware", "- Software", "- Peopleware"]
+                      "subtask": "Implementation",
+                      "elements": ["Hardware", "Software", "Peopleware"]
                     },
                     {
-                      "subtask": "2. Development",
-                      "elements": ["- Hardware", "- Software", "- Peopleware"]
+                      "subtask": " Development",
+                      "elements": ["Hardware", "Software", "Peopleware"]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "5.Prepare: Chapter 4",
+                  "task": "Prepare: Chapter 4",
                   "subtasks": [
                     {
-                      "subtask": "1. Methodology",
+                      "subtask": "Methodology",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Environment",
+                      "subtask": "Environment",
                       "elements": [
-                        "- Locale",
-                        "- Population of the Study",
-                        "- Organizational Chart/Profile"
+                        "Locale",
+                        "Population of the Study",
+                        "Organizational Chart/Profile"
                       ]
                     },
                     {
-                      "subtask": "3. Requirement Specification",
+                      "subtask": "Requirement Specification",
                       "elements": [
-                        "- Operational Feasibility [Fishbone Diagram]",
-                        "- Operational Feasibility [Functional Decomposition Diagram]",
-                        "- Technical Feasibility",
-                        "- Schedule Feasibility",
-                        "- Economic Feasibility",
-                        "- Requirements Modeling [Context Diagram]",
-                        "- Requirements Modeling [Data Flow Diagram]",
-                        "- Requirements Modeling [System Flowchart]",
-                        "- Requirements Modeling [Program Flowchart]",
-                        "- Requirements Modeling [Use Case Diagram]",
-                        "- Requirements Modeling [Use Class Diagram]",
-                        "- Requirements Modeling [Sequence Diagram]",
-                        "- Requirements Modeling [Activity Diagram]",
-                        "- Risk Assessment/Analysis"
+                        "Operational Feasibility [Fishbone Diagram]",
+                        "Operational Feasibility [Functional Decomposition Diagram]",
+                        "Technical Feasibility",
+                        "Schedule Feasibility",
+                        "Economic Feasibility",
+                        "Requirements Modeling [Context Diagram]",
+                        "Requirements Modeling [Data Flow Diagram]",
+                        "Requirements Modeling [System Flowchart]",
+                        "Requirements Modeling [Program Flowchart]",
+                        "Requirements Modeling [Use Case Diagram]",
+                        "Requirements Modeling [Use Class Diagram]",
+                        "Requirements Modeling [Sequence Diagram]",
+                        "Requirements Modeling [Activity Diagram]",
+                        "Risk Assessment/Analysis"
                       ]
                     },
                     {
-                      "subtask": "4. Design",
+                      "subtask": "Design",
                       "elements": [
-                        "- Output and User-interface Design Forms",
-                        "- Data Design",
-                        "- System Architecture [Network Model]",
-                        "- System Architecture [Network Topology]",
-                        "- System Architecture [Network Security]"
+                        "Output and User-interface Design Forms",
+                        "Data Design",
+                        "System Architecture [Network Model]",
+                        "System Architecture [Network Topology]",
+                        "System Architecture [Network Security]"
                       ]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "6.Prepare: Appendices",
+                  "task": "Prepare: Appendices",
                   "subtasks": [
                     {
-                      "subtask": "1. Appendix A",
+                      "subtask": "Appendix A",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Appendix B",
+                      "subtask": "Appendix B",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Appendix C",
+                      "subtask": "Appendix C",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Appendix D",
+                      "subtask": "Appendix D",
                       "elements": []
                     },
                     {
-                      "subtask": "5. Appendix E",
+                      "subtask": "Appendix E",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "7.Manuscript Submission:",
+                  "task": "Manuscript Submission:",
                   "subtasks": [
                     {
-                      "subtask": "1. Chapter 1",
+                      "subtask": "Chapter 1",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Chapter 2",
+                      "subtask": "Chapter 2",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Chapter 3",
+                      "subtask": "Chapter 3",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Chapter 4",
+                      "subtask": "Chapter 4",
                       "elements": []
                     },
                     {
-                      "subtask": "5. Appendices",
+                      "subtask": "Appendices",
                       "elements": []
                     },
                     {
-                      "subtask": "6. AI and Plagiarism Check",
+                      "subtask": "AI and Plagiarism Check",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "8.Oral Defense Preparation",
+                  "task": "Oral Defense Preparation",
                   "subtasks": [
                     {
-                      "subtask": "1.Manusript Final Review",
+                      "subtask": "Manusript Final Review",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Prepare: PowerPoint Presentation",
+                      "subtask": "Prepare: PowerPoint Presentation",
                       "elements": []
                     },
                     {
-                      "subtask": "3.Mock Defense",
+                      "subtask": "Mock Defense",
                       "elements": []
                     },
                     {
-                      "subtask": "4.Manuscript Printing",
+                      "subtask": "Manuscript Printing",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "9.Oral Defense",
+                  "task": "Oral Defense",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "10.Refinement for Oral Re-Defense",
+                  "task": "Refinement for Oral Re-Defense",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "1. Incorporate Panel Feedback Based on Oral Defense",
+                  "task": "Incorporate Panel Feedback Based on Oral Defense",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "2. Refine: Chapter 1",
+                  "task": "Refine: Chapter 1",
                   "subtasks": [
                     {
-                      "subtask": "1. Introduction",
+                      "subtask": "Introduction",
                       "elements": [
-                        "- Project Context",
-                        "- Background of the Study",
-                        "- Policies and Procedures",
-                        "- Users Position"
+                        "Project Context",
+                        "Background of the Study",
+                        "Policies and Procedures",
+                        "Users Position"
                       ]
                     },
                     {
-                      "subtask": "2. Objectives",
-                      "elements": [
-                        "- General Objectives",
-                        "- Specific Objectives"
-                      ]
+                      "subtask": "Objectives",
+                      "elements": ["General Objectives", "Specific Objectives"]
                     },
                     {
-                      "subtask": "3. Scope and Limitation",
-                      "elements": ["- Scope", "- Limitation"]
+                      "subtask": "Scope and Limitation",
+                      "elements": ["Scope", "Limitation"]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "3. Refinement of UI Design & Functionalities",
+                  "task": "Refinement of UI Design & Functionalities",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "4. Refine: Chapter 2",
+                  "task": "Refine: Chapter 2",
                   "subtasks": [
                     {
-                      "subtask": "1. Related Theories",
+                      "subtask": "Related Theories",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Related Literature",
+                      "subtask": "Related Literature",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "5. Refine: Chapter 3",
+                  "task": "Refine: Chapter 3",
                   "subtasks": [
                     {
-                      "subtask": "1. Implementation",
-                      "elements": ["- Hardware", "- Software", "- Peopleware"]
+                      "subtask": "Implementation",
+                      "elements": ["Hardware", "Software", "Peopleware"]
                     },
                     {
-                      "subtask": "2. Development",
-                      "elements": ["- Hardware", "- Software", "- Peopleware"]
+                      "subtask": "Development",
+                      "elements": ["Hardware", "Software", "Peopleware"]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "6. Refine: Chapter 4",
+                  "task": "Refine: Chapter 4",
                   "subtasks": [
                     {
-                      "subtask": "1. Methodology",
+                      "subtask": "Methodology",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Environment",
+                      "subtask": "Environment",
                       "elements": [
-                        "- Locale",
-                        "- Population of the Study",
-                        "- Organizational Chart/Profile"
+                        "Locale",
+                        "Population of the Study",
+                        "Organizational Chart/Profile"
                       ]
                     },
                     {
-                      "subtask": "3. Requirement Specification",
+                      "subtask": "Requirement Specification",
                       "elements": [
-                        "- Operational Feasibility [Fishbone Diagram]",
-                        "- Operational Feasibility [Functional Decomposition Diagram]",
-                        "- Technical Feasibility",
-                        "- Schedule Feasibility",
-                        "- Economic Feasibility",
-                        "- Requirements Modeling [Context Diagram]",
-                        "- Requirements Modeling [Data Flow Diagram]",
-                        "- Requirements Modeling [System Flowchart]",
-                        "- Requirements Modeling [Program Flowchart]",
-                        "- Requirements Modeling [Use Case Diagram]",
-                        "- Requirements Modeling [Use Class Diagram]",
-                        "- Requirements Modeling [Sequence Diagram]",
-                        "- Requirements Modeling [Activity Diagram]",
-                        "- Risk Assessment/Analysis"
+                        "Operational Feasibility [Fishbone Diagram]",
+                        "Operational Feasibility [Functional Decomposition Diagram]",
+                        "Technical Feasibility",
+                        "Schedule Feasibility",
+                        "Economic Feasibility",
+                        "Requirements Modeling [Context Diagram]",
+                        "Requirements Modeling [Data Flow Diagram]",
+                        "Requirements Modeling [System Flowchart]",
+                        "Requirements Modeling [Program Flowchart]",
+                        "Requirements Modeling [Use Case Diagram]",
+                        "Requirements Modeling [Use Class Diagram]",
+                        "Requirements Modeling [Sequence Diagram]",
+                        "Requirements Modeling [Activity Diagram]",
+                        "Risk Assessment/Analysis"
                       ]
                     },
                     {
-                      "subtask": "4. Design",
+                      "subtask": "Design",
                       "elements": [
-                        "- Output and User-interface Design Forms",
-                        "- Data Design",
-                        "- System Architecture [Network Model]",
-                        "- System Architecture [Network Topology]",
-                        "- System Architecture [Network Security]"
+                        "Output and User-interface Design Forms",
+                        "Data Design",
+                        "System Architecture [Network Model]",
+                        "System Architecture [Network Topology]",
+                        "System Architecture [Network Security]"
                       ]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "7. Refine: Appendices",
+                  "task": "Refine: Appendices",
                   "subtasks": [
                     {
-                      "subtask": "1. Appendix A",
+                      "subtask": "Appendix A",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Appendix B",
+                      "subtask": "Appendix B",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Appendix C",
+                      "subtask": "Appendix C",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Appendix D",
+                      "subtask": "Appendix D",
                       "elements": []
                     },
                     {
-                      "subtask": "5. Appendix E",
+                      "subtask": "Appendix E",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "8. Manuscript Re-Submission:",
+                  "task": "Manuscript Re-Submission:",
                   "subtasks": [
                     {
-                      "subtask": "1. Chapter 1",
+                      "subtask": "Chapter 1",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Chapter 2",
+                      "subtask": "Chapter 2",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Chapter 3",
+                      "subtask": "Chapter 3",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Chapter 4",
+                      "subtask": "Chapter 4",
                       "elements": []
                     },
                     {
-                      "subtask": "5. Appendices",
+                      "subtask": "Appendices",
                       "elements": []
                     },
                     {
-                      "subtask": "6. AI and Plagiarism Check",
+                      "subtask": "AI and Plagiarism Check",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "9. Oral Re-Defense Preparation",
+                  "task": "Oral Re-Defense Preparation",
                   "subtasks": [
                     {
-                      "subtask": "1. Manuscript Final Review",
+                      "subtask": "Manuscript Final Review",
                       "elements": []
                     },
                     {
-                      "subtask": "2. PowerPoint Presentation",
+                      "subtask": "PowerPoint Presentation",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Mock Defense",
+                      "subtask": "Mock Defense",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Manuscript Printing",
+                      "subtask": "Manuscript Printing",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "10. Oral Re-Defense",
+                  "task": "Oral Re-Defense",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "11. Incorporate Panel Feedback Based on Oral Re-Defense",
+                  "task": "Incorporate Panel Feedback Based on Oral Re-Defense",
                   "subtasks": [],
                   "elements": []
                 }
               ]
             },
             {
-              "type": "2.Discussion & Review",
+              "type": "Discussion & Review",
               "tasks": [
                 {
-                  "task": "1. Capstone Meeting",
+                  "task": "Capstone Meeting",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "2. Adviser Consultation",
+                  "task": "Adviser Consultation",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "3. Interview User/ Client",
+                  "task": "Interview User/ Client",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "4. Client Feedback Session",
+                  "task": "Client Feedback Session",
                   "subtasks": [],
                   "elements": []
                 }
@@ -1316,51 +1301,48 @@
       "methodology": "Prototyping",
       "projectPhases": [
         {
-          "phase": "1.Quick Design",
+          "phase": "Quick Design",
           "taskTypes": [
             {
-              "type": "1.Documentation",
+              "type": "Documentation",
               "tasks": [
                 {
-                  "task": "1. Initial Prototype",
+                  "task": "Initial Prototype",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "2. Prepare: Chapter 1",
+                  "task": "Prepare: Chapter 1",
                   "subtasks": [
                     {
-                      "subtask": "1. Introduction",
+                      "subtask": "Introduction",
                       "elements": [
-                        "- Project Context",
-                        "- Background of the Study",
-                        "- Policies and Procedures",
-                        "- Users Position"
+                        "Project Context",
+                        "Background of the Study",
+                        "Policies and Procedures",
+                        "Users Position"
                       ]
                     },
                     {
-                      "subtask": "2. Objectives",
-                      "elements": [
-                        "- General Objectives",
-                        "- Specific Objectives"
-                      ]
+                      "subtask": "Objectives",
+                      "elements": ["General Objectives", "Specific Objectives"]
                     },
                     {
-                      "subtask": "3. Scope and Limitation",
-                      "elements": ["- Scope", "- Limitation"]
+                      "subtask": "Scope and Limitation",
+                      "elements": ["Scope", "Limitation"]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "3.Prepare: Chapter 2",
+                  "task": "Prepare: Chapter 2",
                   "subtasks": [
                     {
-                      "subtask": "1. Related Theories",
+                      "subtask": "Related Theories",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Related Literature",
+                      "subtask": "Related Literature",
                       "elements": []
                     }
                   ],
@@ -1371,98 +1353,98 @@
           ]
         },
         {
-          "phase": "2.Build Prototype",
+          "phase": "Build Prototype",
           "taskTypes": [
             {
-              "type": "1.Documentation",
+              "type": "Documentation",
               "tasks": [
                 {
-                  "task": "4.UI and Functionality Finalization",
+                  "task": "UI and Functionality Finalization",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "5.Prepare: Chapter 3",
+                  "task": "Prepare: Chapter 3",
                   "subtasks": [
                     {
-                      "subtask": "1. Implementation",
-                      "elements": ["- Hardware", "- Software", "- Peopleware"]
+                      "subtask": "Implementation",
+                      "elements": ["Hardware", "Software", "Peopleware"]
                     },
                     {
                       "subtask": "2. Development",
-                      "elements": ["- Hardware", "- Software", "- Peopleware"]
+                      "elements": ["Hardware", "Software", "Peopleware"]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "6.Prepare: Chapter 4",
+                  "task": "Prepare: Chapter 4",
                   "subtasks": [
                     {
-                      "subtask": "1. Methodology",
+                      "subtask": "Methodology",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Environment",
+                      "subtask": "Environment",
                       "elements": [
-                        "- Locale",
-                        "- Population of the Study",
-                        "- Organizational Chart/Profile"
+                        "Locale",
+                        "Population of the Study",
+                        "Organizational Chart/Profile"
                       ]
                     },
                     {
-                      "subtask": "3. Requirement Specification",
+                      "subtask": "Requirement Specification",
                       "elements": [
-                        "- Operational Feasibility [Fishbone Diagram]",
-                        "- Operational Feasibility [Functional Decomposition Diagram]",
-                        "- Technical Feasibility",
-                        "- Schedule Feasibility",
-                        "- Economic Feasibility",
-                        "- Requirements Modeling [Context Diagram]",
-                        "- Requirements Modeling [Data Flow Diagram]",
-                        "- Requirements Modeling [System Flowchart]",
-                        "- Requirements Modeling [Program Flowchart]",
-                        "- Requirements Modeling [Use Case Diagram]",
-                        "- Requirements Modeling [Use Class Diagram]",
-                        "- Requirements Modeling [Sequence Diagram]",
-                        "- Requirements Modeling [Activity Diagram]",
-                        "- Risk Assessment/Analysis"
+                        "Operational Feasibility [Fishbone Diagram]",
+                        "Operational Feasibility [Functional Decomposition Diagram]",
+                        "Technical Feasibility",
+                        "Schedule Feasibility",
+                        "Economic Feasibility",
+                        "Requirements Modeling [Context Diagram]",
+                        "Requirements Modeling [Data Flow Diagram]",
+                        "Requirements Modeling [System Flowchart]",
+                        "Requirements Modeling [Program Flowchart]",
+                        "Requirements Modeling [Use Case Diagram]",
+                        "Requirements Modeling [Use Class Diagram]",
+                        "Requirements Modeling [Sequence Diagram]",
+                        "Requirements Modeling [Activity Diagram]",
+                        "Risk Assessment/Analysis"
                       ]
                     },
                     {
-                      "subtask": "4. Design",
+                      "subtask": "Design",
                       "elements": [
-                        "- Output and User-interface Design Forms",
-                        "- Data Design",
-                        "- System Architecture [Network Model]",
-                        "- System Architecture [Network Topology]",
-                        "- System Architecture [Network Security]"
+                        "Output and User-interface Design Forms",
+                        "Data Design",
+                        "System Architecture [Network Model]",
+                        "System Architecture [Network Topology]",
+                        "System Architecture [Network Security]"
                       ]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "7.Prepare: Appendices",
+                  "task": "Prepare: Appendices",
                   "subtasks": [
                     {
-                      "subtask": "1. Appendix A",
+                      "subtask": "Appendix A",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Appendix B",
+                      "subtask": "Appendix B",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Appendix C",
+                      "subtask": "Appendix C",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Appendix D",
+                      "subtask": "Appendix D",
                       "elements": []
                     },
                     {
-                      "subtask": "5. Appendix E",
+                      "subtask": "Appendix E",
                       "elements": []
                     }
                   ],
@@ -1473,309 +1455,306 @@
           ]
         },
         {
-          "phase": "3.Initial User Evaluation",
+          "phase": "Initial User Evaluation",
           "taskTypes": [
             {
-              "type": "1.Documentation",
+              "type": "Documentation",
               "tasks": [
                 {
-                  "task": "1. Present Prototype to the Users",
+                  "task": "Present Prototype to the Users",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "2. Gather User/Client Feedback on Prototype Concept",
+                  "task": "Gather User/Client Feedback on Prototype Concept",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "3. Refinement of Requirements Based on Feedback",
+                  "task": "Refinement of Requirements Based on Feedback",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "4. Manuscript Submission:",
+                  "task": "Manuscript Submission:",
                   "subtasks": [
                     {
-                      "subtask": "1. Chapter 1",
+                      "subtask": "Chapter 1",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Chapter 2",
+                      "subtask": "Chapter 2",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Chapter 3",
+                      "subtask": "Chapter 3",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Chapter 4",
+                      "subtask": "Chapter 4",
                       "elements": []
                     },
                     {
-                      "subtask": "5. Appendices",
+                      "subtask": "Appendices",
                       "elements": []
                     },
                     {
-                      "subtask": "6. AI and Plagiarism Check",
+                      "subtask": "AI and Plagiarism Check",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "5. Oral Defense Preparation",
+                  "task": "Oral Defense Preparation",
                   "subtasks": [
                     {
-                      "subtask": "1.Manusript Final Review",
+                      "subtask": "Manuscript Final Review",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Prepare: PowerPoint Presentation",
+                      "subtask": "Prepare: PowerPoint Presentation",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Mock Defense",
+                      "subtask": "Mock Defense",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Manuscript Printing",
+                      "subtask": "Manuscript Printing",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "6. Oral Defense",
+                  "task": "Oral Defense",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "7. Refinement for Oral Re-Defense",
+                  "task": "Refinement for Oral Re-Defense",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "8. Incorporate Panel Feedback Based on Oral Defense",
+                  "task": "Incorporate Panel Feedback Based on Oral Defense",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "9. Refine: Chapter 1",
+                  "task": "Refine: Chapter 1",
                   "subtasks": [
                     {
-                      "subtask": "1. Introduction",
+                      "subtask": "Introduction",
                       "elements": [
-                        "- Project Context",
-                        "- Background of the Study",
-                        "- Policies and Procedures",
-                        "- Users Position"
+                        "Project Context",
+                        "Background of the Study",
+                        "Policies and Procedures",
+                        "Users Position"
                       ]
                     },
                     {
-                      "subtask": "2. Objectives",
-                      "elements": [
-                        "- General Objectives",
-                        "- Specific Objectives"
-                      ]
+                      "subtask": "Objectives",
+                      "elements": ["General Objectives", "Specific Objectives"]
                     },
                     {
-                      "subtask": "3. Scope and Limitation",
-                      "elements": ["- Scope", "- Limitation"]
+                      "subtask": "Scope and Limitation",
+                      "elements": ["Scope", "Limitation"]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "10. Refinement of UI & Functionalities",
+                  "task": "Refinement of UI & Functionalities",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "11. Refine: Chapter 2",
+                  "task": "Refine: Chapter 2",
                   "subtasks": [
                     {
-                      "subtask": "1. Related Theories",
+                      "subtask": "Related Theories",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Related Literature",
+                      "subtask": "Related Literature",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "12. Refine: Chapter 3",
+                  "task": "Refine: Chapter 3",
                   "subtasks": [
                     {
-                      "subtask": "1. Implementation",
-                      "elements": ["- Hardware", "- Software", "- Peopleware"]
+                      "subtask": "Implementation",
+                      "elements": ["Hardware", "Software", "Peopleware"]
                     },
                     {
-                      "subtask": "2. Development",
-                      "elements": ["- Hardware", "- Software", "- Peopleware"]
+                      "subtask": "Development",
+                      "elements": ["Hardware", "Software", "Peopleware"]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "13. Refine: Chapter 4",
+                  "task": "Refine: Chapter 4",
                   "subtasks": [
                     {
-                      "subtask": "1. Methodology",
+                      "subtask": "Methodology",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Environment",
+                      "subtask": "Environment",
                       "elements": [
-                        "- Locale",
-                        "- Population of the Study",
-                        "- Organizational Chart/Profile"
+                        "Locale",
+                        "Population of the Study",
+                        "Organizational Chart/Profile"
                       ]
                     },
                     {
-                      "subtask": "3. Requirement Specification",
+                      "subtask": "Requirement Specification",
                       "elements": [
-                        "- Operational Feasibility [Fishbone Diagram]",
-                        "- Operational Feasibility [Functional Decomposition Diagram]",
-                        "- Technical Feasibility",
-                        "- Schedule Feasibility",
-                        "- Economic Feasibility",
-                        "- Requirements Modeling [Context Diagram]",
-                        "- Requirements Modeling [Data Flow Diagram]",
-                        "- Requirements Modeling [System Flowchart]",
-                        "- Requirements Modeling [Program Flowchart]",
-                        "- Requirements Modeling [Use Case Diagram]",
-                        "- Requirements Modeling [Use Class Diagram]",
-                        "- Requirements Modeling [Sequence Diagram]",
-                        "- Requirements Modeling [Activity Diagram]",
-                        "- Risk Assessment/Analysis"
+                        "Operational Feasibility [Fishbone Diagram]",
+                        "Operational Feasibility [Functional Decomposition Diagram]",
+                        "Technical Feasibility",
+                        "Schedule Feasibility",
+                        "Economic Feasibility",
+                        "Requirements Modeling [Context Diagram]",
+                        "Requirements Modeling [Data Flow Diagram]",
+                        "Requirements Modeling [System Flowchart]",
+                        "Requirements Modeling [Program Flowchart]",
+                        "Requirements Modeling [Use Case Diagram]",
+                        "Requirements Modeling [Use Class Diagram]",
+                        "Requirements Modeling [Sequence Diagram]",
+                        "Requirements Modeling [Activity Diagram]",
+                        "Risk Assessment/Analysis"
                       ]
                     },
                     {
-                      "subtask": "4. Design",
+                      "subtask": "Design",
                       "elements": [
-                        "- Output and User-interface Design Forms",
-                        "- Data Design",
-                        "- System Architecture [Network Model]",
-                        "- System Architecture [Network Topology]",
-                        "- System Architecture [Network Security]"
+                        "Output and User-interface Design Forms",
+                        "Data Design",
+                        "System Architecture [Network Model]",
+                        "System Architecture [Network Topology]",
+                        "System Architecture [Network Security]"
                       ]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "14. Refine: Appendices",
+                  "task": "Refine: Appendices",
                   "subtasks": [
                     {
-                      "subtask": "1. Appendix A",
+                      "subtask": "Appendix A",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Appendix B",
+                      "subtask": "Appendix B",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Appendix C",
+                      "subtask": "Appendix C",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Appendix D",
+                      "subtask": "Appendix D",
                       "elements": []
                     },
                     {
-                      "subtask": "5. Appendix E",
+                      "subtask": "Appendix E",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "15. Manuscript Re-Submission:",
+                  "task": "Manuscript Re-Submission:",
                   "subtasks": [
                     {
-                      "subtask": "1. Chapter 1",
+                      "subtask": "Chapter 1",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Chapter 2",
+                      "subtask": "Chapter 2",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Chapter 3",
+                      "subtask": "Chapter 3",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Chapter 4",
+                      "subtask": "Chapter 4",
                       "elements": []
                     },
                     {
-                      "subtask": "5. Appendices",
+                      "subtask": "Appendices",
                       "elements": []
                     },
                     {
-                      "subtask": "6. AI and Plagiarism Check",
+                      "subtask": "AI and Plagiarism Check",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "16. Oral Re-Defense Preparation",
+                  "task": "Oral Re-Defense Preparation",
                   "subtasks": [
                     {
-                      "subtask": "1. Manuscript Final Review",
+                      "subtask": "Manuscript Final Review",
                       "elements": []
                     },
                     {
-                      "subtask": "2. PowerPoint Presentation",
+                      "subtask": "PowerPoint Presentation",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Mock Defense",
+                      "subtask": "Mock Defense",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Manuscript Printing",
+                      "subtask": "Manuscript Printing",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "17. Oral Re-Defense",
+                  "task": "Oral Re-Defense",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "18. Incorporate Panel Feedback Based on Oral Re-Defense",
+                  "task": "Incorporate Panel Feedback Based on Oral Re-Defense",
                   "subtasks": [],
                   "elements": []
                 }
               ]
             },
             {
-              "type": "2.Discussion & Review",
+              "type": "Discussion & Review",
               "tasks": [
                 {
-                  "task": "1. Capstone Meeting",
+                  "task": "Capstone Meeting",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "2. Adviser Consultation",
+                  "task": "Adviser Consultation",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "3. Interview User/ Client",
+                  "task": "Interview User/ Client",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "4. Gather User/Client Feedback on Prototype Concept",
+                  "task": "Gather User/Client Feedback on Prototype Concept",
                   "subtasks": [],
                   "elements": []
                 }
@@ -1789,454 +1768,448 @@
       "methodology": "Spiral",
       "projectPhases": [
         {
-          "phase": "1.Risk Analysis",
+          "phase": "Risk Analysis",
           "taskTypes": [
             {
-              "type": "1.Documentation",
+              "type": "Documentation",
               "tasks": [
                 {
-                  "task": "1. UI Design",
+                  "task": "UI Design",
                   "subtasks": [
                     {
-                      "subtask": "1. Initial UI Prototype",
+                      "subtask": "Initial UI Prototype",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Conduct Rapid UI Feedback Session",
+                      "subtask": "Conduct Rapid UI Feedback Session",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Iterate UI Prototype Based on User/Client Feedback",
+                      "subtask": "Iterate UI Prototype Based on User/Client Feedback",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "2. Prepare: Chapter 1",
+                  "task": "Prepare: Chapter 1",
                   "subtasks": [
                     {
-                      "subtask": "1. Introduction",
+                      "subtask": "Introduction",
                       "elements": [
-                        "- Project Context",
-                        "- Background of the Study",
-                        "- Policies and Procedures",
-                        "- Users Position"
+                        "Project Context",
+                        "Background of the Study",
+                        "Policies and Procedures",
+                        "Users Position"
                       ]
                     },
                     {
-                      "subtask": "2. Objectives",
-                      "elements": [
-                        "- General Objectives",
-                        "- Specific Objectives"
-                      ]
+                      "subtask": "Objectives",
+                      "elements": ["General Objectives", "Specific Objectives"]
                     },
                     {
-                      "subtask": "3. Scope and Limitation",
-                      "elements": ["- Scope", "- Limitation"]
+                      "subtask": "Scope and Limitation",
+                      "elements": ["Scope", "Limitation"]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "3.Prepare: Chapter 2",
+                  "task": "Prepare: Chapter 2",
                   "subtasks": [
                     {
-                      "subtask": "1. Related Theories",
+                      "subtask": "Related Theories",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Related Literature",
+                      "subtask": "Related Literature",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "4. UI and Functionality Finalization",
+                  "task": "UI and Functionality Finalization",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "5. Present Prototype to the Users",
+                  "task": "Present Prototype to the Users",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "6. Gather Feedback",
+                  "task": "Gather Feedback",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "7. Prepare: Chapter 3",
+                  "task": "Prepare: Chapter 3",
                   "subtasks": [
                     {
-                      "subtask": "1. Implementation",
-                      "elements": ["- Hardware", "- Software", "- Peopleware"]
+                      "subtask": "Implementation",
+                      "elements": ["Hardware", "Software", "Peopleware"]
                     },
                     {
-                      "subtask": "2. Development",
-                      "elements": ["- Hardware", "- Software", "- Peopleware"]
+                      "subtask": "Development",
+                      "elements": ["Hardware", "Software", "Peopleware"]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "8. Prepare: Chapter 4",
+                  "task": "Prepare: Chapter 4",
                   "subtasks": [
                     {
-                      "subtask": "1. Methodology",
+                      "subtask": "Methodology",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Environment",
+                      "subtask": "Environment",
                       "elements": [
-                        "- Locale",
-                        "- Population of the Study",
-                        "- Organizational Chart/Profile"
+                        "Locale",
+                        "Population of the Study",
+                        "Organizational Chart/Profile"
                       ]
                     },
                     {
-                      "subtask": "3. Requirement Specification",
+                      "subtask": "Requirement Specification",
                       "elements": [
-                        "- Operational Feasibility [Fishbone Diagram]",
-                        "- Operational Feasibility [Functional Decomposition Diagram]",
-                        "- Technical Feasibility",
-                        "- Schedule Feasibility",
-                        "- Economic Feasibility",
-                        "- Requirements Modeling [Context Diagram]",
-                        "- Requirements Modeling [Data Flow Diagram]",
-                        "- Requirements Modeling [System Flowchart]",
-                        "- Requirements Modeling [Program Flowchart]",
-                        "- Requirements Modeling [Use Case Diagram]",
-                        "- Requirements Modeling [Use Class Diagram]",
-                        "- Requirements Modeling [Sequence Diagram]",
-                        "- Requirements Modeling [Activity Diagram]",
-                        "- Risk Assessment/Analysis"
+                        "Operational Feasibility [Fishbone Diagram]",
+                        "Operational Feasibility [Functional Decomposition Diagram]",
+                        "Technical Feasibility",
+                        "Schedule Feasibility",
+                        "Economic Feasibility",
+                        "Requirements Modeling [Context Diagram]",
+                        "Requirements Modeling [Data Flow Diagram]",
+                        "Requirements Modeling [System Flowchart]",
+                        "Requirements Modeling [Program Flowchart]",
+                        "Requirements Modeling [Use Case Diagram]",
+                        "Requirements Modeling [Use Class Diagram]",
+                        "Requirements Modeling [Sequence Diagram]",
+                        "Requirements Modeling [Activity Diagram]",
+                        "Risk Assessment/Analysis"
                       ]
                     },
                     {
-                      "subtask": "4. Design",
+                      "subtask": "Design",
                       "elements": [
-                        "- Output and User-interface Design Forms",
-                        "- Data Design",
-                        "- System Architecture [Network Model]",
-                        "- System Architecture [Network Topology]",
-                        "- System Architecture [Network Security]"
+                        "Output and User-interface Design Forms",
+                        "Data Design",
+                        "System Architecture [Network Model]",
+                        "System Architecture [Network Topology]",
+                        "System Architecture [Network Security]"
                       ]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "9. .Prepare: Appendices",
+                  "task": "Prepare: Appendices",
                   "subtasks": [
                     {
-                      "subtask": "1. Appendix A",
+                      "subtask": "Appendix A",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Appendix B",
+                      "subtask": "Appendix B",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Appendix C",
+                      "subtask": "Appendix C",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Appendix D",
+                      "subtask": "Appendix D",
                       "elements": []
                     },
                     {
-                      "subtask": "5. Appendix E",
+                      "subtask": "Appendix E",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "10. Manuscript Submission:",
+                  "task": "Manuscript Submission:",
                   "subtasks": [
                     {
-                      "subtask": "1. Chapter 1",
+                      "subtask": "Chapter 1",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Chapter 2",
+                      "subtask": "Chapter 2",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Chapter 3",
+                      "subtask": "Chapter 3",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Chapter 4",
+                      "subtask": "Chapter 4",
                       "elements": []
                     },
                     {
-                      "subtask": "5. Appendices",
+                      "subtask": "Appendices",
                       "elements": []
                     },
                     {
-                      "subtask": "6. AI and Plagiarism Check",
+                      "subtask": "AI and Plagiarism Check",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "11. Oral Defense Preparation",
+                  "task": "Oral Defense Preparation",
                   "subtasks": [
                     {
-                      "subtask": "1.Manusript Final Review",
+                      "subtask": "Manuscript Final Review",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Prepare: PowerPoint Presentation",
+                      "subtask": "Prepare: PowerPoint Presentation",
                       "elements": []
                     },
                     {
-                      "subtask": "3.Mock Defense",
+                      "subtask": "Mock Defense",
                       "elements": []
                     },
                     {
-                      "subtask": "4.Manuscript Printing",
+                      "subtask": "Manuscript Printing",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "12. Oral Defense",
+                  "task": "Oral Defense",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "13. . Refinement for Oral Re-Defense",
+                  "task": "Refinement for Oral Re-Defense",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "14. Incorporate Panel Feedback Based on Oral Defense",
+                  "task": "Incorporate Panel Feedback Based on Oral Defense",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "15. . Refine: Chapter 1",
+                  "task": "Refine: Chapter 1",
                   "subtasks": [
                     {
-                      "subtask": "1. Introduction",
+                      "subtask": "Introduction",
                       "elements": [
-                        "- Project Context",
-                        "- Background of the Study",
-                        "- Policies and Procedures",
-                        "- Users Position"
+                        "Project Context",
+                        "Background of the Study",
+                        "Policies and Procedures",
+                        "Users Position"
                       ]
                     },
                     {
-                      "subtask": "2. Objectives",
-                      "elements": [
-                        "- General Objectives",
-                        "- Specific Objectives"
-                      ]
+                      "subtask": "Objectives",
+                      "elements": ["General Objectives", "Specific Objectives"]
                     },
                     {
-                      "subtask": "3. Scope and Limitation",
-                      "elements": ["- Scope", "- Limitation"]
+                      "subtask": "Scope and Limitation",
+                      "elements": ["Scope", "Limitation"]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "16. Refinement of UI Design & Functionalities",
+                  "task": "Refinement of UI Design & Functionalities",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "17. Refine: Chapter 2",
+                  "task": "Refine: Chapter 2",
                   "subtasks": [
                     {
-                      "subtask": "1. Related Theories",
+                      "subtask": "Related Theories",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Related Literature",
+                      "subtask": "Related Literature",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "18. Refine: Chapter 3",
+                  "task": "Refine: Chapter 3",
                   "subtasks": [
                     {
-                      "subtask": "1. Implementation",
-                      "elements": ["- Hardware", "- Software", "- Peopleware"]
+                      "subtask": "Implementation",
+                      "elements": ["Hardware", "Software", "Peopleware"]
                     },
                     {
-                      "subtask": "2. Development",
-                      "elements": ["- Hardware", "- Software", "- Peopleware"]
+                      "subtask": "Development",
+                      "elements": ["Hardware", "Software", "Peopleware"]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "19. Refine: Chapter 4",
+                  "task": "Refine: Chapter 4",
                   "subtasks": [
                     {
-                      "subtask": "1. Methodology",
+                      "subtask": "Methodology",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Environment",
+                      "subtask": "Environment",
                       "elements": [
-                        "- Locale",
-                        "- Population of the Study",
-                        "- Organizational Chart/Profile"
+                        "Locale",
+                        "Population of the Study",
+                        "Organizational Chart/Profile"
                       ]
                     },
                     {
-                      "subtask": "3. Requirement Specification",
+                      "subtask": "Requirement Specification",
                       "elements": [
-                        "- Operational Feasibility [Fishbone Diagram]",
-                        "- Operational Feasibility [Functional Decomposition Diagram]",
-                        "- Technical Feasibility",
-                        "- Schedule Feasibility",
-                        "- Economic Feasibility",
-                        "- Requirements Modeling [Context Diagram]",
-                        "- Requirements Modeling [Data Flow Diagram]",
-                        "- Requirements Modeling [System Flowchart]",
-                        "- Requirements Modeling [Program Flowchart]",
-                        "- Requirements Modeling [Use Case Diagram]",
-                        "- Requirements Modeling [Use Class Diagram]",
-                        "- Requirements Modeling [Sequence Diagram]",
-                        "- Requirements Modeling [Activity Diagram]",
-                        "- Risk Assessment/Analysis"
+                        "Operational Feasibility [Fishbone Diagram]",
+                        "Operational Feasibility [Functional Decomposition Diagram]",
+                        "Technical Feasibility",
+                        "Schedule Feasibility",
+                        "Economic Feasibility",
+                        "Requirements Modeling [Context Diagram]",
+                        "Requirements Modeling [Data Flow Diagram]",
+                        "Requirements Modeling [System Flowchart]",
+                        "Requirements Modeling [Program Flowchart]",
+                        "Requirements Modeling [Use Case Diagram]",
+                        "Requirements Modeling [Use Class Diagram]",
+                        "Requirements Modeling [Sequence Diagram]",
+                        "Requirements Modeling [Activity Diagram]",
+                        "Risk Assessment/Analysis"
                       ]
                     },
                     {
-                      "subtask": "4. Design",
+                      "subtask": "Design",
                       "elements": [
-                        "- Output and User-interface Design Forms",
-                        "- Data Design",
-                        "- System Architecture [Network Model]",
-                        "- System Architecture [Network Topology]",
-                        "- System Architecture [Network Security]"
+                        "Output and User-interface Design Forms",
+                        "Data Design",
+                        "System Architecture [Network Model]",
+                        "System Architecture [Network Topology]",
+                        "System Architecture [Network Security]"
                       ]
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "20. Refine: Appendices",
+                  "task": "Refine: Appendices",
                   "subtasks": [
                     {
-                      "subtask": "1. Appendix A",
+                      "subtask": "Appendix A",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Appendix B",
+                      "subtask": "Appendix B",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Appendix C",
+                      "subtask": "Appendix C",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Appendix D",
+                      "subtask": "Appendix D",
                       "elements": []
                     },
                     {
-                      "subtask": "5. Appendix E",
+                      "subtask": "Appendix E",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "21. Manuscript Re-Submission:",
+                  "task": "Manuscript Re-Submission:",
                   "subtasks": [
                     {
-                      "subtask": "1. Chapter 1",
+                      "subtask": "Chapter 1",
                       "elements": []
                     },
                     {
-                      "subtask": "2. Chapter 2",
+                      "subtask": "Chapter 2",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Chapter 3",
+                      "subtask": "Chapter 3",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Chapter 4",
+                      "subtask": "Chapter 4",
                       "elements": []
                     },
                     {
-                      "subtask": "5. Appendices",
+                      "subtask": "Appendices",
                       "elements": []
                     },
                     {
-                      "subtask": "6. AI and Plagiarism Check",
+                      "subtask": "AI and Plagiarism Check",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "22. Oral Re-Defense Preparation",
+                  "task": "Oral Re-Defense Preparation",
                   "subtasks": [
                     {
-                      "subtask": "1. Manuscript Final Review",
+                      "subtask": "Manuscript Final Review",
                       "elements": []
                     },
                     {
-                      "subtask": "2. PowerPoint Presentation",
+                      "subtask": "PowerPoint Presentation",
                       "elements": []
                     },
                     {
-                      "subtask": "3. Mock Defense",
+                      "subtask": "Mock Defense",
                       "elements": []
                     },
                     {
-                      "subtask": "4. Manuscript Printing",
+                      "subtask": "Manuscript Printing",
                       "elements": []
                     }
                   ],
                   "elements": []
                 },
                 {
-                  "task": "23. Oral Re-Defense",
+                  "task": "Oral Re-Defense",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "24. Incorporate Panel Feedback Based on Oral Re-Defense",
+                  "task": "Incorporate Panel Feedback Based on Oral Re-Defense",
                   "subtasks": [],
                   "elements": []
                 }
               ]
             },
             {
-              "type": "2.Discussion & Review",
+              "type": "Discussion & Review",
               "tasks": [
                 {
-                  "task": "1. Capstone Meeting",
+                  "task": "Capstone Meeting",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "2. Adviser Consultation",
+                  "task": "Adviser Consultation",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "3. Interview User/ Client",
+                  "task": "Interview User/ Client",
                   "subtasks": [],
                   "elements": []
                 },
                 {
-                  "task": "4. Client Feedback Session",
+                  "task": "Client Feedback Session",
                   "subtasks": [],
                   "elements": []
                 }

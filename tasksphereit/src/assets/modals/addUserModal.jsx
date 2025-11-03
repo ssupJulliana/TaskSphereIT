@@ -48,19 +48,7 @@ const AddUserModal = ({
 
           <div className="px-6 py-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-neutral-700">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  placeholder="Email Address"
-                  value={form.email}
-                  onChange={onChange("email")}
-                  className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
-                />
-              </div>
-
+              {/* Row 1: Last Name | ID Number */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700">
                   Last Name
@@ -82,7 +70,32 @@ const AddUserModal = ({
                   type="text"
                   placeholder="ID Number"
                   value={form.idNumber}
-                  onChange={onChange("idNumber")}
+                  onChange={(e) => {
+                    // Allow only digits and limit to 9
+                    const value = e.target.value.replace(/\D/g, ""); // remove non-numbers
+                    if (value.length <= 9) {
+                      onChange("idNumber")({ target: { value } });
+                    }
+                  }}
+                  className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
+                  inputMode="numeric"
+                  maxLength={9}
+                />
+                <p className="text-xs text-neutral-500 mt-1">
+                  Must be 9 Numbers Only.
+                </p>
+              </div>
+
+              {/* Row 2: First Name | Password */}
+              <div>
+                <label className="block text-sm font-medium text-neutral-700">
+                  First Name
+                </label>
+                <input
+                  type="text"
+                  placeholder="First Name"
+                  value={form.firstName}
+                  onChange={onChange("firstName")}
                   className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                 />
               </div>
@@ -99,62 +112,35 @@ const AddUserModal = ({
                 />
               </div>
 
+              {/* Row 3: Middle Initial | Role */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700">
-                  First Name
+                  Middle Initial
                 </label>
                 <input
                   type="text"
-                  placeholder="First Name"
-                  value={form.firstName}
-                  onChange={onChange("firstName")}
+                  placeholder="Middle Initial"
+                  value={form.middleName}
+                  onChange={onChange("middleName")}
                   className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
+                  maxLength={1}
                 />
               </div>
 
-              {/* Role (dynamic) */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700">
                   Role
                 </label>
-
-                {showLockedRole ? (
-                  // Locked / single option — show read-only input for clarity
-                  <input
-                    type="text"
-                    readOnly
-                    value={lockedRoleValue}
-                    className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-neutral-100 text-neutral-700"
-                    title="Role is fixed for this tab"
-                  />
-                ) : (
-                  <select
-                    value={form.role}
-                    onChange={onChange("role")}
-                    className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
-                  >
-                    {roleOptions.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-neutral-700">
-                  Middle Name
-                </label>
                 <input
                   type="text"
-                  placeholder="Middle Name"
-                  value={form.middleName}
-                  onChange={onChange("middleName")}
-                  className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
+                  readOnly
+                  value={form.role}
+                  className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-neutral-100 text-neutral-700"
+                  title="Role is fixed"
                 />
               </div>
 
+              {/* Error message */}
               {error && (
                 <div className="md:col-span-2 text-sm text-red-600">
                   {error}
@@ -176,7 +162,7 @@ const AddUserModal = ({
               onClick={handleSaveUser}
               disabled={
                 saving ||
-                !form.email.trim() ||
+                !form.idNumber.trim() ||
                 !form.firstName.trim() ||
                 !form.lastName.trim()
               }

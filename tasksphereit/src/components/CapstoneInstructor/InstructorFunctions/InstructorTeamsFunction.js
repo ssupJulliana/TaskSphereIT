@@ -76,75 +76,55 @@ export function useInstructorTeams() {
   }, []);
 
   // In your useInstructorTeams hook, add this function
-const transferTeamMember = async (memberUid, fromTeamId, toTeamId) => {
-  try {
-    // Get the teams
-    const fromTeam = teams.find(t => t.id === fromTeamId);
-    const toTeam = teams.find(t => t.id === toTeamId);
-    
-    if (!fromTeam || !toTeam) {
-      throw new Error("Team not found");
+  // Fix the transferTeamMember function in InstructorTeamsFunction.js
+  const transferTeamMember = async (memberUid, fromTeamId, toTeamId) => {
+    try {
+      // Get the teams - use team.id, not team.name
+      const fromTeam = teams.find((t) => t.id === fromTeamId);
+      const toTeam = teams.find((t) => t.id === toTeamId);
+
+      if (!fromTeam || !toTeam) {
+        throw new Error("Team not found");
+      }
+
+      // Remove member from current team - use memberUids, not name
+      const updatedFromMembers = fromTeam.memberUids.filter(
+        (uid) => uid !== memberUid
+      );
+
+      // Add member to new team - use memberUids, not name
+      const updatedToMembers = [...(toTeam.memberUids || []), memberUid];
+
+      // Update both teams in Firebase
+      await updateTeam(fromTeamId, {
+        memberUids: updatedFromMembers,
+        updatedAt: new Date().toISOString(),
+      });
+
+      await updateTeam(toTeamId, {
+        memberUids: updatedToMembers,
+        updatedAt: new Date().toISOString(),
+      });
+
+      return true;
+    } catch (error) {
+      console.error("Error transferring member:", error);
+      return false;
     }
+  };
 
-    // Get user details for the member being transferred
-    const memberUser = allUsers.find(u => (u.uid || u.id) === memberUid);
-    
-    if (!memberUser) {
-      throw new Error("Member user not found");
+  // Add this to your useInstructorTeams hook if you don't have it
+  const updateTeam = async (teamId, updates) => {
+    try {
+      // Replace with your actual Firebase update logic
+      const teamRef = doc(db, "teams", teamId);
+      await updateDoc(teamRef, updates);
+      return true;
+    } catch (error) {
+      console.error("Error updating team:", error);
+      return false;
     }
-
-    // Remove member from current team
-    const updatedFromMembers = (fromTeam.memberUids || []).filter(uid => uid !== memberUid);
-    const updatedFromMemberNames = (fromTeam.memberNames || []).filter(name => {
-      // Remove the transferred member from memberNames
-      return name !== memberUser.fullName;
-    });
-    
-    // Add member to new team
-    const updatedToMembers = [...(toTeam.memberUids || []), memberUid];
-    const updatedToMemberNames = [...(toTeam.memberNames || []), memberUser.fullName];
-
-    // Update BOTH teams in Firebase atomically using a batch
-    const batch = writeBatch(db);
-
-    // Update source team (remove member)
-    const fromTeamRef = doc(db, "teams", fromTeamId);
-    batch.update(fromTeamRef, {
-      memberUids: updatedFromMembers,
-      memberNames: updatedFromMemberNames,
-      updatedAt: serverTimestamp()
-    });
-
-    // Update destination team (add member)
-    const toTeamRef = doc(db, "teams", toTeamId);
-    batch.update(toTeamRef, {
-      memberUids: updatedToMembers,
-      memberNames: updatedToMemberNames,
-      updatedAt: serverTimestamp()
-    });
-
-    // Commit both updates atomically
-    await batch.commit();
-
-    return true;
-  } catch (error) {
-    console.error("Error transferring member:", error);
-    return false;
-  }
-};
-
-// Add this to your useInstructorTeams hook if you don't have it
-const updateTeam = async (teamId, updates) => {
-  try {
-    // Replace with your actual Firebase update logic
-    const teamRef = doc(db, 'teams', teamId);
-    await updateDoc(teamRef, updates);
-    return true;
-  } catch (error) {
-    console.error("Error updating team:", error);
-    return false;
-  }
-};
+  };
 
   /* === computed === */
   const assignedMemberUids = useMemo(

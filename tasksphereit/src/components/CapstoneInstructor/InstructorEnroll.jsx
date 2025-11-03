@@ -103,8 +103,9 @@ const InstructorEnroll = () => {
     firstName: "",
     middleName: "",
     idNumber: "",
-    role: "Adviser",
+    role: selectedTab === "Adviser" ? "Adviser" : "Member",
   });
+
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -236,20 +237,55 @@ const InstructorEnroll = () => {
   const handleSaveUser = async () => {
     setError("");
     setSaving(true);
+
     try {
-      if (editingId) {
+      const trimmedIdNumber = form.idNumber.trim();
+
+      // ✅ Duplicate check (only for adding new user)
+      if (!editingId) {
+        const usersRef = collection(db, "users");
+        const qy = query(usersRef, where("idNumber", "==", trimmedIdNumber));
+        const snap = await getDocs(qy);
+
+        if (!trimmedIdNumber) {
+          setError("ID Number is required.");
+          setSaving(false);
+          return;
+        }
+
+        if (!form.firstName.trim() || !form.lastName.trim()) {
+          setError("Please fill in all required fields.");
+          setSaving(false);
+          return;
+        }
+
+        if (!snap.empty) {
+          setError("ID Number already exists. Please use a unique ID Number.");
+          setSaving(false);
+          return;
+        }
+
+        // ✅ Generate random Gmail address based on selected tab
+        const randomNumber = Math.floor(10000 + Math.random() * 90000);
+        const prefix = selectedTab === "Adviser" ? "adviser" : "student";
+        const generatedEmail = `${prefix}${randomNumber}@gmail.com`;
+
+        // Create user with generated email
+        await createUser({ ...form, email: generatedEmail });
+      } else {
+        // ✅ Update existing user (no duplicate check)
         const payload = {
-          email: form.email.trim(),
+          email: form.email || "",
           lastName: form.lastName.trim(),
           firstName: form.firstName.trim(),
           middleName: form.middleName.trim(),
-          idNumber: form.idNumber.trim(),
+          idNumber: trimmedIdNumber,
           role: form.role,
         };
         await updateDoc(doc(db, "users", editingId), payload);
-      } else {
-        await createUser({ ...form });
       }
+
+      // ✅ Reset after successful save
       setForm({
         id: "",
         email: "",
@@ -262,8 +298,8 @@ const InstructorEnroll = () => {
       setEditingId(null);
       setOpenAddUserModal(false);
     } catch (e) {
-      setError(e.message);
-      throw e; // Re-throw to be caught by modal
+      console.error(e);
+      setError("Error saving user. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -816,15 +852,17 @@ const InstructorEnroll = () => {
               type="button"
               onClick={() => {
                 setEditingId(null);
-                setForm((f) => ({
-                  ...f,
-                  role:
-                    selectedTab === "Adviser"
-                      ? "Adviser"
-                      : STUDENT_ROLES.includes(f.role)
-                      ? f.role
-                      : "Project Manager",
-                }));
+                // Reset all input fields to blank when opening modal
+                setForm({
+                  id: "",
+                  email: "",
+                  idNumber: "",
+                  firstName: "",
+                  middleName: "",
+                  lastName: "",
+                  role: selectedTab === "Adviser" ? "Adviser" : "Member", // default to Member
+                });
+                setError("");
                 setOpenAddUserModal(true);
               }}
               className="w-full h-full focus:outline-none"
