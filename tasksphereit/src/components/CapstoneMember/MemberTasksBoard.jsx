@@ -1,5 +1,6 @@
 // src/components/CapstoneMember/MemberTasksBoard.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import {
   LayoutList,
   StickyNote,
@@ -152,32 +153,37 @@ function Field({ label, value }) {
 function ChatBubble({ m, meUid, onEdit, onDelete, editingId, setEditingId }) {
   const mine = m.sender?.uid === meUid;
   const [editText, setEditText] = useState(m.text);
-  const base =
-    "max-w-[80%] px-3 py-2 rounded-lg text-sm leading-snug shadow border border-neutral-200";
   const isEditing = editingId === m.id && mine;
 
-  return (
-    <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`${base} ${mine ? "bg-[#F9F5F4]" : "bg-white"}`}
-        title={
-          m.createdAt?.toDate?.() ? m.createdAt.toDate().toLocaleString() : ""
-        }
-      >
-        <div className="text-xs text-neutral-500 mb-1">
-          {m.role || m.sender?.name || "Someone"}
-          {m.editedAt?.toDate?.() && <span className="ml-1">(edited)</span>}
-        </div>
+  const timestamp = m.createdAt?.toDate?.()
+    ? m.createdAt.toDate().toLocaleString()
+    : "";
 
+  return (
+    <div
+      className={`w-full p-3 border border-neutral-200 rounded-lg shadow-sm bg-white ${
+        mine ? "ml-auto" : ""
+      }`}
+    >
+      {/* Header */}
+      <div className="flex justify-between items-center mb-1">
+        <span className="text-[14px] font-semibold text-neutral-800">
+          {m.sender?.name || "Unknown User"}
+        </span>
+        <span className="text-[12px] text-neutral-500">{timestamp}</span>
+      </div>
+
+      {/* Message Text */}
+      <div className="text-[14px] text-neutral-700 whitespace-pre-wrap">
         {isEditing ? (
           <>
             <textarea
-              className="w-full text-sm border border-neutral-300 rounded p-2"
+              className="w-full border border-neutral-300 rounded p-2 text-sm"
               rows={3}
               value={editText}
               onChange={(e) => setEditText(e.target.value)}
             />
-            <div className="mt-2 text-xs flex gap-3">
+            <div className="mt-2 flex gap-3 text-sm">
               <button
                 onClick={() => {
                   onEdit(m.id, editText);
@@ -196,31 +202,24 @@ function ChatBubble({ m, meUid, onEdit, onDelete, editingId, setEditingId }) {
             </div>
           </>
         ) : (
-          <>
-            <div className="text-neutral-800 whitespace-pre-wrap">
-              {m.text || (
-                <span className="italic text-neutral-500">[no text]</span>
-              )}
-            </div>
-            {mine && !m.__optimistic && (
-              <div className="mt-1 text-xs text-neutral-500 flex gap-4">
-                <button
-                  onClick={() => setEditingId(m.id)}
-                  className="hover:underline cursor-pointer"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => onDelete(m.id)}
-                  className="hover:underline cursor-pointer"
-                >
-                  Delete
-                </button>
-              </div>
-            )}
-          </>
+          m.text
         )}
       </div>
+
+      {/* Edit/Delete */}
+      {mine && !isEditing && (
+        <div className="mt-2 flex gap-3 text-[13px] text-[#6A0F14]">
+          <button
+            onClick={() => setEditingId(m.id)}
+            className="hover:underline"
+          >
+            Edit
+          </button>
+          <button onClick={() => onDelete(m.id)} className="hover:underline">
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -547,7 +546,7 @@ function DetailView({ me, card, onBack }) {
                     : "text-neutral-500 hover:text-neutral-800"
                 }`}
               >
-                Conversation
+                Comments
               </button>
               <button
                 onClick={() => setTab("attachments")}
@@ -618,25 +617,7 @@ function DetailView({ me, card, onBack }) {
                       </div>
                     )}
 
-                    <div className="flex items-center gap-2 absolute right-3 bottom-3">
-                      <button
-                        onClick={() => {
-                          const input = document.createElement("input");
-                          input.type = "file";
-                          input.multiple = true;
-                          input.onchange = (e) => {
-                            const files = Array.from(e.target.files || []);
-                            if (files.length) {
-                              setPendingFiles((prev) => [...prev, ...files]);
-                            }
-                          };
-                          input.click();
-                        }}
-                        className="p-1.5 rounded hover:bg-neutral-100 cursor-pointer"
-                        title="Attach"
-                      >
-                        <Paperclip className="w-4 h-4" />
-                      </button>
+                    <div className="mt-3 flex justify-end">
                       <button
                         onClick={send}
                         disabled={sending}
@@ -657,7 +638,7 @@ function DetailView({ me, card, onBack }) {
 
               <div
                 ref={listRef}
-                className="px-4 pb-4 max-h-[360px] overflow-y-auto space-y-3"
+                className="p-4 max-h-[400px] overflow-y-auto space-y-4 bg-[#fafafa] border-t border-neutral-200"
               >
                 {messages.length === 0 ? (
                   <div className="text-sm text-neutral-600">
@@ -762,7 +743,25 @@ export default function MemberTasksBoard() {
   const [cards, setCards] = useState([]);
   const [selected, setSelected] = useState(null);
 
-  // Identify user
+  const location = useLocation();
+
+  const unsubsRef = useRef([]); // array of unsubscribe functions
+
+  // auto-open when navigated with state
+  useEffect(() => {
+    if (location.state?.selectedTask) {
+      setSelected({
+        ...location.state.selectedTask,
+        _collection: location.state.selectedTask.sourceColl,
+      });
+      // clear history state to avoid re-opening on back/refresh
+      try {
+        window.history.replaceState({}, document.title);
+      } catch (e) {}
+    }
+  }, [location.state]);
+
+  // identify user
   useEffect(() => {
     const stop = onAuthStateChanged(auth, async (u) => {
       const uid = u?.uid || localStorage.getItem("uid") || "";
@@ -786,19 +785,16 @@ export default function MemberTasksBoard() {
         photoURL: profile?.photoURL || null,
       });
     });
-    return () => stop();
+    return () => typeof stop === "function" && stop();
   }, []);
 
-  // Subscribe tasks across the three collections and keep only ones assigned to me.
-  const unsubsRef = useRef([]);
+  // subscribe to task collections when me.uid becomes available
   useEffect(() => {
+    // clear any previous listeners first
     unsubsRef.current.forEach((u) => typeof u === "function" && u());
     unsubsRef.current = [];
 
-    if (!me?.uid) {
-      setCards([]);
-      return;
-    }
+    if (!me?.uid) return;
 
     const mineUid = me.uid;
     const store = {
@@ -806,7 +802,6 @@ export default function MemberTasksBoard() {
       oralDefenseTasks: new Map(),
       finalDefenseTasks: new Map(),
     };
-
     const normalize = (collectionName, d) => {
       const x = d.data();
       const created =

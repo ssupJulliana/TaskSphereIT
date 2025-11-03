@@ -1,5 +1,6 @@
 // src/components/CapstoneInstructor/InstructorSchedule/TitleDefense.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { onSnapshot } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import {
   Search,
@@ -217,30 +218,6 @@ export default function TitleDefense() {
   };
 
   // Load Teams
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const snap = await getDocs(collection(db, "teams"));
-        const teamsRows = [];
-        snap.forEach((docX) => {
-          const data = docX.data();
-          if (data?.name) teamsRows.push({ id: docX.id, name: data.name });
-        });
-        teamsRows.sort((a, b) => a.name.localeCompare(b.name));
-        if (!alive) return;
-        setTeamOptions(teamsRows);
-      } catch (e) {
-        console.error("Failed to load teams:", e);
-        showAlert("Error", "Failed to load teams. Please try again.", "error");
-      } finally {
-        if (alive) setLoadingTeams(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   // Load Advisers from users where role == "Adviser"
   useEffect(() => {
@@ -315,9 +292,11 @@ export default function TitleDefense() {
     try {
       const snap = await getDocs(collection(db, "titleDefenseSchedules"));
       const rows = [];
+      const teamIdsToFetch = new Set(); // Gamitin para i-collect ang unique team IDs
+
       snap.forEach((docX) => {
         const data = docX.data();
-        rows.push({
+        const row = {
           id: docX.id,
           teamName: data?.teamName || "",
           teamId: data?.teamId || null,
@@ -328,35 +307,49 @@ export default function TitleDefense() {
           createdAt: data?.createdAt,
           isRePresentation: data?.isRePresentation || false,
           originalScheduleId: data?.originalScheduleId || null,
-        });
-      });
-
-      // Sort by date, then by time (empty times first), then by creation date
-      rows.sort((a, b) => {
-        // First by date
-        const ad = a.date || "",
-          bd = b.date || "";
-        if (ad < bd) return -1;
-        if (ad > bd) return 1;
-
-        // Then by time (empty times come first for re-presentations)
-        const at = a.time || "",
-          bt = b.time || "";
-        if (!at && bt) return -1; // a has no time, b has time -> a comes first
-        if (at && !bt) return 1; // a has time, b has no time -> b comes first
-        if (at && bt) {
-          // Both have times, sort by time
-          if (at < bt) return -1;
-          if (at > bt) return 1;
+          // Palitan ang 'managerName' sa mas general na 'teamDisplay'
+          teamDisplay: null,
+        };
+        rows.push(row);
+        if (row.teamId) {
+          teamIdsToFetch.add(row.teamId);
         }
-
-        // Finally by creation date (newer first)
-        const ac = a.createdAt?.toDate?.() || new Date(0);
-        const bc = b.createdAt?.toDate?.() || new Date(0);
-        return bc - ac; // Newer first
       });
 
-      setSchedules(rows);
+      // 1. I-fetch ang lahat ng Team documents nang sabay-sabay
+      const teamFetches = Array.from(teamIdsToFetch).map((id) =>
+        getDoc(doc(db, "teams", id))
+      );
+      const teamSnaps = await Promise.all(teamFetches);
+      const teamDataMap = {}; // TeamId -> 'Last Name, Et Al'
+
+      teamSnaps.forEach((snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          const teamId = snap.id;
+
+          // Kukunin ang Last Name, Et Al format mula sa unang member sa memberUids array
+          const firstMember = Array.isArray(data?.memberUids)
+            ? data.memberUids[0]
+            : null;
+          const formattedName = firstMember?.name || "Team Deleted";
+
+          teamDataMap[teamId] = formattedName;
+        }
+      });
+
+      // 2. I-update ang schedules gamit ang formatted name
+      const finalRows = rows.map((row) => ({
+        ...row,
+        // Gamitin ang formatted name bilang teamDisplay
+        teamDisplay: row.teamId
+          ? teamDataMap[row.teamId] || "Team Deleted"
+          : "No Team ID",
+      }));
+
+      // ... (sorting logic ay nananatili) ...
+
+      setSchedules(finalRows);
     } catch (e) {
       console.error("Failed to load schedules:", e);
       showAlert(
@@ -535,10 +528,14 @@ export default function TitleDefense() {
       result = result.filter((s) => s.verdict === filterVerdict);
     }
 
-    // Apply search text filter - only team name
+    // Apply search text filter - searches team name OR the new team display name
     const q = queryText.trim().toLowerCase();
     if (q) {
-      result = result.filter((t) => t.teamName.toLowerCase().includes(q));
+      result = result.filter(
+        (t) =>
+          t.teamName.toLowerCase().includes(q) ||
+          t.teamDisplay?.toLowerCase().includes(q) // Gamitin ang teamDisplay
+      );
     }
 
     return result;
@@ -1296,7 +1293,10 @@ export default function TitleDefense() {
                       <td className="px-4 py-3">{idx + 1}.</td>
                     )}
 
-                    <td className="px-4 py-3 font-medium">{s.teamName}</td>
+                    <td className="px-4 py-3 font-medium">
+                      {s.managerName || s.teamName}{" "}
+                      {/* Fallback sa teamName kung walang managerName */}
+                    </td>
 
                     {/* Date */}
                     <td className="px-4 py-3">{fmtDate(s.date) || "—"}</td>

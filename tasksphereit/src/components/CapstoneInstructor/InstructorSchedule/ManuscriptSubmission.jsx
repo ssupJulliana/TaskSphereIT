@@ -312,7 +312,7 @@ export default function ManuscriptSubmission() {
             teamName: teamName,
             title: "", // Empty title to be filled later
             date: currentDate.toISOString().split("T")[0], // Current date as default
-            time: currentDate.toTimeString().slice(0, 5), // Current time as default
+            duetime: currentDate.toTimeString().slice(0, 5), // CHANGED: using 'duetime' field instead of 'time'
             plag: 0,
             ai: 0,
             file: "—",
@@ -348,7 +348,7 @@ export default function ManuscriptSubmission() {
             teamName: d?.teamName || "",
             title: d?.title || "",
             date: d?.date || "",
-            time: d?.time || "",
+            duetime: d?.duetime || "", // CHANGED: using 'duetime' field instead of 'time'
             plag: Number(d?.plag ?? 0),
             ai: Number(d?.ai ?? 0),
             file: d?.file || "—",
@@ -370,8 +370,8 @@ export default function ManuscriptSubmission() {
         if (ad > bd) return 1;
 
         // Then by time (empty times come first for re-submissions)
-        const at = a.time || "",
-          bt = b.time || "";
+        const at = a.duetime || "",
+          bt = b.duetime || "";
         if (!at && bt) return -1; // a has no time, b has time -> a comes first
         if (at && !bt) return 1; // a has time, b has no time -> b comes first
         if (at && bt) {
@@ -434,7 +434,7 @@ export default function ManuscriptSubmission() {
         showAlert("Required Field", "Please select a date.", "warning");
         return;
       }
-      if (!updatedData.time) {
+      if (!updatedData.duetime) {
         showAlert("Required Field", "Please select a time.", "warning");
         return;
       }
@@ -446,7 +446,7 @@ export default function ManuscriptSubmission() {
         teamId,
         teamName: updatedData.teamName,
         date: updatedData.date,
-        time: updatedData.time,
+        duetime: updatedData.duetime, // CHANGED: using 'duetime' field instead of 'time'
       };
 
       await updateDoc(doc(db, COLLECTION, submissionId), payload);
@@ -457,7 +457,7 @@ export default function ManuscriptSubmission() {
         teamId,
         teamName: updatedData.teamName,
         date: updatedData.date,
-        time: updatedData.time,
+        time: updatedData.duetime,
       });
 
       setEditingId(null);
@@ -478,7 +478,7 @@ export default function ManuscriptSubmission() {
         teamName: originalSubmission.teamName,
         title: originalSubmission.title || "",
         date: "", // Empty date for re-submission
-        time: "", // Empty time for re-submission
+        duetime: "", // CHANGED: using 'duetime' field instead of 'time'
         plag: 0,
         ai: 0,
         verdict: "Pending",
@@ -542,7 +542,7 @@ export default function ManuscriptSubmission() {
 
   // Check if verdict can be edited (date must be passed)
   const canEditVerdict = (submission) => {
-    return isDatePassed(submission.date, submission.time);
+    return isDatePassed(submission.date, submission.duetime);
   };
 
   // Check if submission details can be edited (verdict must not be "Passed")
@@ -828,7 +828,7 @@ export default function ManuscriptSubmission() {
         s.teamName || "",
         s.title || "",
         fmtDateHuman(s.date) || "",
-        to12h(s.time) || "",
+        to12h(s.duetime) || "", // CHANGED: using 'duetime' field
         `${Number(s.plag || 0)}%`,
         `${Number(s.ai || 0)}%`,
         s.verdict || "",
@@ -904,7 +904,7 @@ export default function ManuscriptSubmission() {
     const [editedData, setEditedData] = useState({
       teamName: submission.teamName || "",
       date: submission.date || "",
-      time: submission.time || "",
+      duetime: submission.duetime || "", // CHANGED: using 'duetime' field
     });
 
     const canEdit = canEditSubmission(submission);
@@ -949,9 +949,9 @@ export default function ManuscriptSubmission() {
         <td className="px-4 py-3">
           <div className="relative">
             <select
-              value={editedData.time}
+              value={editedData.duetime} // CHANGED: using 'duetime' field
               onChange={(e) =>
-                setEditedData((prev) => ({ ...prev, time: e.target.value }))
+                setEditedData((prev) => ({ ...prev, duetime: e.target.value }))
               }
               disabled={!canEdit}
               className={`w-full appearance-none pr-8 pl-2 py-1 rounded border text-sm ${
@@ -1302,7 +1302,7 @@ export default function ManuscriptSubmission() {
                     <td className="px-4 py-3">{fmtDateHuman(s.date) || "—"}</td>
 
                     {/* Time */}
-                    <td className="px-4 py-3">{to12h(s.time) || "—"}</td>
+                    <td className="px-4 py-3">{to12h(s.duetime) || "—"}</td>
 
                     {/* Plagiarism */}
                     <td
@@ -1485,7 +1485,7 @@ function ViewTeamDialog({ schedule, onClose }) {
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[760px] max-w-[92vw]">
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y/1/2 w-[760px] max-w-[92vw]">
         <div className="rounded-2xl bg-white border border-neutral-200 shadow-2xl focus:outline-none p-0">
           {/* header */}
           <div className="px-6 pt-5 pb-3">

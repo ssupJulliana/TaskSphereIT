@@ -33,484 +33,110 @@ import {
 /* ===== Supabase ===== */
 import { supabase } from "../../../config/supabase";
 
+/* ===== JSON options (keeps your data-driven dropdowns) ===== */
+import OPTIONS_JSON from "../methodologyContents/oralDefense.json";
+
 const MAROON = "#6A0F14";
 const TASKS_COLLECTION = "oralDefenseTasks";
 
-/* ---------- small UI helpers (match FinalDefense look) ---------- */
-const ModeSwitch = ({ mode, setMode }) => (
-  <div className="inline-flex rounded-md border border-neutral-300 overflow-hidden">
-    <button
-      onClick={() => setMode("team")}
-      className={`px-3 py-1.5 text-sm font-medium ${
-        mode === "team" ? "text-white" : "text-neutral-700"
-      }`}
-      style={{ background: mode === "team" ? MAROON : "white" }}
-    >
-      Team
-    </button>
-    <button
-      onClick={() => setMode("adviser")}
-      className={`px-3 py-1.5 text-sm font-medium border-l border-neutral-300 ${
-        mode === "adviser" ? "text-white" : "text-neutral-700"
-      }`}
-      style={{ background: mode === "adviser" ? MAROON : "white" }}
-    >
-      Adviser Tasks
-    </button>
-  </div>
-);
+/* -----------------------------------------------------------
+   Build indexes from JSON (methodologies → phases → types → tasks → subtasks → elements)
+----------------------------------------------------------- */
+function buildIndexesFromJSON(json) {
+  const root = json?.oralDefense || [];
 
-const StatusBadge = ({ value, isEditable, onChange }) => {
-  const statusColors = {
-    "To Do": "bg-[#D9A81E] text-white",
-    "To Review": "bg-[#6FA8DC] text-white",
-    "In Progress": "bg-[#7C9C3B] text-white",
-    Completed: "bg-[#6A0F14] text-white",
-  };
+  const METHODOLOGIES = [];
+  const PHASE_OPTIONS = {};
+  const TASK_SEEDS = {};
+  const SUBTASKS = {};
+  const ELEMENTS = {};
 
-  if (!value || value === "--") return <span>--</span>;
+  for (const m of root) {
+    const mName = String(m?.methodology || "").trim();
+    if (!mName) continue;
 
-  return isEditable ? (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-medium border-none bg-white shadow-md cursor-pointer"
-    >
-      {Object.keys(statusColors).map((status) => (
-        <option
-          key={status}
-          value={status}
-          className={`${statusColors[status]}`}
-        >
-          {status}
-        </option>
-      ))}
-    </select>
-  ) : (
-    <span
-      className={`inline-flex items-center px-3 py-1 rounded-full text-[12px] font-medium ${
-        statusColors[value] || "bg-neutral-200"
-      }`}
-    >
-      {value}
-    </span>
+    METHODOLOGIES.push(mName);
+    PHASE_OPTIONS[mName] = [];
+    TASK_SEEDS[mName] = {};
+    SUBTASKS[mName] = {};
+    ELEMENTS[mName] = {};
+
+    const phases = Array.isArray(m.projectPhases) ? m.projectPhases : [];
+    for (const p of phases) {
+      const phaseName = String(p?.phase || "").trim();
+      if (phaseName) PHASE_OPTIONS[mName].push(phaseName);
+
+      const types = Array.isArray(p?.taskTypes) ? p.taskTypes : [];
+      for (const tt of types) {
+        const tType = String(tt?.type || "").trim();
+        if (!tType) continue;
+
+        if (!TASK_SEEDS[mName][tType]) TASK_SEEDS[mName][tType] = [];
+
+        const tasks = Array.isArray(tt?.tasks) ? tt.tasks : [];
+        for (const t of tasks) {
+          const taskName = String(t?.task || "").trim();
+          if (!taskName) continue;
+
+          if (!TASK_SEEDS[mName][tType].includes(taskName)) {
+            TASK_SEEDS[mName][tType].push(taskName);
+          }
+
+          const subtasksArr = Array.isArray(t?.subtasks) ? t.subtasks : [];
+          if (!SUBTASKS[mName][taskName]) SUBTASKS[mName][taskName] = [];
+          for (const s of subtasksArr) {
+            const sName = String(s?.subtask || "").trim();
+            if (!sName) continue;
+            if (!SUBTASKS[mName][taskName].includes(sName)) {
+              SUBTASKS[mName][taskName].push(sName);
+            }
+            const els = Array.isArray(s?.elements) ? s.elements : [];
+            if (els.length) {
+              ELEMENTS[mName][sName] = els.map((e) => String(e));
+            }
+          }
+
+          const taskEls = Array.isArray(t?.elements) ? t.elements : [];
+          if (taskEls.length) {
+            if (!ELEMENTS[mName][taskName]) {
+              ELEMENTS[mName][taskName] = taskEls.map((e) => String(e));
+            }
+            if (!SUBTASKS[mName][taskName]?.includes(taskName)) {
+              SUBTASKS[mName][taskName]?.push(taskName);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  const FIXED_PHASE = Object.fromEntries(
+    Object.entries(PHASE_OPTIONS).map(([k, arr]) => [
+      k,
+      arr.length === 1 ? arr[0] : null,
+    ])
   );
-};
 
-const RevisionSelect = ({ value, onChange, disabled }) => (
-  <select
-    className={`text-[12px] leading-tight font-medium border border-neutral-300 rounded-lg px-2.5 py-0.5 bg-white ${
-      disabled ? "opacity-60 cursor-not-allowed" : ""
-    }`}
-    value={value}
-    onChange={(e) => onChange(e.target.value)}
-    disabled={disabled}
-  >
-    <option>No Revision</option>
-    <option>Revision 1</option>
-    <option>Revision 2</option>
-    <option>Revision 3</option>
-  </select>
-);
-
-/* -------------------- CASCADING OPTIONS (from spec) -------------------- */
-
-// 1) Methodology list (labels shown in the UI)
-const METHODOLOGIES = [
-  "Agile",
-  "Extreme Programming",
-  "Rapid Application Development (RAD)",
-  "Prototyping",
-  "Spiral",
-];
-
-const PHASE_OPTIONS = {
-  Agile: ["Design"],
-  "Extreme Programming": ["Design"],
-  "Rapid Application Development (RAD)": ["Design"],
-  Prototyping: ["Quick Design", "Build Prototype", "Initial User Evaluation"],
-  Spiral: ["Quick Analysis"],
-};
-
-// 2) Fixed Project Phase per methodology (Oral Defense)
-const FIXED_PHASE = Object.fromEntries(
-  Object.entries(PHASE_OPTIONS).map(([k, arr]) => [
-    k,
-    arr.length === 1 ? arr[0] : null,
-  ])
-);
-
-// 3) Task options (Task Type -> Task) per methodology
-const TASK_SEEDS = {
-  Agile: {
-    Documentation: [
-      "UI Design & Functionalities",
-      "Prepare: Chapter 1",
-      "Prepare: Chapter 2",
-      "Prepare: Chapter 3 (Implementation)",
-      "Prepare: Chapter 3 (Development)",
-      "Prepare: Chapter 4 (Methodology/Environment/Locale/Population/Org Chart/Requirement Spec)",
-      "Prepare: Appendices",
-      "Manuscript Submission:",
-      "Oral Defense Preparation",
-      "Oral Defense",
-      "Refinement for Oral Re-Defense",
-      "Refine: Chapter 1",
-      "Refine: Chapter 2",
-      "Refine: Chapter 3",
-      "Refine: Chapter 4",
-      "Refine: Appendices",
-      "Manuscript Re- Submission:",
-      "Oral Re-Defense Preparation",
-      "Oral Re-Defense",
-    ],
-    "Discussion & Review": [
-      "Capstone Meeting",
-      "Adviser Consultation",
-      "Interview User/Client",
-      "Gather Feedback from the User/Client",
-    ],
-  },
-
-  "Extreme Programming": {
-    Documentation: [
-      "UI Design & Functionalities",
-      "Prepare: Chapter 1",
-      "Prepare: Chapter 2",
-      "Prepare: Chapter 3 (Implementation)",
-      "Prepare: Chapter 3 (Development)",
-      "Prepare: Chapter 4 (Methodology/Environment/Locale/Population/Org Chart/Requirement Spec)",
-      "Prepare: Appendices",
-      "Manuscript Submission:",
-      "Oral Defense Preparation",
-      "Oral Defense",
-      "Refinement for Oral Re-Defense",
-      "Refine: Chapter 1",
-      "Refine: Chapter 2",
-      "Refine: Chapter 3",
-      "Refine: Chapter 4",
-      "Refine: Appendices",
-      "Manuscript Re- Submission:",
-      "Oral Re-Defense Preparation",
-      "Oral Re-Defense",
-    ],
-    "Discussion & Review": [
-      "Capstone Meeting",
-      "Adviser Consultation",
-      "Interview User/ Client",
-      "Client Feedback Session",
-    ],
-  },
-
-  "Rapid Application Development (RAD)": {
-    Documentation: [
-      "UI Design",
-      "Initial UI Prototype",
-      "Conduct Rapid UI Feedback Session",
-      "Iterate UI Prototype Based on User/Client Feedback",
-      "Prepare: Chapter 1",
-      "Prepare: Chapter 2",
-      "Prepare: Chapter 3 (Implementation/Development)",
-      "Prepare: Chapter 4 (Methodology/Environment/Locale/Population/Org Chart/Requirement Spec)",
-      "Prepare: Appendices",
-      "Manuscript Submission:",
-      "Oral Defense Preparation",
-      "Oral Defense",
-      "Refinement for Oral Re-Defense",
-      "Refine: Chapter 1",
-      "Refine: Chapter 2",
-      "Refine: Chapter 3",
-      "Refine: Chapter 4",
-      "Refine: Appendices",
-      "Manuscript Re- Submission:",
-      "Oral Re-Defense Preparation",
-      "Oral Re-Defense",
-    ],
-    "Discussion & Review": [
-      "Capstone Meeting",
-      "Adviser Consultation",
-      "Interview User/ Client",
-      "Client Feedback Session",
-    ],
-  },
-
-  Prototyping: {
-    Documentation: [
-      "Initial Prototype",
-      "Prepare: Chapter 1",
-      "Prepare: Chapter 2",
-      "UI and Functionality Finalization",
-      "Prepare: Chapter 3",
-      "Prepare: Chapter 4",
-      "Prepare: Appendices",
-      "Manuscript Submission:",
-      "Oral Defense Preparation",
-      "Oral Defense",
-      "Refinement for Oral Re-Defense",
-      "Refine: Chapter 1",
-      "Refine: Chapter 2",
-      "Refine: Chapter 3",
-      "Refine: Chapter 4",
-      "Refine: Appendices",
-      "Manuscript Re- Submission:",
-      "Oral Re-Defense Preparation",
-      "Oral Re-Defense",
-    ],
-    "Discussion & Review": [
-      "Capstone Meeting",
-      "Adviser Consultation",
-      "Interview User/ Client",
-      "Gather User/Client Feedback on Prototype Concept",
-    ],
-  },
-
-  Spiral: {
-    Documentation: [
-      "UI Design",
-      "Initial UI Prototype",
-      "Conduct Rapid UI Feedback Session",
-      "Iterate UI Prototype Based on User/Client Feedback",
-      "Prepare: Chapter 1",
-      "Prepare: Chapter 2",
-      "UI and Functionality Finalization",
-      "Present Prototype to the Users",
-      "Gather Feedback",
-      "Prepare: Chapter 3",
-      "Prepare: Chapter 4",
-      "Prepare: Appendices",
-      "Manuscript Submission:",
-      "Oral Defense Preparation",
-      "Oral Defense",
-      "Refinement for Oral Re-Defense",
-      "Refine: Chapter 1",
-      "Refine: Chapter 2",
-      "Refine: Chapter 3",
-      "Refine: Chapter 4",
-      "Refine: Appendices",
-      "Manuscript Re- Submission:",
-      "Oral Re-Defense Preparation",
-      "Oral Re-Defense",
-    ],
-    "Discussion & Review": [
-      "Capstone Meeting",
-      "Adviser Consultation",
-      "Interview User/ Client",
-      "Client Feedback Session",
-    ],
-  },
-};
-
-// 4) Shared subtask bundles so we don’t repeat long lists
-const COMMON_SUBTASKS = {
-  chapter1: ["Introduction", "Objectives", "Scope and Limitation"],
-  chapter2: ["Related Theories", "Related Literature"],
-  chapter3Both: ["Implementation", "Development"],
-  chapter3ImplOnly: ["Implementation"],
-  chapter3DevOnly: ["Development"],
-  chapter4: [
-    "Methodology",
-    "Environment",
-    "Requirement Specification",
-    "Design",
-  ],
-  appendices: [
-    "Appendix A",
-    "Appendix B",
-    "Appendix C",
-    "Appendix D",
-    "Appendix E",
-  ],
-  manuscriptSubmission: [
-    "Chapter 1",
-    "Chapter 2",
-    "Chapter 3",
-    "Chapter 4",
-    "Appendices",
-    "AI and Plagiarism Check",
-  ],
-  oralPrep: [
-    "Manuscript Final Review",
-    "Prepare: PowerPoint Presentation",
-    "Mock Defense",
-    "Manuscript Printing",
-  ],
-  refineCh1: [
-    "Introduction",
-    "Objectives",
-    "Scope and Limitation",
-    "Refinement of UI Design & Functionalities",
-  ],
-  refineCh2: ["Related Theories", "Related Literature"],
-  refineCh3: ["Implementation", "Development"],
-  refineCh4: [
-    "Methodology",
-    "Environment",
-    "Requirement Specification",
-    "Design",
-  ],
-  initialUserEval: [
-    "Present Prototype to the Users",
-    "Gather User/Client Feedback on Prototype Concept",
-    "Refinement of Requirements Based on Feedback",
-  ],
-};
-
-// 5) Subtask options per methodology & task
-const SUBTASKS = {
-  Agile: {
-    "Prepare: Chapter 1": COMMON_SUBTASKS.chapter1,
-    "Prepare: Chapter 2": COMMON_SUBTASKS.chapter2,
-    "Prepare: Chapter 3 (Implementation)": COMMON_SUBTASKS.chapter3ImplOnly,
-    "Prepare: Chapter 3 (Development)": COMMON_SUBTASKS.chapter3DevOnly,
-    "Prepare: Chapter 4 (Methodology/Environment/Locale/Population/Org Chart/Requirement Spec)":
-      COMMON_SUBTASKS.chapter4,
-    "Prepare: Appendices": COMMON_SUBTASKS.appendices,
-    "Manuscript Submission:": COMMON_SUBTASKS.manuscriptSubmission,
-    "Oral Defense Preparation": COMMON_SUBTASKS.oralPrep,
-    "Refine: Chapter 1": COMMON_SUBTASKS.refineCh1,
-    "Refine: Chapter 2": COMMON_SUBTASKS.refineCh2,
-    "Refine: Chapter 3": COMMON_SUBTASKS.refineCh3,
-    "Refine: Chapter 4": COMMON_SUBTASKS.refineCh4,
-    "Refine: Appendices": COMMON_SUBTASKS.appendices,
-    "Manuscript Re- Submission:": COMMON_SUBTASKS.manuscriptSubmission,
-    "Oral Re-Defense Preparation": COMMON_SUBTASKS.oralPrep,
-  },
-
-  "Extreme Programming": {
-    "Prepare: Chapter 1": COMMON_SUBTASKS.chapter1,
-    "Prepare: Chapter 2": COMMON_SUBTASKS.chapter2,
-    "Prepare: Chapter 3 (Implementation)": COMMON_SUBTASKS.chapter3ImplOnly,
-    "Prepare: Chapter 3 (Development)": COMMON_SUBTASKS.chapter3DevOnly,
-    "Prepare: Chapter 4 (Methodology/Environment/Locale/Population/Org Chart/Requirement Spec)":
-      COMMON_SUBTASKS.chapter4,
-    "Prepare: Appendices": COMMON_SUBTASKS.appendices,
-    "Manuscript Submission:": COMMON_SUBTASKS.manuscriptSubmission,
-    "Oral Defense Preparation": COMMON_SUBTASKS.oralPrep,
-    "Refine: Chapter 1": COMMON_SUBTASKS.refineCh1,
-    "Refine: Chapter 2": COMMON_SUBTASKS.refineCh2,
-    "Refine: Chapter 3": COMMON_SUBTASKS.refineCh3,
-    "Refine: Chapter 4": COMMON_SUBTASKS.refineCh4,
-    "Refine: Appendices": COMMON_SUBTASKS.appendices,
-    "Manuscript Re- Submission:": COMMON_SUBTASKS.manuscriptSubmission,
-    "Oral Re-Defense Preparation": COMMON_SUBTASKS.oralPrep,
-  },
-
-  "Rapid Application Development (RAD)": {
-    "Prepare: Chapter 1": COMMON_SUBTASKS.chapter1,
-    "Prepare: Chapter 2": COMMON_SUBTASKS.chapter2,
-    "Prepare: Chapter 3 (Implementation/Development)":
-      COMMON_SUBTASKS.chapter3Both,
-    "Prepare: Chapter 4 (Methodology/Environment/Locale/Population/Org Chart/Requirement Spec)":
-      COMMON_SUBTASKS.chapter4,
-    "Prepare: Appendices": COMMON_SUBTASKS.appendices,
-    "Manuscript Submission:": COMMON_SUBTASKS.manuscriptSubmission,
-    "Oral Defense Preparation": COMMON_SUBTASKS.oralPrep,
-    "Refine: Chapter 1": COMMON_SUBTASKS.refineCh1,
-    "Refine: Chapter 2": COMMON_SUBTASKS.refineCh2,
-    "Refine: Chapter 3": COMMON_SUBTASKS.refineCh3,
-    "Refine: Chapter 4": COMMON_SUBTASKS.refineCh4,
-    "Refine: Appendices": COMMON_SUBTASKS.appendices,
-    "Manuscript Re- Submission:": COMMON_SUBTASKS.manuscriptSubmission,
-    "Oral Re-Defense Preparation": COMMON_SUBTASKS.oralPrep,
-  },
-
-  Prototyping: {
-    "Prepare: Chapter 1": COMMON_SUBTASKS.chapter1,
-    "Prepare: Chapter 2": COMMON_SUBTASKS.chapter2,
-    "Prepare: Chapter 3": COMMON_SUBTASKS.chapter3Both,
-    "Prepare: Chapter 4": COMMON_SUBTASKS.chapter4,
-    "Prepare: Appendices": COMMON_SUBTASKS.appendices,
-    "Initial User Evaluation": COMMON_SUBTASKS.initialUserEval,
-    "Manuscript Submission:": COMMON_SUBTASKS.manuscriptSubmission,
-    "Oral Defense Preparation": COMMON_SUBTASKS.oralPrep,
-    "Refine: Chapter 1": COMMON_SUBTASKS.refineCh1,
-    "Refine: Chapter 2": COMMON_SUBTASKS.refineCh2,
-    "Refine: Chapter 3": COMMON_SUBTASKS.refineCh3,
-    "Refine: Chapter 4": COMMON_SUBTASKS.refineCh4,
-    "Refine: Appendices": COMMON_SUBTASKS.appendices,
-    "Manuscript Re- Submission:": COMMON_SUBTASKS.manuscriptSubmission,
-    "Oral Re-Defense Preparation": COMMON_SUBTASKS.oralPrep,
-  },
-
-  Spiral: {
-    "Prepare: Chapter 1": COMMON_SUBTASKS.chapter1,
-    "Prepare: Chapter 2": COMMON_SUBTASKS.chapter2,
-    "Prepare: Chapter 3": COMMON_SUBTASKS.chapter3Both,
-    "Prepare: Chapter 4": COMMON_SUBTASKS.chapter4,
-    "Prepare: Appendices": COMMON_SUBTASKS.appendices,
-    "Manuscript Submission:": COMMON_SUBTASKS.manuscriptSubmission,
-    "Oral Defense Preparation": COMMON_SUBTASKS.oralPrep,
-    "Refine: Chapter 1": COMMON_SUBTASKS.refineCh1,
-    "Refine: Chapter 2": COMMON_SUBTASKS.refineCh2,
-    "Refine: Chapter 3": COMMON_SUBTASKS.refineCh3,
-    "Refine: Chapter 4": COMMON_SUBTASKS.refineCh4,
-    "Refine: Appendices": COMMON_SUBTASKS.appendices,
-    "Manuscript Re- Submission:": COMMON_SUBTASKS.manuscriptSubmission,
-    "Oral Re-Defense Preparation": COMMON_SUBTASKS.oralPrep,
-  },
-};
-
-// 6) Shared element lists (for the chosen subtask)
-const ELEMENTS = {
-  Agile: {},
-  "Extreme Programming": {},
-  "Rapid Application Development (RAD)": {},
-  Prototyping: {},
-  Spiral: {},
-};
-
-// Fill all methodologies with the same element dictionary
-const COMMON_ELEMENTS = {
-  // Chapter 1
-  Introduction: [
-    "Project Context",
-    "Background of the Study",
-    "Policies and Procedures",
-    "Users Position",
-  ],
-  Objectives: ["General Objectives", "Specific Objectives"],
-  "Scope and Limitation": ["Scope", "Limitation"],
-
-  // Chapter 3
-  Implementation: ["Hardware", "Software", "Peopleware"],
-  Development: ["Hardware", "Software", "Peopleware"],
-
-  // Chapter 4
-  Environment: [
-    "Locale",
-    "Population of the Study",
-    "Organizational Chart/Profile",
-  ],
-  "Requirement Specification": [
-    "Operational Feasibility [Fishbone Diagram]",
-    "Operational Feasibility [Functional Decomposition Diagram]",
-    "Technical Feasibility",
-    "Schedule Feasibility",
-    "Economic Feasibility",
-    "Requirements Modeling [Context Diagram]",
-    "Requirements Modeling [Data Flow Diagram]",
-    "Requirements Modeling [System Flowchart]",
-    "Requirements Modeling [Program Flowchart]",
-    "Requirements Modeling [Use Case Diagram]",
-    "Requirements Modeling [Use Class Diagram]",
-    "Requirements Modeling [Sequence Diagram]",
-    "Requirements Modeling [Activity Diagram]",
-    "Risk Assessment/Analysis",
-  ],
-  Design: [
-    "Output and User-interface Design Forms",
-    "Data Design",
-    "System Architecture [Network Model]",
-    "System Architecture [Network Topology]",
-    "System Architecture [Network Security]",
-  ],
-};
-
-// assign COMMON_ELEMENTS to each methodology
-for (const m of METHODOLOGIES) {
-  ELEMENTS[m] = { ...COMMON_ELEMENTS };
+  return {
+    METHODOLOGIES,
+    PHASE_OPTIONS,
+    TASK_SEEDS,
+    SUBTASKS,
+    ELEMENTS,
+    FIXED_PHASE,
+  };
 }
 
+const {
+  METHODOLOGIES,
+  PHASE_OPTIONS,
+  TASK_SEEDS,
+  SUBTASKS,
+  ELEMENTS,
+  FIXED_PHASE,
+} = buildIndexesFromJSON(OPTIONS_JSON);
+
+/* ---------- small helpers ---------- */
 const snapTimeTo = (val, stepMin = 10) => {
   if (!val) return "";
   const [H, M] = String(val).split(":").map(Number);
@@ -523,7 +149,7 @@ const snapTimeTo = (val, stepMin = 10) => {
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 };
 
-/* ===== Supabase helpers for task files (any type) ===== */
+/* ===== Supabase files ===== */
 const uploadTaskFileToSupabase = async (file, userId) => {
   const ext = (file.name.split(".").pop() || "bin").toLowerCase();
   const fileName = `${userId}/${Date.now()}-${Math.random()
@@ -544,7 +170,6 @@ const uploadTaskFileToSupabase = async (file, userId) => {
     type: file.type,
   };
 };
-
 const deleteTaskFileFromSupabase = async (fileName) => {
   if (!fileName) return;
   const { error } = await supabase.storage
@@ -553,7 +178,7 @@ const deleteTaskFileFromSupabase = async (fileName) => {
   if (error) throw new Error(error.message || "Delete failed");
 };
 
-/* ======= Edit/Create Task Dialog (FinalDefense header + accent) ======= */
+/* ======= Create/Edit Task Dialog (UI kept; options come from JSON) ======= */
 function EditTaskDialog({
   open,
   onClose,
@@ -564,22 +189,20 @@ function EditTaskDialog({
   seedMember,
   existingTask,
   mode, // "team" | "adviser"
-  lockedMethodology, // << lock across all tasks once created
+  lockedMethodology,
 }) {
   const isTeamMode = mode === "team";
   const timeStepSec = isTeamMode ? 600 : 1200; // 10m vs 20m
 
   const [saving, setSaving] = useState(false);
-
   const [teamId, setTeamId] = useState("");
 
   const [methodology, setMethodology] = useState("");
   const [phase, setPhase] = useState("");
-
   const [type, setType] = useState("");
   const [task, setTask] = useState("");
-  const [subtasks, setSubtasks] = useState(""); // plural key
-  const [elements, setElements] = useState(""); // plural key
+  const [subtasks, setSubtasks] = useState("");
+  const [elements, setElements] = useState("");
 
   const [due, setDue] = useState("");
   const [time, setTime] = useState("");
@@ -595,7 +218,6 @@ function EditTaskDialog({
 
   const stepMin = isTeamMode ? 10 : 20;
   const todayISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
-
   const roundUpNow = (sMin = 10) => {
     const d = new Date();
     let m = Math.ceil(d.getMinutes() / sMin) * sMin;
@@ -606,24 +228,32 @@ function EditTaskDialog({
     }
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
   };
-
   const minTimeForDate = (dateStr) =>
     dateStr === todayISO ? roundUpNow(stepMin) : "";
 
-  // cascade: available options
   const availablePhases = useMemo(
     () => (methodology ? PHASE_OPTIONS[methodology] || [] : []),
     [methodology]
   );
-  const subtaskOptions = useMemo(
-    () => (methodology && task ? SUBTASKS?.[methodology]?.[task] || [] : []),
-    [methodology, task]
+  const availableTypes = useMemo(
+    () => (methodology ? Object.keys(TASK_SEEDS[methodology] || {}) : []),
+    [methodology]
   );
-  const elementOptions = useMemo(
-    () =>
-      methodology && subtasks ? ELEMENTS?.[methodology]?.[subtasks] || [] : [],
-    [methodology, subtasks]
-  );
+  const taskOptions = useMemo(() => {
+    const mKey = lockedMethodology || methodology;
+    if (!mKey || !type) return [];
+    return TASK_SEEDS[mKey]?.[type] || [];
+  }, [lockedMethodology, methodology, type]);
+  const subtaskOptions = useMemo(() => {
+    const mKey = lockedMethodology || methodology;
+    if (!mKey || !task) return [];
+    return SUBTASKS[mKey]?.[task] || [];
+  }, [lockedMethodology, methodology, task]);
+  const elementOptions = useMemo(() => {
+    const mKey = lockedMethodology || methodology;
+    if (!mKey || !subtasks) return [];
+    return ELEMENTS[mKey]?.[subtasks] || [];
+  }, [lockedMethodology, methodology, subtasks]);
 
   useEffect(() => {
     if (!due) return;
@@ -633,17 +263,14 @@ function EditTaskDialog({
     }
   }, [due]); // eslint-disable-line
 
-  // initialize / reset
   useEffect(() => {
     if (!open) return;
 
     setTeamId(existingTask?.team?.id || teams[0]?.id || "");
 
-    // Methodology: apply lock if present (until all tasks deleted)
     const initialMethod = lockedMethodology || existingTask?.methodology || "";
     setMethodology(initialMethod);
 
-    // lock phase if single; fallback to existing or empty
     const fixed = FIXED_PHASE[initialMethod] ?? null;
     setPhase(fixed || existingTask?.phase || "");
 
@@ -652,10 +279,8 @@ function EditTaskDialog({
       setTask(existingTask.task || "");
       setSubtasks(existingTask.subtasks || "");
       setElements(existingTask.elements || "");
-
       setDue(existingTask.dueDate || "");
       setTime(existingTask.dueTime || "");
-
       setAssignees(
         (existingTask.assignees || []).map((a) => ({
           uid: a.uid,
@@ -671,10 +296,8 @@ function EditTaskDialog({
       setTask("");
       setSubtasks("");
       setElements("");
-
       setDue("");
       setTime("");
-
       setAssignees(
         seedMember ? [{ uid: seedMember.uid, name: seedMember.name }] : []
       );
@@ -685,7 +308,6 @@ function EditTaskDialog({
     }
   }, [open, existingTask, seedMember, teams, lockedMethodology]);
 
-  // when methodology changes, lock phase to fixed value
   const onChangeMethodology = (v) => {
     setMethodology(v);
     setPhase(FIXED_PHASE[v] || "");
@@ -694,34 +316,30 @@ function EditTaskDialog({
     setSubtasks("");
     setElements("");
   };
-
   const onChangeType = (v) => {
     setType(v);
     setTask("");
     setSubtasks("");
     setElements("");
   };
-
   const onChangeTask = (v) => {
     setTask(v);
     setSubtasks("");
     setElements("");
   };
-
   const onChangeSubtasks = (v) => {
     setSubtasks(v);
     setElements("");
   };
 
   const canSave =
-    (isTeamMode ? true : !!teamId) &&
+    (mode === "team" ? true : !!teamId) &&
     (lockedMethodology ? true : !!methodology) &&
     (lockedMethodology ? true : !!phase || availablePhases.length <= 1) &&
     type &&
     task &&
-    (assignees.length > 0 || !isTeamMode);
+    (mode === "team" ? assignees.length > 0 : true);
 
-  // assignees
   const addAssignee = () => {
     if (!pickedUid) return;
     const found = members.find((m) => m.uid === pickedUid);
@@ -733,7 +351,6 @@ function EditTaskDialog({
   const removeAssignee = (uid) =>
     setAssignees((arr) => arr.filter((a) => a.uid !== uid));
 
-  // attachments
   const handleAttachClick = () => fileInputRef.current?.click();
   const onFilePicked = (e) => {
     const files = Array.from(e.target.files || []);
@@ -763,14 +380,12 @@ function EditTaskDialog({
       const team =
         teams.find((t) => t.id === teamId) || existingTask?.team || null;
 
-      // delete uploads marked for removal
       if (filesToDelete.length > 0) {
         await Promise.allSettled(
           filesToDelete.map((f) => deleteTaskFileFromSupabase(f.fileName))
         );
       }
 
-      // upload new
       const userId =
         auth.currentUser?.uid || localStorage.getItem("uid") || "anon";
       let uploaded = [];
@@ -792,21 +407,19 @@ function EditTaskDialog({
       }
       const finalFileUrl = [...attachedFiles, ...uploaded];
 
-      // compute dueAtMs from editable date/time
-      const timeString = time ? snapTimeTo(time, isTeamMode ? 10 : 20) : "";
+      const timeString = time
+        ? snapTimeTo(time, mode === "team" ? 10 : 20)
+        : "";
       const dueAtMs =
         due && timeString
           ? new Date(`${due}T${timeString}:00`).getTime()
           : null;
-
-      // hard guard: future only if both provided
       if (dueAtMs && dueAtMs < Date.now()) {
         alert("Due date/time must be in the future.");
         setSaving(false);
         return;
       }
 
-      // elements handling
       const hasElements = elementOptions.length > 0;
       const elementsValue = subtasks
         ? hasElements
@@ -816,7 +429,6 @@ function EditTaskDialog({
 
       const taskManager = mode === "adviser" ? "Adviser" : "Project Manager";
 
-      // enforce locked methodology (if any)
       const finalMethodology = lockedMethodology || methodology || "";
       const finalPhase = FIXED_PHASE[finalMethodology] ?? phase ?? "";
 
@@ -833,9 +445,10 @@ function EditTaskDialog({
         dueAtMs,
         status: existingTask?.status || "To Do",
         revision: existingTask?.revision || "No Revision",
-        assignees: isTeamMode
-          ? assignees.map((a) => ({ uid: a.uid, name: a.name }))
-          : [],
+        assignees:
+          mode === "team"
+            ? assignees.map((a) => ({ uid: a.uid, name: a.name }))
+            : [],
         team: team ? { id: team.id, name: team.name } : null,
         comment: comment || "",
         createdBy: pm
@@ -867,6 +480,7 @@ function EditTaskDialog({
   if (!open) return null;
 
   const methodologyLocked = !!lockedMethodology;
+  //const todayISO = new Date().toISOString().slice(0, 10);
 
   return (
     <div className="fixed inset-0 z-50">
@@ -892,13 +506,8 @@ function EditTaskDialog({
           </div>
 
           <div className="flex-1 px-5 pb-5 space-y-5 overflow-y-auto">
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
-              <b>Reminder:</b> Due Date and Time are set here for this task{" "}
-              {isTeamMode ? "(10-min interval)" : "(20-min interval)"}.
-            </div>
-
-            {/* Team select ONLY when Adviser tab */}
-            {!isTeamMode && (
+            {/* Team picker row (adviser mode earlier UI also showed the single Team select) */}
+            {mode !== "team" && (
               <div className="grid grid-cols-12 gap-4">
                 <div className="col-span-6">
                   <label className="block text-sm font-medium text-neutral-700 mb-1">
@@ -919,9 +528,8 @@ function EditTaskDialog({
               </div>
             )}
 
-            {/* Row 1: Methodology - Project Phase */}
+            {/* Methodology & Phase (kept; not shown in table for classic UI) */}
             <div className="grid grid-cols-12 gap-4">
-              {/* Methodology */}
               <div className="col-span-6">
                 <label className="block text-sm font-medium text-neutral-700 mb-1">
                   Methodology
@@ -951,41 +559,47 @@ function EditTaskDialog({
                 )}
               </div>
 
-              {/* Project Phase */}
               <div className="col-span-6">
                 <label className="block text-sm font-medium text-neutral-700 mb-1">
                   Project Phase
                 </label>
-                {availablePhases.length > 1 ? (
-                  <select
-                    className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
-                    value={phase}
-                    onChange={(e) => setPhase(e.target.value)}
-                    disabled={!methodology}
-                  >
-                    <option value="">
-                      {methodology ? "Select phase" : "Pick Methodology first"}
-                    </option>
-                    {availablePhases.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
+                {(() => {
+                  const list = methodology
+                    ? PHASE_OPTIONS[methodology] || []
+                    : [];
+                  return list.length > 1 ? (
+                    <select
+                      className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
+                      value={phase}
+                      onChange={(e) => setPhase(e.target.value)}
+                      disabled={!methodology}
+                    >
+                      <option value="">
+                        {methodology
+                          ? "Select phase"
+                          : "Pick Methodology first"}
                       </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    className="w-full rounded-lg border border-neutral-300 px-3 py-2 bg-neutral-50 text-neutral-800"
-                    value={phase}
-                    readOnly
-                    placeholder={
-                      methodology ? "Auto-selected" : "Pick Methodology first"
-                    }
-                  />
-                )}
+                      {list.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      className="w-full rounded-lg border border-neutral-300 px-3 py-2 bg-neutral-50 text-neutral-800"
+                      value={phase}
+                      readOnly
+                      placeholder={
+                        methodology ? "Auto-selected" : "Pick Methodology first"
+                      }
+                    />
+                  );
+                })()}
               </div>
             </div>
 
-            {/* Row 2: Task Type - Task - Subtasks */}
+            {/* Type / Task / Subtasks (classic still uses them in modal) */}
             <div className="grid grid-cols-12 gap-4">
               <div className="col-span-4">
                 <label className="block text-sm font-medium text-neutral-700 mb-1">
@@ -1002,7 +616,10 @@ function EditTaskDialog({
                       ? "Select"
                       : "Pick Methodology first"}
                   </option>
-                  {["Documentation", "Discussion & Review"].map((t) => (
+                  {(methodology
+                    ? Object.keys(TASK_SEEDS[methodology] || {})
+                    : []
+                  ).map((t) => (
                     <option key={t} value={t}>
                       {t}
                     </option>
@@ -1012,7 +629,7 @@ function EditTaskDialog({
 
               <div className="col-span-4">
                 <label className="block text-sm font-medium text-neutral-700 mb-1">
-                  Tasks
+                  Task
                 </label>
                 <select
                   className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
@@ -1023,15 +640,15 @@ function EditTaskDialog({
                   <option value="">
                     {type ? "Select task" : "Pick Task Type first"}
                   </option>
-                  {(
-                    TASK_SEEDS[
-                      methodologyLocked ? lockedMethodology : methodology
-                    ]?.[type] || []
-                  ).map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
+                  {(lockedMethodology || methodology) && type
+                    ? TASK_SEEDS[lockedMethodology || methodology]?.[type]?.map(
+                        (t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        )
+                      )
+                    : null}
                 </select>
               </div>
 
@@ -1043,25 +660,41 @@ function EditTaskDialog({
                   className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                   value={subtasks}
                   onChange={(e) => onChangeSubtasks(e.target.value)}
-                  disabled={!task || subtaskOptions.length === 0}
+                  disabled={
+                    !task ||
+                    (lockedMethodology || methodology
+                      ? (
+                          SUBTASKS[lockedMethodology || methodology]?.[task] ||
+                          []
+                        ).length === 0
+                      : true)
+                  }
                 >
                   <option value="">
                     {task
-                      ? subtaskOptions.length
+                      ? (lockedMethodology || methodology) &&
+                        (
+                          SUBTASKS[lockedMethodology || methodology]?.[task] ||
+                          []
+                        ).length
                         ? "Select subtask"
                         : "No subtasks"
                       : "Pick Task first"}
                   </option>
-                  {subtaskOptions.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
+                  {(lockedMethodology || methodology) && task
+                    ? (
+                        SUBTASKS[lockedMethodology || methodology]?.[task] || []
+                      ).map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))
+                    : null}
                 </select>
               </div>
             </div>
 
-            {/* Row 3: Elements - Due Date - Time */}
+            {/* Elements / Due Date / Time */}
             <div className="grid grid-cols-12 gap-4">
               <div className="col-span-4">
                 <label className="block text-sm font-medium text-neutral-700 mb-1">
@@ -1071,20 +704,40 @@ function EditTaskDialog({
                   className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#6A0F14]/30"
                   value={elements}
                   onChange={(e) => setElements(e.target.value)}
-                  disabled={!subtasks || elementOptions.length === 0}
+                  disabled={
+                    !subtasks ||
+                    (lockedMethodology || methodology
+                      ? (
+                          ELEMENTS[lockedMethodology || methodology]?.[
+                            subtasks
+                          ] || []
+                        ).length === 0
+                      : true)
+                  }
                 >
                   <option value="">
                     {subtasks
-                      ? elementOptions.length
+                      ? (lockedMethodology || methodology) &&
+                        (
+                          ELEMENTS[lockedMethodology || methodology]?.[
+                            subtasks
+                          ] || []
+                        ).length
                         ? "Select element"
                         : "No elements"
                       : "Pick Subtask first"}
                   </option>
-                  {elementOptions.map((el) => (
-                    <option key={el} value={el}>
-                      {el}
-                    </option>
-                  ))}
+                  {(lockedMethodology || methodology) && subtasks
+                    ? (
+                        ELEMENTS[lockedMethodology || methodology]?.[
+                          subtasks
+                        ] || []
+                      ).map((el) => (
+                        <option key={el} value={el}>
+                          {el}
+                        </option>
+                      ))
+                    : null}
                 </select>
               </div>
 
@@ -1108,7 +761,24 @@ function EditTaskDialog({
                 <input
                   type="time"
                   step={timeStepSec}
-                  min={minTimeForDate(due)}
+                  min={
+                    due === todayISO
+                      ? (() => {
+                          const d = new Date();
+                          let m =
+                            Math.ceil(d.getMinutes() / (isTeamMode ? 10 : 20)) *
+                            (isTeamMode ? 10 : 20);
+                          let h = d.getHours();
+                          if (m === 60) {
+                            m = 0;
+                            h = (h + 1) % 24;
+                          }
+                          return `${String(h).padStart(2, "0")}:${String(
+                            m
+                          ).padStart(2, "0")}`;
+                        })()
+                      : ""
+                  }
                   className="w-full rounded-lg border border-neutral-300 px-3 py-2 bg-white text-neutral-800"
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
@@ -1117,20 +787,14 @@ function EditTaskDialog({
                       e.target.value,
                       isTeamMode ? 10 : 20
                     );
-                    const minT = minTimeForDate(due) || "00:00";
-                    const finalVal =
-                      due === todayISO && snapped && snapped < minT
-                        ? minT
-                        : snapped;
-                    if (finalVal !== e.target.value) e.target.value = finalVal;
-                    setTime(finalVal);
+                    setTime(snapped);
                   }}
                 />
               </div>
             </div>
 
-            {/* Assign Members — only for Team tab */}
-            {isTeamMode && (
+            {/* Assign Members (team mode) */}
+            {mode === "team" && (
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-1">
                   Assign Members
@@ -1308,24 +972,72 @@ function EditTaskDialog({
   );
 }
 
-/* ============================ Main ============================ */
+/* ===== Status + Revision components (unchanged visuals) ===== */
+const StatusBadge = ({ value, isEditable, onChange }) => {
+  const statusColors = {
+    "To Do": "bg-[#D9A81E] text-white",
+    "To Review": "bg-[#6FA8DC] text-white",
+    "In Progress": "bg-[#7C9C3B] text-white",
+    Completed: "bg-[#6A0F14] text-white",
+  };
+  if (!value || value === "--") return <span>--</span>;
+  return isEditable ? (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-medium border-none bg-white shadow-md cursor-pointer"
+    >
+      {Object.keys(statusColors).map((status) => (
+        <option
+          key={status}
+          value={status}
+          className={`${statusColors[status]}`}
+        >
+          {status}
+        </option>
+      ))}
+    </select>
+  ) : (
+    <span
+      className={`inline-flex items-center px-3 py-1 rounded-full text-[12px] font-medium ${
+        statusColors[value] || "bg-neutral-200"
+      }`}
+    >
+      {value}
+    </span>
+  );
+};
+const RevisionSelect = ({ value, onChange, disabled }) => (
+  <select
+    className={`text-[12px] leading-tight font-medium border border-neutral-300 rounded-lg px-2.5 py-0.5 bg-white ${
+      disabled ? "opacity-60 cursor-not-allowed" : ""
+    }`}
+    value={value}
+    onChange={(e) => onChange(e.target.value)}
+    disabled={disabled}
+  >
+    <option>No Revision</option>
+    <option>Revision 1</option>
+    <option>Revision 2</option>
+    <option>Revision 3</option>
+  </select>
+);
+
+/* ============================ Main (Classic UI) ============================ */
 const OralDefense = ({ onBack }) => {
   const handleBack = () =>
     typeof onBack === "function" ? onBack() : window.history.back();
 
-  const [mode, setMode] = useState("team"); // "team" | "adviser"
+  // Classic UI removes the Team/Adviser toggle from the header area
+  const mode = "team"; // keep data behavior; you can switch to "adviser" if this page is adviser-only
   const isTeam = mode === "team";
-  const canEdit = mode === "adviser" || isTeam;
 
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
-  const [selected, setSelected] = useState(new Set());
+
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [editingModal, setEditingModal] = useState(null); // {seedMember, existingTask}
   const [deletingId, setDeletingId] = useState(null);
-
-  const [editingCell, setEditingCell] = useState(null); // {key, field}
-  const [optimistic, setOptimistic] = useState({});
 
   const pageSize = 10;
 
@@ -1334,9 +1046,9 @@ const OralDefense = ({ onBack }) => {
 
   const [teams, setTeams] = useState([]);
   const [members, setMembers] = useState([]);
-
   const [tasks, setTasks] = useState([]);
 
+  // PM profile
   useEffect(() => {
     if (!pmUid) return;
     const unsub = onSnapshot(
@@ -1355,6 +1067,7 @@ const OralDefense = ({ onBack }) => {
     return () => unsub && unsub();
   }, [pmUid]);
 
+  // Teams + Members
   useEffect(() => {
     if (!pmUid) return;
     const unsubTeams = onSnapshot(
@@ -1400,6 +1113,7 @@ const OralDefense = ({ onBack }) => {
     return () => unsubTeams && unsubTeams();
   }, [pmUid]);
 
+  // Tasks
   useEffect(() => {
     if (!pmUid) return;
     const qRef = query(
@@ -1416,138 +1130,102 @@ const OralDefense = ({ onBack }) => {
         });
 
       setTasks(list);
-      setSelected(new Set());
       setPage(1);
-
-      setOptimistic((prev) => {
-        const next = { ...prev };
-        const memberWithTask = new Set();
-        for (const d of snap.docs) {
-          const data = d.data();
-          (data.assignees || []).forEach((a) => {
-            if (a?.uid) memberWithTask.add(a.uid);
-          });
-        }
-        for (const k of Object.keys(next)) {
-          if (memberWithTask.has(k)) delete next[k];
-        }
-        return next;
-      });
     });
     return () => unsub && unsub();
   }, [pmUid]);
 
-  // Determine methodology lock (first non-empty methodology across tasks). Unlock when no tasks.
   const lockedMethodology = useMemo(() => {
     if (!tasks.length) return null;
     const m = tasks.map((t) => t.methodology).find((x) => !!x);
     return m || null;
   }, [tasks]);
 
-  const rows = useMemo(() => {
+  // Rows (Team = PM-created tasks; Adviser tasks show as "Team")
+  const rowsTeam = useMemo(() => {
     const out = [];
-    const seenMemberUids = new Set();
     const teamTasks = tasks.filter((t) => t.taskManager === "Project Manager");
-
     for (const t of teamTasks) {
       const assignees =
         t.assignees && t.assignees.length
           ? t.assignees
           : [{ uid: "", name: "Team" }];
       assignees.forEach((a, idx) => {
-        if (a.uid) seenMemberUids.add(a.uid);
         out.push({
           key: `${t.id}:${a.uid || idx}`,
           taskId: t.id,
           memberUid: a.uid || "",
           memberName: a.name || "Team",
-          methodology: t?.methodology || "--",
-          phase: t?.phase || "--",
           type: t?.type || "--",
           task: t?.task || "--",
-          elements: t?.elements || "--",
-          subtasks: t?.subtasks || "--",
           created: t?.createdAt?.toDate?.()?.toLocaleDateString?.() || "--",
           due: t?.dueDate || "--",
           time: t?.dueTime || "--",
           revision: t?.revision || "No Revision",
           status: t?.status || "To Do",
+          phase: t?.phase || "--",
           existingTask: t,
           teamId: t?.team?.id || null,
           teamName: t?.team?.name || "No Team",
         });
       });
     }
-
+    // also add placeholders for members with no task yet
     members.forEach((m, idx) => {
-      if (!seenMemberUids.has(m.uid)) {
+      if (!out.some((r) => r.memberUid === m.uid)) {
         out.push({
           key: `placeholder:${m.uid || idx}`,
           taskId: null,
           memberUid: m.uid,
           memberName: m.name,
-          methodology: "--",
-          phase: "--",
           type: "--",
           task: "--",
-          subtasks: "--",
-          elements: "--",
           created: "--",
           due: "--",
           time: "--",
           revision: "--",
           status: "--",
+          phase: "--",
           existingTask: null,
           teamId: teams[0]?.id ?? null,
           teamName: teams[0]?.name ?? "No Team",
         });
       }
     });
-
     return out;
   }, [tasks, members, teams]);
 
-  const adviserRows = useMemo(() => {
+  const rowsAdviser = useMemo(() => {
     const adviserTasks = tasks.filter((t) => t.taskManager === "Adviser");
     return adviserTasks.map((t, idx) => ({
       key: t.id,
       taskId: t.id,
       memberUid: "",
       memberName: "Team",
-      methodology: t?.methodology || "--",
-      phase: t?.phase || "--",
       type: t?.type || "--",
       task: t?.task || "--",
-      subtasks: t?.subtasks || "--",
-      elements: t?.elements || "--",
       created: t?.createdAt?.toDate?.()?.toLocaleDateString?.() || "--",
       due: t?.dueDate || "--",
       time: t?.dueTime || "--",
       revision: t?.revision || "No Revision",
       status: t?.status || "To Do",
+      phase: t?.phase || "--",
       existingTask: t,
       teamId: t?.team?.id || `no-team-${idx}`,
       teamName: t?.team?.name || "No Team",
     }));
   }, [tasks]);
 
-  const [qLocal, setQLocal] = useState("");
-  useEffect(() => setQLocal(q.trim().toLowerCase()), [q]);
+  const baseRows = isTeam ? rowsTeam : rowsAdviser;
 
-  const baseRows = isTeam ? rows : adviserRows;
-
+  const qLocal = q.trim().toLowerCase();
   const filtered = useMemo(() => {
     if (!qLocal) return baseRows;
     return baseRows.filter(
       (r) =>
         (r.memberName || "").toLowerCase().includes(qLocal) ||
-        (r.teamName || "").toLowerCase().includes(qLocal) ||
-        (r.methodology || "").toLowerCase().includes(qLocal) ||
-        (r.phase || "").toLowerCase().includes(qLocal) ||
         (r.type || "").toLowerCase().includes(qLocal) ||
         (r.task || "").toLowerCase().includes(qLocal) ||
-        (r.elements || "").toLowerCase().includes(qLocal) ||
-        (r.subtasks || "").toLowerCase().includes(qLocal) ||
         (r.created || "").toLowerCase().includes(qLocal) ||
         (r.due || "").toLowerCase().includes(qLocal) ||
         (r.time || "").toLowerCase().includes(qLocal) ||
@@ -1556,13 +1234,15 @@ const OralDefense = ({ onBack }) => {
           .includes(qLocal) ||
         String(r.status || "")
           .toLowerCase()
-          .includes(qLocal)
+          .includes(qLocal) ||
+        (r.phase || "").toLowerCase().includes(qLocal)
     );
   }, [qLocal, baseRows]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize);
 
+  // Firestore update helpers for inline cells
   const updateTaskRow = async (row, patch) => {
     if (row.taskId) {
       await updateDoc(doc(db, TASKS_COLLECTION, row.taskId), {
@@ -1592,39 +1272,11 @@ const OralDefense = ({ onBack }) => {
     await addDoc(collection(db, TASKS_COLLECTION), { ...base, ...patch });
   };
 
-  const startEdit = (row, field) => {
-    if (!canEdit) return;
-    const editingDueOrTime = field === "due" || field === "time";
-    if (!isTeam && editingDueOrTime) return;
-
-    if (!isTeam) {
-      if (
-        field === "phase" &&
-        (row.methodology === "--" || row.methodology === "null")
-      )
-        return;
-      if (
-        field === "type" &&
-        (row.methodology === "--" ||
-          row.methodology === "null" ||
-          row.phase === "--" ||
-          row.phase === "null")
-      )
-        return;
-      if (field === "task" && (row.type === "--" || row.type === "null"))
-        return;
-    }
-    setEditingCell({ key: row.key, field });
-  };
-  const stopEdit = () => setEditingCell(null);
-
-  const saveTask = async (row, newTask) => {
-    await updateTaskRow(row, { task: newTask || null });
-    stopEdit();
-  };
-  const saveStatus = async (row, newStatus) => {
-    await updateTaskRow(row, { status: newStatus || "To Do" });
-  };
+  // Inline edit actions
+  const saveStatus = async (row, newStatus) =>
+    updateTaskRow(row, { status: newStatus || "To Do" });
+  const saveRevision = async (row, newRev) =>
+    updateTaskRow(row, { revision: newRev || "No Revision" });
   const saveDue = async (row, newDate) => {
     const hasTime = row.time && row.time !== "null";
     const dueAtMs =
@@ -1636,7 +1288,6 @@ const OralDefense = ({ onBack }) => {
       dueAtMs,
       ...(newDate ? {} : { dueTime: null }),
     });
-    stopEdit();
   };
   const saveTime = async (row, newTime) => {
     const dueAtMs =
@@ -1644,781 +1295,298 @@ const OralDefense = ({ onBack }) => {
         ? new Date(`${row.due}T${newTime}:00`).getTime()
         : null;
     await updateTaskRow(row, { dueTime: newTime || null, dueAtMs });
-    stopEdit();
   };
 
-  const deleteTask = async (taskId) => {
-    setDeletingId(taskId);
-    try {
-      await deleteDoc(doc(db, TASKS_COLLECTION, taskId));
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
-  const deleteSelectedRows = async () => {
-    if (!canEdit || selected.size === 0) return;
-    const toDelete = pageRows
-      .filter((r) => selected.has(r.key) && r.taskId)
-      .map((r) => r.taskId);
-    for (const id of toDelete) {
-      await deleteTask(id);
-    }
-    setSelected(new Set());
-  };
-
-  const openModalEditor = (row) => {
+  const openCreateForMember = (row) => {
     setEditingModal({
       seedMember: row.memberUid
-        ? { uid: row.memberUid, name: row.memberName }
-        : null,
-      existingTask: row.taskId ? { ...row.existingTask, id: row.taskId } : null,
-    });
-  };
-  const openModalCreate = (row) => {
-    setEditingModal({
-      seedMember: row?.memberUid
         ? { uid: row.memberUid, name: row.memberName }
         : null,
       existingTask: null,
     });
   };
-
-  const handleCreateClick = () => {
-    if (isTeam) {
-      const selectedKey = Array.from(selected)[0] || null;
-      let seedRow =
-        (selectedKey && filtered.find((r) => r.key === selectedKey)) ||
-        filtered.find((r) => r.memberUid);
-      if (!seedRow) {
-        alert("Select a member row first to create a task for.");
-        return;
-      }
-      openModalCreate(seedRow);
-    } else {
-      openModalCreate(null);
-    }
+  const openEditTask = (row) =>
+    setEditingModal({ seedMember: null, existingTask: row.existingTask });
+  const askDelete = (row) => setDeletingId(row.taskId);
+  const doDelete = async () => {
+    if (!deletingId) return;
+    await deleteDoc(doc(db, TASKS_COLLECTION, deletingId));
+    setDeletingId(null);
   };
 
-  const adviserGroups = useMemo(() => {
-    if (isTeam) return null;
-    const groups = new Map();
-    for (const r of pageRows) {
-      const key = r.teamId || "no-team";
-      if (!groups.has(key))
-        groups.set(key, {
-          teamId: key,
-          teamName: r.teamName || "No Team",
-          rows: [],
-        });
-      groups.get(key).rows.push(r);
-    }
-    return Array.from(groups.values());
-  }, [isTeam, pageRows]);
-
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-nowrap">
-        <div className="flex items-center gap-3">
+    <div className="p-4 md:p-6">
+      {/* Title bar border is kept; back button text matches earlier */}
+      <div className="flex items-center gap-2 mb-3">
+        <button
+          onClick={handleBack}
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-neutral-300 hover:bg-neutral-50"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          Back to Tasks
+        </button>
+      </div>
+
+      {/* Toolbar — classic arrangement */}
+      <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
+        <div className="flex items-center gap-2 flex-1">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-neutral-300 bg-white flex-1">
+            <Search className="w-4 h-4 text-neutral-500" />
+            <input
+              className="flex-1 outline-none text-sm"
+              placeholder="Search members or tasks"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
           <button
-            onClick={handleBack}
-            className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md border border-neutral-300 hover:bg-neutral-100 cursor-pointer"
-            title="Back to Tasks"
+            onClick={() =>
+              setEditingModal({ seedMember: null, existingTask: null })
+            }
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-white shadow"
+            style={{ backgroundColor: MAROON }}
           >
-            <ChevronLeft className="w-4 h-4" />
-            Back to Tasks
+            <PlusCircle className="w-4 h-4" />
+            <span className="text-sm">Create Task</span>
           </button>
+        </div>
 
-          <ModeSwitch mode={mode} setMode={setMode} />
+        <div className="flex items-center">
+          <button className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-neutral-300 hover:bg-neutral-50">
+            <SlidersHorizontal className="w-4 h-4" />
+            <span className="text-sm">Filter</span>
+          </button>
+        </div>
+      </div>
 
+      {/* Classic table (columns as in your earlier UI) */}
+      <div className="w-full overflow-auto rounded-xl border border-neutral-200 bg-white">
+        <table className="w-full text-sm">
+          <thead className="bg-neutral-50 text-neutral-700">
+            <tr>
+              <th className="text-left p-3">NO</th>
+              <th className="text-left p-3">Member</th>
+              <th className="text-left p-3">Task Type</th>
+              <th className="text-left p-3">Task</th>
+              <th className="text-left p-3">Date Created</th>
+              <th className="text-left p-3">
+                <div className="inline-flex items-center gap-1">
+                  <CalendarDays className="w-4 h-4" />
+                  Due Date
+                </div>
+              </th>
+              <th className="text-left p-3">
+                <div className="inline-flex items-center gap-1">
+                  <Clock className="w-4 h-4" />
+                  Time
+                </div>
+              </th>
+              <th className="text-left p-3">Revision NO</th>
+              <th className="text-left p-3">Status</th>
+              <th className="text-left p-3">Project Phase</th>
+              <th className="text-right p-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pageRows.map((row, idx) => {
+              const rowNo = (page - 1) * pageSize + idx + 1;
+              return (
+                <tr key={row.key} className="border-t border-neutral-200">
+                  <td className="p-3 align-top">{rowNo}</td>
+                  <td className="p-3 align-top">
+                    <div className="font-medium">{row.memberName}</div>
+                  </td>
+                  <td className="p-3 align-top">{row.type}</td>
+                  <td className="p-3 align-top">{row.task}</td>
+                  <td className="p-3 align-top">{row.created}</td>
+
+                  {/* Due date inline edit */}
+                  <td className="p-3 align-top">
+                    <input
+                      type="date"
+                      className="w-[150px] bg-white border border-neutral-300 rounded px-2 py-1 text-sm"
+                      value={row.due === "--" ? "" : row.due}
+                      onChange={(e) => saveDue(row, e.target.value)}
+                    />
+                  </td>
+
+                  {/* Time inline edit */}
+                  <td className="p-3 align-top">
+                    <input
+                      type="time"
+                      step={isTeam ? 600 : 1200}
+                      className="w-[120px] bg-white border border-neutral-300 rounded px-2 py-1 text-sm"
+                      value={row.time === "--" ? "" : row.time}
+                      onChange={(e) =>
+                        saveTime(
+                          row,
+                          snapTimeTo(e.target.value, isTeam ? 10 : 20)
+                        )
+                      }
+                    />
+                  </td>
+
+                  <td className="p-3 align-top">
+                    <RevisionSelect
+                      value={row.revision || "No Revision"}
+                      onChange={(v) => saveRevision(row, v)}
+                    />
+                  </td>
+
+                  <td className="p-3 align-top">
+                    <StatusBadge
+                      value={row.status || "To Do"}
+                      isEditable={true}
+                      onChange={(v) => saveStatus(row, v)}
+                    />
+                  </td>
+
+                  <td className="p-3 align-top">{row.phase}</td>
+
+                  <td className="p-3 align-top text-right">
+                    <div className="relative inline-block">
+                      <button
+                        className="p-1.5 rounded-md hover:bg-neutral-100"
+                        onClick={() =>
+                          setMenuOpenId(menuOpenId === row.key ? null : row.key)
+                        }
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+                      {menuOpenId === row.key && (
+                        <div className="absolute right-0 mt-1 w-40 rounded-md border border-neutral-200 bg-white shadow-lg z-10">
+                          {row.taskId ? (
+                            <>
+                              <button
+                                className="w-full text-left px-3 py-2 hover:bg-neutral-50"
+                                onClick={() => {
+                                  setMenuOpenId(null);
+                                  openEditTask(row);
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                className="w-full text-left px-3 py-2 hover:bg-neutral-50 text-red-600"
+                                onClick={() => {
+                                  setMenuOpenId(null);
+                                  askDelete(row);
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              className="w-full text-left px-3 py-2 hover:bg-neutral-50"
+                              onClick={() => {
+                                setMenuOpenId(null);
+                                openCreateForMember(row);
+                              }}
+                            >
+                              Create Task
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+
+            {pageRows.length === 0 && (
+              <tr>
+                <td colSpan={11} className="p-6 text-center text-neutral-500">
+                  No members found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination (labels match earlier) */}
+      <div className="flex items-center justify-between mt-4">
+        <div className="text-sm text-neutral-600">
+          Page {page} of {totalPages}
+        </div>
+        <div className="flex items-center gap-2">
           <button
-            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow"
-            style={{ background: MAROON }}
-            onClick={handleCreateClick}
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded border border-neutral-300 hover:bg-neutral-50 disabled:opacity-50"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
           >
-            + Create Task
+            <ChevronLeft className="w-4 h-4" /> Previous
           </button>
+          <button
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded border border-neutral-300 hover:bg-neutral-50 disabled:opacity-50"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+          >
+            Next <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
 
-          <div className="w-[360px]">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-              <input
-                value={q}
-                onChange={(e) => {
-                  setQ(e.target.value);
-                  setPage(1);
-                }}
-                placeholder="Search"
-                className="w-full pl-9 pr-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-neutral-300"
+      {/* Modal: Create/Edit */}
+      {editingModal && (
+        <EditTaskDialog
+          open={!!editingModal}
+          onClose={() => setEditingModal(null)}
+          onSaved={() => {}}
+          pm={pmProfile}
+          teams={teams}
+          members={members}
+          seedMember={editingModal.seedMember}
+          existingTask={editingModal.existingTask}
+          mode={mode}
+          lockedMethodology={lockedMethodology}
+        />
+      )}
+
+      {/* Confirm delete */}
+      {deletingId && (
+        <div className="fixed inset-0 z-50">
+          <div
+            className="absolute inset-0 bg-black/30"
+            onClick={() => setDeletingId(null)}
+          />
+          <div className="relative z-10 mx-auto mt-24 w-[420px] max-w-[95vw]">
+            <div className="bg-white rounded-xl border border-neutral-200 shadow-2xl overflow-hidden">
+              <div
+                className="h-[2px] w-full"
+                style={{ backgroundColor: MAROON }}
               />
+              <div className="p-5">
+                <div className="flex items-center gap-2 mb-2 text-red-700">
+                  <Trash2 className="w-5 h-5" />
+                  <div className="font-semibold">Delete Task</div>
+                </div>
+                <div className="text-sm text-neutral-700">
+                  Are you sure you want to delete this task? This action cannot
+                  be undone.
+                </div>
+                <div className="flex justify-end gap-2 mt-4">
+                  <button
+                    className="px-4 py-2 rounded-md border border-neutral-300 hover:bg-neutral-50"
+                    onClick={() => setDeletingId(null)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="px-4 py-2 rounded-md text-white"
+                    style={{ backgroundColor: MAROON }}
+                    onClick={doDelete}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={deleteSelectedRows}
-            disabled={!canEdit}
-            className={`inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50 ${
-              !canEdit ? "opacity-60 cursor-not-allowed" : ""
-            }`}
-            title="Delete"
-          >
-            <Trash2 className="w-4 h-4" />
-            Delete
-          </button>
-          <button
-            className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50"
-            title="Filter"
-            onClick={() => alert("Open Filter panel")}
-          >
-            <SlidersHorizontal className="w-4 h-4" />
-            Filter
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-white border border-neutral-200 rounded-2xl shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-[13px] leading-tight whitespace-nowrap min-w-[1900px]">
-            <thead>
-              <tr className="text-left text-neutral-500">
-                <th className="py-2 pl-6 pr-3 w-10">
-                  <input
-                    type="checkbox"
-                    onChange={(e) => {
-                      if (!canEdit) return;
-                      if (e.target.checked)
-                        setSelected(new Set(pageRows.map((r) => r.key)));
-                      else setSelected(new Set());
-                    }}
-                    checked={
-                      pageRows.length > 0 &&
-                      pageRows.every((r) => selected.has(r.key))
-                    }
-                    disabled={!canEdit}
-                  />
-                </th>
-                <th className="py-2 pr-3 w-16">NO</th>
-                <th className="py-2 pr-3">{isTeam ? "Assigned" : "Team"}</th>
-                <th className="py-2 pr-3">Task Type</th>
-                <th className="py-2 pr-3">Task</th>
-                <th className="py-2 pr-3">Subtask</th>
-                <th className="py-2 pr-3">Element</th>
-                <th className="py-2 pr-3">
-                  <div className="inline-flex items-center gap-2">
-                    <CalendarDays className="w-4 h-4" /> Date Created
-                  </div>
-                </th>
-                <th className="py-2 pr-3">
-                  <div className="inline-flex items-center gap-2">
-                    <CalendarDays className="w-4 h-4" /> Due Date
-                  </div>
-                </th>
-                <th className="py-2 pr-3">
-                  <div className="inline-flex items-center gap-2">
-                    <Clock className="w-4 h-4" /> Time
-                  </div>
-                </th>
-                <th className="py-2 pr-3">Revision NO</th>
-                <th className="py-2 pr-3">Status</th>
-                {/* NEW COLUMNS */}
-                <th className="py-2 pr-3">Methodology</th>
-                <th className="py-2 pr-3">Project Phase</th>
-                <th className="py-2 pr-6 w-12 text-center">Actions</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {/* Adviser tab groups */}
-              {!isTeam &&
-                (adviserGroups || []).map((g, gIdx) => (
-                  <React.Fragment key={g.teamId || `group-${gIdx}`}>
-                    <tr className="bg-neutral-50/60">
-                      <td
-                        colSpan={15}
-                        className="py-2 pl-6 pr-3 text-[13px] font-semibold text-neutral-800"
-                      >
-                        Team: {g.teamName}
-                      </td>
-                    </tr>
-                    {g.rows.map((r, idx) => {
-                      const isEditing = (field) =>
-                        editingCell?.key === r.key &&
-                        editingCell?.field === field;
-
-                      const typeOptions =
-                        r.methodology !== "--" && r.methodology !== "null"
-                          ? ["Documentation", "Discussion & Review"]
-                          : [];
-                      const taskOptions =
-                        r.methodology !== "--" &&
-                        r.methodology !== "null" &&
-                        r.type !== "--" &&
-                        r.type !== "null"
-                          ? TASK_SEEDS[r.methodology]?.[r.type] || []
-                          : [];
-
-                      const canEditType =
-                        canEdit &&
-                        (isTeam ||
-                          (r.methodology !== "--" &&
-                            r.methodology !== "null" &&
-                            r.phase !== "--" &&
-                            r.phase !== "null"));
-                      const canEditTask =
-                        canEdit &&
-                        (isTeam || (r.type !== "--" && r.type !== "null"));
-
-                      return (
-                        <tr key={r.key} className="border-t border-neutral-200">
-                          <td className="py-2 pl-6 pr-3">
-                            <input
-                              type="checkbox"
-                              checked={selected.has(r.key)}
-                              onChange={() => {
-                                if (!canEdit) return;
-                                const s = new Set(selected);
-                                s.has(r.key) ? s.delete(r.key) : s.add(r.key);
-                                setSelected(s);
-                              }}
-                              disabled={!canEdit}
-                            />
-                          </td>
-                          <td className="py-2 pr-3">
-                            {(page - 1) * pageSize +
-                              (gIdx === 0 ? idx + 1 : idx + 1)}
-                            .
-                          </td>
-                          <td className="py-2 pr-3">{g.teamName}</td>
-
-                          <td
-                            className={`py-2 pr-3 ${
-                              !canEditType
-                                ? "text-neutral-400 cursor-not-allowed"
-                                : ""
-                            }`}
-                            onDoubleClick={() =>
-                              canEditType &&
-                              setEditingCell({ key: r.key, field: "type" })
-                            }
-                            title={
-                              !canEditType
-                                ? "Set Methodology and Phase first"
-                                : ""
-                            }
-                          >
-                            {isEditing("type") ? (
-                              <select
-                                autoFocus
-                                className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
-                                defaultValue={
-                                  r.type === "--" || r.type === "null"
-                                    ? ""
-                                    : r.type
-                                }
-                                onBlur={(e) => {
-                                  updateTaskRow(r, {
-                                    type: e.target.value || null,
-                                    task: null,
-                                  });
-                                  stopEdit();
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") e.currentTarget.blur();
-                                  if (e.key === "Escape") stopEdit();
-                                }}
-                              >
-                                <option value="">null</option>
-                                {typeOptions.map((t) => (
-                                  <option key={t} value={t}>
-                                    {t}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <span>{r.type}</span>
-                            )}
-                          </td>
-
-                          <td
-                            className={`py-2 pr-3 ${
-                              !canEditTask
-                                ? "text-neutral-400 cursor-not-allowed"
-                                : ""
-                            }`}
-                            onDoubleClick={() =>
-                              canEditTask &&
-                              setEditingCell({ key: r.key, field: "task" })
-                            }
-                            title={!canEditTask ? "Set Task Type first" : ""}
-                          >
-                            {isEditing("task") ? (
-                              <select
-                                autoFocus
-                                className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
-                                defaultValue={r.task === "null" ? "" : r.task}
-                                onBlur={(e) => {
-                                  saveTask(r, e.target.value);
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") e.currentTarget.blur();
-                                  if (e.key === "Escape") stopEdit();
-                                }}
-                              >
-                                <option value="">null</option>
-                                {taskOptions.map((t) => (
-                                  <option key={t} value={t}>
-                                    {t}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <span>{r.task}</span>
-                            )}
-                          </td>
-
-                          <td className="py-2 pr-3">{r.subtasks || "--"}</td>
-                          <td className="py-2 pr-3">{r.elements || "--"}</td>
-
-                          <td className="py-2 pr-3">{r.created}</td>
-                          <td className="py-2 pr-3" title="Managed by Adviser">
-                            <span className="text-neutral-700">{r.due}</span>
-                          </td>
-                          <td className="py-2 pr-3" title="Managed by Adviser">
-                            <span className="text-neutral-700">{r.time}</span>
-                          </td>
-
-                          <td className="py-2 pr-3">
-                            <RevisionSelect
-                              value={r.revision}
-                              onChange={() => {}}
-                              disabled
-                            />
-                          </td>
-
-                          <td className="py-2 pr-3">
-                            <StatusBadge value={r.status} />
-                          </td>
-
-                          {/* NEW CELLS */}
-                          <td className="py-2 pr-3">{r.methodology}</td>
-                          <td className="py-2 pr-3">{r.phase}</td>
-
-                          <td className="py-2 pr-6">
-                            <div className="relative flex justify-center">
-                              <button
-                                className="p-1.5 rounded-md hover:bg-neutral-100"
-                                onClick={() =>
-                                  setMenuOpenId(
-                                    menuOpenId === r.key ? null : r.key
-                                  )
-                                }
-                                aria-label="Row actions"
-                              >
-                                <MoreVertical className="w-4 h-4 text-neutral-600" />
-                              </button>
-
-                              {menuOpenId === r.key && (
-                                <div className="absolute right-0 top-6 z-10 w-48 bg-white border border-neutral-200 rounded-lg shadow-lg p-1">
-                                  <div className="flex flex-col">
-                                    <button
-                                      className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50"
-                                      onClick={() => {
-                                        setMenuOpenId(null);
-                                        openModalEditor(r);
-                                      }}
-                                    >
-                                      Edit task
-                                    </button>
-                                    <button
-                                      className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50"
-                                      onClick={() => {
-                                        setMenuOpenId(null);
-                                        openModalCreate(r);
-                                      }}
-                                    >
-                                      Create new task
-                                    </button>
-                                    <button
-                                      className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50"
-                                      onClick={() => {
-                                        setMenuOpenId(null);
-                                        alert(
-                                          r.taskId
-                                            ? `Open detail: ${r.taskId}`
-                                            : "No task yet"
-                                        );
-                                      }}
-                                    >
-                                      View
-                                    </button>
-                                    <button
-                                      className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50 disabled:opacity-50"
-                                      disabled={
-                                        !r.taskId || deletingId === r.taskId
-                                      }
-                                      onClick={async () => {
-                                        setMenuOpenId(null);
-                                        if (!r.taskId) return;
-                                        await deleteTask(r.taskId);
-                                      }}
-                                    >
-                                      {deletingId === r.taskId ? (
-                                        <span className="inline-flex items-center gap-2">
-                                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                          Deleting…
-                                        </span>
-                                      ) : (
-                                        "Delete task"
-                                      )}
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </React.Fragment>
-                ))}
-
-              {/* Team tab rows */}
-              {isTeam &&
-                pageRows.map((r, idx) => {
-                  const isEditing = (field) =>
-                    editingCell?.key === r.key && editingCell?.field === field;
-
-                  const typeOptions =
-                    r.methodology !== "null"
-                      ? ["Documentation", "Discussion & Review"]
-                      : [];
-                  const taskOptions =
-                    r.methodology !== "null" && r.type !== "null"
-                      ? TASK_SEEDS[r.methodology]?.[r.type] || []
-                      : [];
-
-                  const canEditType =
-                    canEdit &&
-                    (isTeam ||
-                      (r.methodology !== "null" && r.phase !== "null"));
-                  const canEditTask = canEdit && (isTeam || r.type !== "null");
-
-                  return (
-                    <tr key={r.key} className="border-t border-neutral-200">
-                      <td className="py-2 pl-6 pr-3">
-                        <input
-                          type="checkbox"
-                          checked={selected.has(r.key)}
-                          onChange={() => {
-                            if (!canEdit) return;
-                            const s = new Set(selected);
-                            s.has(r.key) ? s.delete(r.key) : s.add(r.key);
-                            setSelected(s);
-                          }}
-                          disabled={!canEdit}
-                        />
-                      </td>
-                      <td className="py-2 pr-3">
-                        {(page - 1) * pageSize + idx + 1}.
-                      </td>
-                      <td className="py-2 pr-3">{r.memberName}</td>
-
-                      <td
-                        className={`py-2 pr-3 ${
-                          !canEditType
-                            ? "text-neutral-400 cursor-not-allowed"
-                            : ""
-                        }`}
-                        onDoubleClick={() =>
-                          canEditType &&
-                          setEditingCell({ key: r.key, field: "type" })
-                        }
-                        title={
-                          !canEditType ? "Set Methodology and Phase first" : ""
-                        }
-                      >
-                        {isEditing("type") ? (
-                          <select
-                            autoFocus
-                            className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
-                            defaultValue={
-                              r.type === "--" || r.type === "null" ? "" : r.type
-                            }
-                            onBlur={(e) => {
-                              updateTaskRow(r, {
-                                type: e.target.value || null,
-                                task: null,
-                              });
-                              stopEdit();
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") e.currentTarget.blur();
-                              if (e.key === "Escape") stopEdit();
-                            }}
-                          >
-                            <option value="">null</option>
-                            {typeOptions.map((t) => (
-                              <option key={t} value={t}>
-                                {t}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span>{r.type}</span>
-                        )}
-                      </td>
-
-                      <td
-                        className={`py-2 pr-3 ${
-                          !canEditTask
-                            ? "text-neutral-400 cursor-not-allowed"
-                            : ""
-                        }`}
-                        onDoubleClick={() =>
-                          canEditTask &&
-                          setEditingCell({ key: r.key, field: "task" })
-                        }
-                        title={!canEditTask ? "Set Task Type first" : ""}
-                      >
-                        {isEditing("task") ? (
-                          <select
-                            autoFocus
-                            className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
-                            defaultValue={r.task === "null" ? "" : r.task}
-                            onBlur={(e) => {
-                              saveTask(r, e.target.value);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") e.currentTarget.blur();
-                              if (e.key === "Escape") stopEdit();
-                            }}
-                          >
-                            <option value="">null</option>
-                            {taskOptions.map((t) => (
-                              <option key={t} value={t}>
-                                {t}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span>{r.task}</span>
-                        )}
-                      </td>
-
-                      <td className="py-2 pr-3">{r.subtasks || "--"}</td>
-                      <td className="py-2 pr-3">{r.elements || "--"}</td>
-
-                      <td className="py-2 pr-3">{r.created}</td>
-
-                      <td
-                        className="py-2 pr-3"
-                        onDoubleClick={() =>
-                          isTeam && setEditingCell({ key: r.key, field: "due" })
-                        }
-                        title={
-                          isTeam ? "Double-click to edit" : "Managed by Adviser"
-                        }
-                      >
-                        {isEditing("due") ? (
-                          <input
-                            autoFocus
-                            type="date"
-                            defaultValue={r.due === "null" ? "" : r.due}
-                            className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
-                            onBlur={(e) => saveDue(r, e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") e.currentTarget.blur();
-                              if (e.key === "Escape") stopEdit();
-                            }}
-                          />
-                        ) : (
-                          <span
-                            className={`${
-                              isTeam ? "cursor-text" : "text-neutral-700"
-                            }`}
-                          >
-                            {r.due}
-                          </span>
-                        )}
-                      </td>
-
-                      <td
-                        className="py-2 pr-3"
-                        onDoubleClick={() =>
-                          isTeam &&
-                          setEditingCell({ key: r.key, field: "time" })
-                        }
-                        title={
-                          isTeam ? "Double-click to edit" : "Managed by Adviser"
-                        }
-                      >
-                        {isEditing("time") ? (
-                          <input
-                            autoFocus
-                            type="time"
-                            defaultValue={r.time === "null" ? "" : r.time}
-                            step={600} // enforce 10-min in table inline edit
-                            className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
-                            onBlur={(e) =>
-                              saveTime(r, snapTimeTo(e.target.value, 10))
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") e.currentTarget.blur();
-                              if (e.key === "Escape") stopEdit();
-                            }}
-                          />
-                        ) : (
-                          <span
-                            className={`${
-                              isTeam ? "cursor-text" : "text-neutral-700"
-                            }`}
-                          >
-                            {r.time}
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="py-2 pr-3">
-                        <RevisionSelect
-                          value={r.revision}
-                          onChange={() => {}}
-                          disabled
-                        />
-                      </td>
-
-                      <td className="py-2 pr-3">
-                        {isTeam ? (
-                          <select
-                            className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
-                            defaultValue={r.status}
-                            onChange={(e) => saveStatus(r, e.target.value)}
-                          >
-                            {[
-                              "To Do",
-                              "In Progress",
-                              "To Review",
-                              "Completed",
-                            ].map((s) => (
-                              <option key={s} value={s}>
-                                {s}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <StatusBadge value={r.status} />
-                        )}
-                      </td>
-
-                      {/* NEW CELLS */}
-                      <td className="py-2 pr-3">{r.methodology}</td>
-                      <td className="py-2 pr-3">{r.phase}</td>
-
-                      <td className="py-2 pr-6">
-                        <div className="relative flex justify-center">
-                          <button
-                            className="p-1.5 rounded-md hover:bg-neutral-100"
-                            onClick={() =>
-                              setMenuOpenId(menuOpenId === r.key ? null : r.key)
-                            }
-                            aria-label="Row actions"
-                          >
-                            <MoreVertical className="w-4 h-4 text-neutral-600" />
-                          </button>
-
-                          {menuOpenId === r.key && (
-                            <div className="absolute right-0 top-6 z-10 w-48 bg-white border border-neutral-200 rounded-lg shadow-lg p-1">
-                              <div className="flex flex-col">
-                                <button
-                                  className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50"
-                                  onClick={() => {
-                                    setMenuOpenId(null);
-                                    openModalEditor(r);
-                                  }}
-                                >
-                                  {r.taskId ? "Edit task" : "Create task"}
-                                </button>
-                                {r.taskId && (
-                                  <button
-                                    className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50"
-                                    onClick={() => {
-                                      setMenuOpenId(null);
-                                      openModalCreate(r);
-                                    }}
-                                  >
-                                    Create new task
-                                  </button>
-                                )}
-                                <button
-                                  className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50"
-                                  onClick={() => {
-                                    setMenuOpenId(null);
-                                    alert(
-                                      r.taskId
-                                        ? `Open detail: ${r.taskId}`
-                                        : "No task yet"
-                                    );
-                                  }}
-                                >
-                                  View
-                                </button>
-                                <button
-                                  className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-neutral-50 disabled:opacity-50"
-                                  disabled={
-                                    !r.taskId || deletingId === r.taskId
-                                  }
-                                  onClick={async () => {
-                                    setMenuOpenId(null);
-                                    if (!r.taskId) return;
-                                    await deleteTask(r.taskId);
-                                  }}
-                                >
-                                  {deletingId === r.taskId ? (
-                                    <span className="inline-flex items-center gap-2">
-                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                      Deleting…
-                                    </span>
-                                  ) : (
-                                    "Delete task"
-                                  )}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-
-              {pageRows.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={15}
-                    className="py-10 text-center text-neutral-500"
-                  >
-                    No {isTeam ? "members" : "tasks"} found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <EditTaskDialog
-        open={!!editingModal}
-        onClose={() => setEditingModal(null)}
-        onSaved={() => setEditingModal(null)}
-        pm={pmProfile || { uid: pmUid, name: "Project Manager" }}
-        teams={teams}
-        members={members}
-        seedMember={editingModal?.seedMember || null}
-        existingTask={editingModal?.existingTask || null}
-        mode={mode}
-        lockedMethodology={lockedMethodology}
-      />
+      )}
     </div>
   );
 };

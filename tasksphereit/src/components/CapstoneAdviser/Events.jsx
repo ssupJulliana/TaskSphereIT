@@ -21,7 +21,7 @@ import { auth } from "../../config/firebase";
 
 /* ===== Firebase ===== */
 import { db } from "../../config/firebase";
-import { doc, setDoc, updateDoc } from "firebase/firestore";
+import { doc, setDoc, updateDoc, getDoc } from "firebase/firestore";
 
 /* ===== Supabase ===== */
 import { supabase } from "../../config/supabase";
@@ -275,6 +275,16 @@ function KebabMenu({ row, onEdit, canEdit }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Debug logging to check why canEdit might be false
+  console.log("KebabMenu - Row data:", {
+    id: row.id,
+    teamName: row.teamName,
+    date: row.date,
+    timeStart: row.timeStart,
+    time: row.time,
+    canEdit: canEdit,
+  });
+
   return (
     <div className="relative" ref={menuRef}>
       <button
@@ -289,12 +299,14 @@ function KebabMenu({ row, onEdit, canEdit }) {
         <div className="absolute right-0 top-6 bg-white border border-neutral-200 rounded-md shadow-lg z-10 min-w-[120px]">
           <button
             onClick={() => {
-              onEdit(row);
-              setOpen(false);
+              if (canEdit) {
+                onEdit(row);
+                setOpen(false);
+              }
             }}
             disabled={!canEdit}
             className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-neutral-50 text-left ${
-              !canEdit ? "opacity-50 cursor-not-allowed" : ""
+              !canEdit ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
             }`}
             title={
               !canEdit
@@ -647,10 +659,39 @@ export default function AdviserEvents() {
       try {
         setLoading(true);
         const res = await getAdviserEvents(uid);
-        const manus = (res.manuscript || []).map((m) => ({
-          ...m,
-          fileUrl: Array.isArray(m.fileUrl) ? m.fileUrl : [],
-        }));
+        console.log("Fetched manuscript data:", res.manuscript); // Debug log
+
+        // FIXED: Properly extract date and time from manuscript submissions
+        const manus = (res.manuscript || []).map((m) => {
+          console.log("Manuscript document:", m); // Debug to see all fields
+
+          // Try different possible field names for date and time
+          const date =
+            m.dueDate || m.date || m.submissionDate || m.deadline || "";
+          const time =
+            m.dueTime ||
+            m.time ||
+            m.submissionTime ||
+            m.deadlineTime ||
+            m.timeStart ||
+            "";
+
+          return {
+            ...m,
+            fileUrl: Array.isArray(m.fileUrl) ? m.fileUrl : [],
+            time: time,
+            date: date,
+            timeStart: time, // Make sure timeStart is also set for consistency
+            teamName: m.teamName || m.team || "",
+            title: m.title || m.projectTitle || "",
+            plag: m.plag || m.plagiarism || 0,
+            ai: m.ai || m.aiScore || 0,
+            verdict: m.verdict || m.status || "Pending",
+          };
+        });
+
+        console.log("Processed manuscript data with date/time:", manus); // Debug log
+
         if (alive) setRows({ ...res, manuscript: manus });
       } catch (e) {
         console.error("Failed to load events:", e);
@@ -669,7 +710,59 @@ export default function AdviserEvents() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [uid]);
+
+  // Additional useEffect to debug and fetch manuscript data directly if needed
+  useEffect(() => {
+    const fetchManuscriptsDirectly = async () => {
+      try {
+        const { collection, getDocs } = await import("firebase/firestore");
+        const manuscriptsCollection = collection(db, MANUSCRIPT_COLLECTION);
+        const snapshot = await getDocs(manuscriptsCollection);
+        const manuscriptsData = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        console.log("Direct Firestore fetch - Manuscripts:", manuscriptsData);
+
+        // Update manuscript rows with direct fetch data
+        setRows((prev) => ({
+          ...prev,
+          manuscript: manuscriptsData.map((m) => {
+            const date =
+              m.dueDate || m.date || m.submissionDate || m.deadline || "";
+            const time =
+              m.dueTime ||
+              m.time ||
+              m.submissionTime ||
+              m.deadlineTime ||
+              m.timeStart ||
+              "";
+
+            return {
+              ...m,
+              fileUrl: Array.isArray(m.fileUrl) ? m.fileUrl : [],
+              time: time,
+              date: date,
+              timeStart: time, // Make sure timeStart is also set
+              teamName: m.teamName || m.team || "",
+              title: m.title || m.projectTitle || "",
+              plag: m.plag || m.plagiarism || 0,
+              ai: m.ai || m.aiScore || 0,
+              verdict: m.verdict || m.status || "Pending",
+            };
+          }),
+        }));
+      } catch (error) {
+        console.error("Direct fetch error:", error);
+      }
+    };
+
+    // Only fetch directly if manuscript data is empty but we're in manuscript view
+    if (view === "manuscript" && rows.manuscript.length === 0 && !loading) {
+      fetchManuscriptsDirectly();
+    }
+  }, [view, rows.manuscript.length, loading]);
 
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
@@ -681,8 +774,27 @@ export default function AdviserEvents() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, defTab]);
 
+  // FIXED: Improved canEditRow function to properly check for date and time
   const canEditRow = (row) => {
-    return !!(row.date && row.time);
+    // Check if both date and time exist and are not empty
+    const hasDate = !!row.date && row.date.trim() !== "";
+    const hasTime =
+      !!(row.timeStart || row.time) &&
+      ((row.timeStart && row.timeStart.trim() !== "") ||
+        (row.time && row.time.trim() !== ""));
+
+    console.log("canEditRow check:", {
+      id: row.id,
+      teamName: row.teamName,
+      date: row.date,
+      timeStart: row.timeStart,
+      time: row.time,
+      hasDate,
+      hasTime,
+      canEdit: hasDate && hasTime,
+    });
+
+    return hasDate && hasTime;
   };
 
   const handleSaveScore = async (docId, field, value) => {
@@ -818,7 +930,7 @@ export default function AdviserEvents() {
                 <th className="text-left py-2 pr-3">Team</th>
                 <th className="text-left py-2 pr-3">Title</th>
                 <th className="text-left py-2 pr-3">Due Date</th>
-                <th className="text-left py-2 pr-3">Time</th>
+                <th className="text-left py-2 pr-3">Due Time</th>
                 <th className="text-left py-2 pr-3">Plagiarism</th>
                 <th className="text-left py-2 pr-3">AI</th>
                 <th className="text-left py-2 pr-3">Verdict</th>
@@ -833,6 +945,15 @@ export default function AdviserEvents() {
                 const editingAI = isEditing(r.id, "ai");
                 const editingVerdict = isEditing(r.id, "verdict");
 
+                console.log("Row rendering:", {
+                  id: r.id,
+                  teamName: r.teamName,
+                  date: r.date,
+                  timeStart: r.timeStart,
+                  time: r.time,
+                  canEdit,
+                });
+
                 return (
                   <tr
                     key={`ms-${r.id}`}
@@ -840,15 +961,15 @@ export default function AdviserEvents() {
                   >
                     <td className="py-2 pl-6 pr-3">{idx + 1}.</td>
                     <td className="py-2 pr-3">{r.teamName}</td>
-                    <td className="py-2 pr-3">{r.title}</td>
+                    <td className="py-2 pr-3">{r.title || "—"}</td>
                     <td className="py-2 pr-3">
                       {r.date || (
                         <span className="text-red-500 text-xs">Not set</span>
                       )}
                     </td>
                     <td className="py-2 pr-3">
-                      {r.time ? (
-                        to12h(r.time)
+                      {r.timeStart ? (
+                        to12h(r.timeStart)
                       ) : (
                         <span className="text-red-500 text-xs">Not set</span>
                       )}

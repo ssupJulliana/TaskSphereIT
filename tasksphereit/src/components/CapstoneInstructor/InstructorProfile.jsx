@@ -69,6 +69,7 @@ export default function InstructorProfile() {
     middleName: "",
     lastName: "",
     email: "",
+    academicYear: "",
   });
 
   // fetch user (unchanged)
@@ -180,7 +181,9 @@ export default function InstructorProfile() {
       middleName: userDoc.middleName || "",
       lastName: userDoc.lastName || "",
       email: userDoc.email || "",
+      academicYear: userDoc.academicYear || "",
     });
+
     setRemovePending(false);
     setEditMode(true);
   };
@@ -207,6 +210,9 @@ export default function InstructorProfile() {
     const middleName = form.middleName.trim();
     const lastName = form.lastName.trim();
     const email = form.email.trim();
+    const academicYear = form.academicYear.trim(); // NEW
+
+    // Validation
     if (!firstName || !lastName || !email) {
       Swal.fire({
         icon: "error",
@@ -215,6 +221,7 @@ export default function InstructorProfile() {
       });
       return;
     }
+
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       Swal.fire({
         icon: "error",
@@ -224,21 +231,29 @@ export default function InstructorProfile() {
       return;
     }
 
+    if (!academicYear) {
+      Swal.fire({
+        icon: "error",
+        title: "Missing info",
+        text: "Please select an Academic Year.",
+      });
+      return;
+    }
+
     Swal.fire({
       title: "Saving…",
       allowOutsideClick: false,
       allowEscapeKey: false,
       showConfirmButton: false,
-      timer: 1500,
       didOpen: () => Swal.showLoading(),
     });
 
     try {
       let imageUrl = userDoc.imageUrl || "None";
 
-      // If removal is pending and there is an existing image, delete it
+      // Handle image removal
       if (removePending && !isNone(userDoc.imageUrl)) {
-        const keyToDelete = safeKeyFromEmail(userDoc.email); // delete by current stored email key
+        const keyToDelete = safeKeyFromEmail(userDoc.email);
         await supabase.storage
           .from("user-images")
           .remove([keyToDelete])
@@ -246,27 +261,29 @@ export default function InstructorProfile() {
         imageUrl = "None";
       }
 
-      // NOTE: This request focuses on removal flow. If you also want to allow
-      // uploading a *new* image in the same save, you can extend here.
-      // For now, we ignore avatarFile when removePending is true.
-
+      // Update Firestore document
       await updateDoc(doc(db, "users", userDoc.id), {
         firstName,
         middleName,
         lastName,
         email,
+        academicYear,
         imageUrl,
         updatedAt: serverTimestamp(),
       });
 
+      // Update local state
       setUserDoc({
         ...userDoc,
         firstName,
         middleName,
         lastName,
         email,
+        academicYear,
         imageUrl,
       });
+
+      // Reset edit mode
       setEditMode(false);
       setAvatarFile(null);
       setAvatarPreview("");
@@ -284,6 +301,48 @@ export default function InstructorProfile() {
       });
     }
   };
+  const [academicYears, setAcademicYears] = useState([]);
+
+  useEffect(() => {
+    const fetchRealYear = async () => {
+      const generateAcademicYears = (currentYear) => {
+        const startYear = 2025;
+        const diff = currentYear - startYear;
+        const years = [];
+
+        for (let i = 0; i <= diff + 1; i++) {
+          const yearStart = startYear + i;
+          const yearEnd = yearStart + 1;
+          years.push(`${yearStart}-${yearEnd}`);
+        }
+
+        return years;
+      };
+
+      try {
+        const response = await fetch("https://worldtimeapi.org/api/ip");
+        const data = await response.json();
+        const currentYear = new Date(data.datetime).getFullYear();
+        setAcademicYears(generateAcademicYears(currentYear));
+      } catch (error) {
+        console.warn("WorldTimeAPI failed, trying backup…");
+        try {
+          const response = await fetch(
+            "https://timeapi.io/api/Time/current/zone?timeZone=Asia/Manila"
+          );
+          const data = await response.json();
+          const currentYear = new Date(data.dateTime).getFullYear();
+          setAcademicYears(generateAcademicYears(currentYear));
+        } catch (error2) {
+          console.error("All APIs failed, using local time:", error2);
+          const fallbackYear = new Date().getFullYear();
+          setAcademicYears(generateAcademicYears(fallbackYear));
+        }
+      }
+    };
+
+    fetchRealYear();
+  }, []);
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -427,6 +486,26 @@ export default function InstructorProfile() {
               </Field>
 
               {userDoc.role && <Field label="Role">{userDoc.role}</Field>}
+              <Field label="Academic Year">
+                {!editMode ? (
+                  userDoc.academicYear || "-"
+                ) : (
+                  <select
+                    value={form.academicYear}
+                    onChange={(e) =>
+                      setForm((s) => ({ ...s, academicYear: e.target.value }))
+                    }
+                    className="w-48 rounded-md border border-neutral-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-300"
+                  >
+                    <option value="">Select Academic Year</option>
+                    {academicYears.map((year) => (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
               {userDoc.idNo && <Field label="ID No">{userDoc.idNo}</Field>}
             </div>
           ) : null}
